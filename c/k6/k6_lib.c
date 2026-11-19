@@ -86,7 +86,11 @@ static int load(int slot, const kl_flash_t *fl, uint8_t *dst, unsigned cap, unsi
      image was even read. Read the header into the destination, validate it, then load the image. */
   if (fl->read(KL_SLOT_ADDR(slot), dst, KM_HDR)) return KL_IO;
   total = hdr_len(dst);
-  if (!total) return KL_BAD_HDR;
+  if (!total) {
+    unsigned i;
+    for (i = 0; i < KM_HDR; ++i) if (dst[i] != 0xff) return KL_BAD_HDR;
+    return KL_EMPTY;
+  }
   code = u16le(dst + 4);
   flags = dst[13];
   if (page == 2) {

@@ -133,6 +133,7 @@ python3 "$HERE/apply-compact-format.py"
 python3 "$HERE/apply-lean-txdog.py"
 python3 "$HERE/apply-el-power.py"
 python3 "$HERE/apply-ram0.py"
+python3 "$HERE/apply-system-partition.py"
 python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi

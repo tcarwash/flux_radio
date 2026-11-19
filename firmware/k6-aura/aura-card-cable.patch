@@ -20,7 +20,7 @@
 +#[cfg(feature = "spilib")]
 +const CARD_BASE: u32 = 0x190000;
 +#[cfg(feature = "spilib")]
-+const CARD_END: u32 = 0x200000;
++const CARD_END: u32 = 0x19A000;
 +#[cfg(feature = "spilib")]
 +const CARD_PAGE: u32 = 256;
 +#[cfg(feature = "spilib")]

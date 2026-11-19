@@ -15,7 +15,7 @@ uint32_t __aeabi_uidiv(uint32_t numerator, uint32_t denominator) {
 }
 
 #define STORE_BASE 0x190000u
-#define STORE_END 0x200000u
+#define STORE_END 0x19A000u
 #define STORE_SECTOR 4096u
 #define STORE_SLOTS ((STORE_END - STORE_BASE) / STORE_SECTOR)
 #define CARD_FSK_CONFIG (1200u | (78u << 16))
