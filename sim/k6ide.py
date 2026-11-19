@@ -27,6 +27,7 @@ TEMPLATES = ROOT / "sim/k6ide_templates"
 sys.path.insert(0, str(ROOT / "tools"))
 from k6_theme_package import pack as pack_theme, unpack as unpack_theme
 from k6_feature_packs import encode_layer
+from k6_user_store_migrate import BASE,END,is_packed,objects,locations,compact
 DESIGNER_SLOT = 31  # explicit read-only firmware bench slot
 DESIGNER_BASE = 0x110000 + DESIGNER_SLOT * 0x4000
 KEYS = ("MENU", "UP", "DOWN", "EXIT", "VM", "AB", "BAND", "SIDE1", "SIDE2",
@@ -266,6 +267,14 @@ class K6Workbench:
             if self.board.gpio_external[("A",15)]:
                 raise ValueError("turn on virtual radio first")
             self.spi_data[:] = self.board.flash_data
+            if is_packed(self.spi_data[BASE:END]):
+                catalog=objects(self.spi_data[BASE:END]);old=catalog.get(DESIGNER_SLOT)
+                if old is not None and old[:3]!=b'K6T':raise ValueError('slot 31 is occupied by non-theme data')
+                if blob is None:catalog.pop(DESIGNER_SLOT,None)
+                else:catalog[DESIGNER_SLOT]=blob
+                self.spi_data[BASE:END]=compact(catalog)[0]
+                # Select logical slot 31 in saved settings via normal radio menu.
+                self._boot();return {"slot":DESIGNER_SLOT,"bytes":len(blob or b''),"mode":"theme" if blob else "factory"}
             at = DESIGNER_BASE
             old = bytes(self.spi_data[at:at+0x4000])
             if old != b"\xff"*0x4000 and old[:4] not in (b"K6T\x01",b"K6T\x02",b"K6T\x03",b"K6T\x04",b"K6T\x05",b"K6T\x06",b"K6T\x07",b"K6T\x08",b"K6T\x09"):
@@ -281,8 +290,14 @@ class K6Workbench:
         flash = self.board.flash_data if self.board else self.spi_data
         found = []
         # K6 signed library images carry a 16-byte header and 64-bit authenticator.
+        raw=flash[BASE:END];packed=is_packed(raw)
+        try:directory=locations(raw) if packed else {}
+        except ValueError:return []
         for slot in range(32):
-            at = 0x110000 + slot * 0x4000
+            if packed:
+                if slot not in directory:continue
+                at=BASE+directory[slot][0]
+            else:at=BASE+slot*0x4000
             header = bytes(flash[at:at + 16])
             if header[:4] in (b"K6T\x01",b"K6T\x02",b"K6T\x03",b"K6T\x04",b"K6T\x05",b"K6T\x06",b"K6T\x07",b"K6T\x08",b"K6T\x09"):
                 found.append({"slot": slot, "name": "Designer theme", "bytes": 12+int.from_bytes(header[4:6],"little"),
@@ -323,6 +338,13 @@ class K6Workbench:
         if not slots or any(slot < 0 or slot >= 32 for slot in slots):
             raise ValueError("select one or more slots from 0 through 31")
         with self.lock:
+            if is_packed(self.board.flash_data[BASE:END]):
+                catalog=objects(self.board.flash_data[BASE:END])
+                for slot in slots:
+                    old=catalog.get(slot,b'')
+                    if len(old)<16 or old[:3]!=b'K6M' or old[13]!=1:raise ValueError(f'slot {slot} is empty or protected')
+                for slot in slots:del catalog[slot]
+                self.spi_data[:]=self.board.flash_data;self.spi_data[BASE:END]=compact(catalog)[0];self._boot();return
             for slot in slots:
                 at = 0x110000 + slot * 0x4000
                 header = self.board.flash_data[at:at + 16]
@@ -395,7 +417,7 @@ def module_bundle_catalog(include_experimental=False):
         if parent.is_dir():
             manifests.extend(parent.glob("*/manifest.json"))
     bundles = []
-    preferred = {"surf", "vfo", "cardlink", "explore_scan", "aprs", "aprs-beacon", "aprs-gps-sync", "aprs-kiss-rx"}
+    preferred = {"surf", "cardlink", "explore_scan", "aprs", "aprs-beacon", "aprs-gps-sync", "aprs-kiss-rx"}
     for manifest_path in sorted(manifests):
         try:
             manifest = json.loads(manifest_path.read_text())
@@ -407,6 +429,8 @@ def module_bundle_catalog(include_experimental=False):
                 continue
             # The workbench's default picker is a curated set of current modules.
             # Historical diagnostics and experiments remain accessible explicitly.
+            if manifest_path.parent.name in {"vfo", "libls", "vfo-module-bundle"}:
+                continue
             if not include_experimental and manifest_path.parent.name not in preferred:
                 continue
             contents = ", ".join(

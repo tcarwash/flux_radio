@@ -48,6 +48,18 @@ def verify_pack(root, spec, *, require_attested=True):
     fw = checked_file(root, firmware['path'], firmware['sha256'])
     if fw.stat().st_size != firmware['bytes']:
         raise PackError('firmware byte count mismatch')
+    storage=lock.get('storage')
+    if storage is not None:
+        from k6_system_install import pack as pack_system
+        pages=storage.get('system_pages',[])
+        if storage.get('format')!=2 or not isinstance(pages,list) or (pages and 'ota' in lock['packs']):
+            raise PackError('unsupported packed storage plan')
+        images=[]
+        for page in pages:
+            path=checked_file(root,page['path'],page['sha256']);data=path.read_bytes()
+            if len(data)!=page['bytes']:raise PackError('system page size mismatch')
+            images.append(data)
+        if images:pack_system(fw.read_bytes(),images,8192)
     splash = lock.get('boot_splash')
     if splash is not None:
         splash_path = checked_file(root, splash['path'], splash['sha256'])
@@ -181,7 +193,7 @@ def pack_port(port):
 def provision_artifacts(root, spec, key_file):
     from k6_install import find_key, k6mod
     from k6_capability_receipt import verify
-    from k6_pack_policy import POLICY, gate_environment, validate
+    from k6_pack_policy import POLICY, gate_environment, storage_environment, validate
 
     lock = verify_pack(root, spec, require_attested=False)
     firmware = Path(root) / lock['firmware']['path']
@@ -189,7 +201,7 @@ def provision_artifacts(root, spec, key_file):
     policy = json.loads(POLICY.read_text())
     validate(spec, policy)
     receipt = json.loads((Path(root) / 'firmware.receipt.json').read_text())
-    verify(receipt, firmware, plan, gate_environment(plan, policy))
+    verify(receipt, firmware, plan, {**gate_environment(plan, policy),**(storage_environment(plan) if lock.get('storage') else {})})
     data = firmware.read_bytes()
     if hashlib.sha256(data).hexdigest() != lock['firmware']['sha256']:
         raise PackError('firmware changed during verification')
@@ -203,7 +215,7 @@ def provision_artifacts(root, spec, key_file):
     return lock, data, identity, key
 
 
-def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log=print):
+def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log=print, recovery=None):
     import k6_install as radio
 
     if mode not in ('cable', 'update'):
@@ -211,6 +223,18 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
     if action not in ('flash', 'install', 'preview', 'flash-install'):
         raise PackError(f'unknown pack operation: {action}')
     lock, firmware, identity, key = provision_artifacts(root, spec, key_file)
+    packed=lock.get('storage',{}).get('format')==2
+    is_flash=action in ('flash','flash-install')
+    firmware_only=action=='flash'
+    if recovery is not None and (not packed or not is_flash):raise PackError('recovery requires a packed flash-install')
+    if packed and is_flash:action='flash-install'
+    prepared=None
+    backup_dir=Path.home()/'.local/share/flux/backups'
+    if packed:
+        from k6_user_store_restore import prepare,restore,complete,load_recovery
+        from k6_system_install import install as install_system
+        pages=[checked_file(Path(root),p['path'],p['sha256']).read_bytes() for p in lock['storage']['system_pages']]
+
     if action in ('flash', 'flash-install'):
         from k6_flash_policy import assess
         if not assess(len(firmware), lock['packs'])['pass']:
@@ -218,7 +242,7 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
         if firmware.count(radio.k6mod.PLACEHOLDER) != int(key is not None):
             raise PackError('firmware placeholder count disagrees with requested authentication mode')
     entries = []
-    if action != 'flash':
+    if action != 'flash' and not firmware_only:
         for module in lock['modules']:
             path = Path(root) / module['path']
             code = path.read_bytes()
@@ -227,6 +251,15 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
             radio.k6mod.bin_entry(code)
             entries.append({'path': path, 'code': code, 'id': module['id'], 'name': module['name'],
                             'kind': 'module', 'level': module['api_level']})
+
+    def prepare_upgrade(cable):
+        if recovery is not None:return load_recovery(recovery,cable,identity,port),Path(recovery)
+        fingerprint=hashlib.sha256(cable.read(0xf000,4096)).hexdigest()
+        for candidate in backup_dir.glob('flux-library-*.json'):
+            rec=json.loads(candidate.read_text())
+            if rec.get('status')=='pending' and rec.get('calibration_sha256')==fingerprint:
+                raise PackError(f'pending upgrade: resume with --recover {candidate}')
+        return prepare(cable,backup_dir,identity,port,log)
 
     with pack_port(port):
         connection = radio.open_port(SimpleNamespace(port=port))
@@ -253,7 +286,10 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
                     except radio.InstallError as exc:
                         probe.end()
                         raise PackError(str(exc)) from exc
+                    if packed:prepared,journal=prepare_upgrade(probe)
                     actual_mode = 'cable'
+                elif packed:
+                    raise PackError('packed updates require a running Flux session for pre-flash backup; use cable mode')
                 radio.flash(connection, firmware, key, actual_mode, log=log)
                 if action == 'flash':
                     return
@@ -271,6 +307,7 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
                         str(key_file) if key_file else radio.find_key())
                     caps = cable.authenticated_capabilities(current_key)
                 if action in ('flash', 'flash-install'):
+                    if packed:prepared,journal=prepare_upgrade(cable)
                     cable = None  # flash owns the restart and bootloader handshake
                     radio.flash(connection, firmware, key, mode, log=log)
                     if action == 'flash':
@@ -288,6 +325,16 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
             if not report['build_id_match'] or not report['capabilities_match']:
                 raise PackError(f'connected firmware does not match the pack: {json.dumps(report)}')
 
+            if packed and is_flash:
+                if prepared is None:raise PackError('missing pre-flash user library backup')
+                restore(cable,bytes.fromhex(identity),prepared,log,key=key)
+                if pages:
+                    install_system(cable,firmware,pages,log=log)
+                    cable=radio.open_cable(connection,log,wait=30.0)
+                    if cable is None:raise PackError('system pages installed but module session did not return')
+                    if cable.capabilities().get('build_id')!=identity:raise PackError('firmware identity changed after system provisioning')
+                complete(journal)
+            if firmware_only:return
             serials = radio.Serials()
             if cable.info()['protocol'] >= 3:
                 try:
@@ -307,12 +354,13 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
                 for entry in allocated:
                     if entry.get('_update'):
                         expected = radio.sign(entry, 0, key)
-                        installed = cable.read(radio.LIB_BASE + entry['slot'] * radio.LIB_SLOT, len(expected))
+                        installed = radio.library_read(cable,entry['slot'],len(expected))
                         if installed[:8] == expected[:8] and installed[12:-8] == expected[12:-8]:
                             log(f"  {entry['id']} in slot {entry['slot']} is already current")
                             continue
                         log(f"  replacing {entry['id']} in slot {entry['slot']}: erasing old module...")
-                        cable.remove_slot(entry['slot'], key, serials.next())
+                        if cable.info()['protocol'] < 5:
+                            cable.remove_slot(entry['slot'], key, serials.next())
                 radio.write_entries(cable, allocated, key, serials, log=log,
                                     verify=True, skip_current=True)
                 log('  bundled modules installed and read back successfully')
@@ -326,14 +374,14 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
                     raise PackError('Designer typed theme protocol 3 is required')
                 theme_slot = radio.find_empty_theme_slot(cable)
                 address = radio.LIB_BASE + theme_slot * radio.LIB_SLOT
-                if cable.read(address, radio.LIB_SLOT) != b'\xff' * radio.LIB_SLOT:
+                if radio.library_read(cable,theme_slot,radio.LIB_SLOT) != b'\xff' * radio.LIB_SLOT:
                     raise PackError('selected theme slot is no longer empty')
                 theme_serial = serials.next()
                 theme_image = radio.k6mod.image(theme_blob, 0, theme_serial, key,
                                                 lib=theme_slot, theme=True)
                 result_code, _have, _count, written = cable.send_image(theme_image, theme_serial & 255)
                 if (result_code != 3 or written != len(theme_blob) or
-                        cable.read(address, len(theme_blob)) != theme_blob):
+                        radio.library_read(cable,theme_slot,len(theme_blob)) != theme_blob):
                     raise PackError(f'theme install/readback failed: {result_code}, {written}')
                 if theme_name:
                     log(f"  theme verified in slot {theme_slot}: {theme_name!r} is registered in DISP > THEME")
@@ -363,15 +411,21 @@ def main():
     parser.add_argument('--radio-preflight', action='store_true', help='query compatibility only; no flash writes (ends cable session with restart)')
     parser.add_argument('--port', help='explicit radio serial port')
     parser.add_argument('--key-file', type=Path, help='explicit existing key for fresh read-only capability challenge')
+    parser.add_argument('--recover',type=Path,help='resume a pending packed upgrade using its recovery journal (writes radio)')
     args = parser.parse_args()
     if args.radio_preflight and (not args.port or args.inspect_unverified):
         parser.error('--radio-preflight requires --port and cannot be combined with --inspect-unverified')
-    if args.key_file and not args.radio_preflight:
+    if args.recover and (not args.port or args.radio_preflight or args.inspect_unverified):
+        parser.error('--recover requires --port and cannot be combined with inspection')
+    if args.key_file and not (args.radio_preflight or args.recover):
         parser.error('--key-file requires --radio-preflight')
-    if args.port and not args.radio_preflight:
+    if args.port and not (args.radio_preflight or args.recover):
         parser.error('--port requires --radio-preflight')
     try:
         spec = json.loads(args.spec.read_text())
+        if args.recover:
+            provision_pack(args.pack,spec,args.port,args.key_file,action='flash-install',recovery=args.recover)
+            return 0
         if args.radio_preflight:
             report = radio_preflight(args.pack, spec, args.port, args.key_file)
             print(json.dumps(report, indent=2))

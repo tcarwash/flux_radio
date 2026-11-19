@@ -610,6 +610,15 @@ def create_app(store: ModuleStore | None = None):
             return redirect(url_for('profiles'))
         return redirect(url_for('build_status', job_id=job_id))
 
+    def pending_recovery(job, port):
+        if not port or not job.get('lock') or job['lock'].get('storage',{}).get('format')!=2:return []
+        from k6_user_store_restore import pending_for_pack,BACKUP_DIR
+        from k6_build_identity import image_build_id
+        try:
+            build=image_build_id((Path(job['output'])/job['lock']['firmware']['path']).read_bytes())
+            return pending_for_pack(BACKUP_DIR,build,port)
+        except (OSError,ValueError,KeyError):return []
+
     @app.get("/profiles/build/<job_id>")
     def build_status(job_id):
         try:
@@ -617,7 +626,7 @@ def create_app(store: ModuleStore | None = None):
         except KeyError:
             abort(404)
         token = session.setdefault('pack_radio_token', secrets.token_urlsafe(32))
-        return render_template('build_status.html', job=job, radio_token=token)
+        return render_template('build_status.html', job=job, radio_token=token, recoveries=pending_recovery(job,radio_settings()['port']))
 
     @app.post("/profiles/build/<job_id>/radio")
     def provision_profile(job_id):
@@ -635,10 +644,16 @@ def create_app(store: ModuleStore | None = None):
             flash('Set the USB serial port in Device settings first.', 'error')
             return redirect(url_for('settings_page'))
         try:
+            recovery=None
+            if request.form.get('recovery'):
+                job=app.config['build_jobs'].get(job_id)
+                candidates=pending_recovery(job,settings['port'])
+                recovery=next((p for p in candidates if p.name==request.form['recovery']),None)
+                if recovery is None or action!='flash-install':raise ValueError('No matching pending recovery for this build and serial port.')
             radio_id = app.config['build_jobs'].start_radio(
                 job_id, action, settings['port'], settings['key_file'],
                 already_update=action in ('flash', 'flash-install') and request.form.get('mode') == 'update',
-                theme_slot=None)
+                theme_slot=None,recovery=recovery)
         except KeyError:
             abort(404)
         except (OSError, ValueError) as exc:

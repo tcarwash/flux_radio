@@ -14,9 +14,7 @@
       "capabilities": [
         "module-loader"
       ],
-      "modules": [
-        "vfo"
-      ],
+      "modules": [],
       "description": "Core radio, module loader and shared services for APRS, including AFSK, KISS and position settings."
     },
     "scan": {
@@ -83,9 +81,6 @@
     }
   },
   "module_requirements": {
-    "vfo": [
-      "module-loader"
-    ],
     "cardlink": [
       "module-loader",
       "fd6818-fsk-rx"

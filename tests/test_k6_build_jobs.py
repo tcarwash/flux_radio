@@ -78,6 +78,8 @@ def test_catalog_pack_radio_jobs_require_token_and_confirmation(tmp_path):
                                        'confirm': 'yes', 'mode': 'update'})
     assert calls[-1][-4:] == ['--port', '/dev/ttyUSB0', '--yes', '--already-update']
     assert b'Flash firmware' in client.get(response.location).data
+    # The fake child must finish before starting another radio operation.
+    for _, _, process, _ in jobs._radio_jobs.values():process.code=0
     client.post(route, data={'action': 'preview', 'token': token})
     assert calls[-1][-1] == '--preview'
 

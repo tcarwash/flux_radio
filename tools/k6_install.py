@@ -284,11 +284,13 @@ class Cable(CpsLink):
     """blowfang's cable session"""
 
     def info(self):
+        if hasattr(self,"_info"):return self._info
         d = self.call(CMD_INFO)
         if d[:4] != b"BLWF":
             raise InstallError(f"the radio did not identify as a Flux-compatible module host (INFO: {d.hex()})")
-        return dict(protocol=d[4], slots=d[5], arena=struct.unpack("<H", d[6:8])[0],
+        self._info=dict(protocol=d[4], slots=d[5], arena=struct.unpack("<H", d[6:8])[0],
                     build_id=d[8:16] if any(d[8:16]) else None)
+        return self._info
 
     def capabilities(self):
         """Query optional versioned firmware capabilities; never infer them from INFO."""
@@ -366,9 +368,27 @@ class Cable(CpsLink):
                                f"radio reports {have}/{count} chunks; reply bytes {d.hex(' ')}")
         return r, have, count, put
 
+    def library_directory(self):
+        """Return packed logical locations, or None for legacy firmware."""
+        if self.info()['protocol'] < 5:
+            return None
+        from k6_user_store_migrate import locations
+        # Only the two directory sectors are needed for metadata validation.
+        raw=self.read(LIB_BASE,8192)+bytes(512*1024-8192)
+        try:return locations(raw)
+        except ValueError as exc:raise InstallError(str(exc)) from exc
+
+    def library_read(self,slot,n):
+        directory=self.library_directory()
+        if directory is None:return self.read(LIB_BASE+slot*LIB_SLOT,n)
+        if slot not in directory:return b'\xff'*n
+        a,length=directory[slot]
+        data=self.read(LIB_BASE+a,min(n,length))
+        return data+b'\xff'*(n-len(data))
+
     def slot_head(self, slot):
         """(header, name) of what a library slot holds, or None if it's erased"""
-        h = self.read(LIB_BASE + slot * LIB_SLOT, 64)
+        h = self.library_read(slot,64)
         if h[:3] != b"K6M":
             return None
         code = h[16:]
@@ -380,13 +400,13 @@ class Cable(CpsLink):
         if slot not in AUTO_SLOTS:
             return None
         address = LIB_BASE + slot * LIB_SLOT
-        header = self.read(address, 12)
+        header = self.library_read(slot,12)
         if header[:4] not in (b"K6T\x06", b"K6T\x07", b"K6T\x08", b"K6T\x09"):
             return None
         size = 12 + int.from_bytes(header[4:6], "little")
         if not 12 <= size <= 8192:
             return None
-        blob = self.read(address, size)
+        blob = self.library_read(slot,size)
         try:
             _, name = unpack(blob, include_name=True)
         except ValueError:
@@ -402,7 +422,7 @@ class Cable(CpsLink):
         r, _, _, result = self.send_image(img, serial & 255)
         if r != 3 or result != 0:
             raise InstallError(f"Theme removal refused: {r}, {result}")
-        if self.read(LIB_BASE + slot * LIB_SLOT, LIB_SLOT) != b"\xff" * LIB_SLOT:
+        if self.library_read(slot,LIB_SLOT) != b"\xff" * LIB_SLOT:
             raise InstallError("Theme erase failed full-slot verification")
 
     def remove_slot(self, slot, key, serial):
@@ -416,7 +436,7 @@ class Cable(CpsLink):
                 transfer_error = InstallError(f"radio erase reply: {detail}; accepted {have}/{count} chunks")
         except InstallError as exc:
             transfer_error = exc
-        erased = self.read(LIB_BASE + slot * LIB_SLOT, LIB_SLOT) == b"\xff" * LIB_SLOT
+        erased = self.library_read(slot,LIB_SLOT) == b"\xff" * LIB_SLOT
         if not erased:
             if transfer_error:
                 raise transfer_error
@@ -802,6 +822,11 @@ def check_key(c, key, serials, log=print):
     raise InstallError(f"the key check came back {KM.get(r, r)}")
 
 
+def library_read(c,slot,n):
+    # Legacy cable test doubles and older clients retain fixed-slot semantics.
+    return c.library_read(slot,n) if hasattr(c,'library_read') else c.read(LIB_BASE+slot*LIB_SLOT,n)
+
+
 def allocate_slots(c, entries, info, key):
     """Plan automatic entries without modifying the manifest or writing flash."""
     entries = [dict(e) for e in entries]
@@ -827,7 +852,7 @@ def allocate_slots(c, entries, info, key):
         if slot >= info["slots"] or slot in fixed:
             continue
         address = LIB_BASE + slot * LIB_SLOT
-        head = c.read(address, 64)
+        head = library_read(c,slot,64)
         if head == b"\xff" * 64:
             free.append(slot)
             continue
@@ -837,7 +862,7 @@ def allocate_slots(c, entries, info, key):
         total = 16 + length + 8
         if length < len(AUTO_ID_MAGIC) + 16 or total > LIB_SLOT:
             continue
-        image = c.read(address, total)
+        image = library_read(c,slot,total)
         if image[-8:] != k6mod.image_tag(key, image[:-8]):
             continue
         marker = image[-8 - 24:-8]
@@ -850,7 +875,7 @@ def allocate_slots(c, entries, info, key):
         erase_bytes = ((os.path.getsize(e["path"]) + len(marker) + 24 + 4095) // 4096) * 4096
         if found:
             slot, old_total = found[0]
-            area = c.read(LIB_BASE + slot * LIB_SLOT, erase_bytes)
+            area = library_read(c,slot,erase_bytes)
             if any(b != 0xff for b in area[old_total:]):
                 raise InstallError(f"{e['id']}: unrelated data in update erase range; resolve manually")
             e["slot"] = slot
@@ -858,7 +883,7 @@ def allocate_slots(c, entries, info, key):
         else:
             while free:
                 candidate = free.pop(0)
-                if c.read(LIB_BASE + candidate * LIB_SLOT, erase_bytes) == b"\xff" * erase_bytes:
+                if library_read(c,candidate,erase_bytes) == b"\xff" * erase_bytes:
                     e["slot"] = candidate
                     break
             else:
@@ -956,7 +981,7 @@ def write_entries(c, entries, key, serials, log=print, verify=False, skip_curren
         img = sign(e, serials.next(), key)
         slot = LIB_BASE + e["slot"] * LIB_SLOT
         if skip_current and e.get("_update"):
-            installed = c.read(slot, len(img))
+            installed = library_read(c,e["slot"],len(img))
             # Match all signed fields except the upload serial, plus the code.
             if (installed[:8] == img[:8] and installed[12:-8] == img[12:-8]
                     and hmac.compare_digest(installed[-8:], k6mod.image_tag(key, installed[:-8]))):
@@ -966,7 +991,7 @@ def write_entries(c, entries, key, serials, log=print, verify=False, skip_curren
         if r != 3 or put != len(img):
             # the last chunk's answer may have been lost and the chunk sent again (it then
             # starts a transfer of its own): the slot itself says whether the install happened
-            if r == 3 or c.read(slot, len(img)) != img:
+            if r == 3 or library_read(c,e["slot"],len(img)) != img:
                 if r == 0:
                     why = "radio did not recognize the module packet (restart the cable session)"
                     if c.km_diag_stage is not None:
@@ -977,7 +1002,7 @@ def write_entries(c, entries, key, serials, log=print, verify=False, skip_curren
                 if count > have:
                     detail += f" ({count - have} still missing)"
                 raise InstallError(f"slot {e['slot']} ({e['name']}): {why}; {detail}")
-        elif (verify or e.get("_auto")) and c.read(slot, len(img)) != img:
+        elif (verify or e.get("_auto")) and library_read(c,e["slot"],len(img)) != img:
             raise InstallError(f"slot {e['slot']} ({e['name']}) reads back differently")
         total += len(img)
         log(f"  slot {e['slot']:2d} {e['kind']:6s} {e['name']:12s} {len(img):6d} B")
@@ -1122,12 +1147,7 @@ def find_empty_theme_slot(link):
     """Choose a fully erased non-reserved library slot without overwriting data."""
     for slot in (*range(16, 32), *range(0, 9)):
         address=LIB_BASE+slot*LIB_SLOT
-        empty=True
-        for offset in range(0,LIB_SLOT,READ_BLOCK):
-            if link.read(address+offset,READ_BLOCK)!=b"\xff"*READ_BLOCK:
-                empty=False
-                break
-        if empty:
+        if library_read(link,slot,LIB_SLOT)==b"\xff"*LIB_SLOT:
             return slot
     raise InstallError("no empty theme slot is available; remove a theme or module slot first")
 
@@ -1265,7 +1285,7 @@ def main(argv=None, log=None, ask=input):
                 if not (0<=slot<=8 or 16<=slot<32):
                     raise InstallError("theme slot must be a non-reserved library slot")
                 address=LIB_BASE+slot*LIB_SLOT
-                if c.read(address,LIB_SLOT)!=b"\xff"*LIB_SLOT:
+                if library_read(c,slot,LIB_SLOT)!=b"\xff"*LIB_SLOT:
                     raise InstallError("theme slot is not entirely erased")
                 if not a.yes and ask(f"Install {theme_name or 'theme'} in empty slot {slot}? Type INSTALL: ").strip()!="INSTALL":
                     raise InstallError("theme installation cancelled")
@@ -1278,7 +1298,7 @@ def main(argv=None, log=None, ask=input):
                 serial=serials.next()
                 img=k6mod.image(blob,0,serial,key,lib=slot,theme=True)
                 r,have,count,result=c.send_image(img,serial&255)
-                if r!=3 or result!=len(blob) or c.read(address,len(blob))!=blob:
+                if r!=3 or result!=len(blob) or library_read(c,slot,len(blob))!=blob:
                     raise InstallError(f"theme install/readback failed: {r}, {result}")
                 if theme_name:
                     log(f"Theme verified in slot {slot}: {theme_name!r} is registered in DISP > THEME by name.")

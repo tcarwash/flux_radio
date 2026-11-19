@@ -153,6 +153,11 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_USER_STORE:-0}" = 1 ]; then
+  python3 "$HERE/apply-user-store.py"
+  python3 "$HERE/apply-user-restore.py"
+  PACK_CFG="$PACK_CFG --cfg k6_user_store"
+fi
 if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
   [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] && [ "${K6_SYSTEM_DEMO:-0}" = 0 ] && [ "${K6_VFO_PROBE:-0}" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "Channel page requires expanded cable-only arena and installer (no resident probe/demo)" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_channel_page"
@@ -270,9 +275,6 @@ checksum = f"{hashlib.sha256(image.read_bytes()).hexdigest()}  {image}\n"
 image.with_suffix(image.suffix + '.sha256').write_text(checksum)
 print(checksum, end='')
 PY
-case ",$FEATURES," in
-  *,blowfang-host,*) python3 "$HERE/build-vfo-module-bundle.py" --out "$OUT/vfo-module-bundle" ;;
-esac
 if [ "$K6_OTA_SERVICE" = 0 ]; then
   echo "Built cable-only FD6818B image with features: $FEATURES"
 elif [ -n "${K6_MOD_KEY_FILE:-}" ]; then

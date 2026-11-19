@@ -35,19 +35,29 @@ def program(tmp_path_factory):
  syms=subprocess.check_output(['llvm-nm',str(d/'host.elf')],text=True); entry=int(next(l.split()[0] for l in syms.splitlines() if l.endswith(' T run')),16)
  return (d/'host.bin').read_bytes(),entry,(d/'page.bin').read_bytes()+BUILD
 
-def execute(program,code=None,slot=0,damage=False,empty=False,kind=True):
+def execute(program,code=None,slot=0,damage=False,empty=False,kind=True,directory=None):
  host,entry,original=program;code=original if code is None else code
  m=u.Uc(u.UC_ARCH_ARM,u.UC_MODE_THUMB|u.UC_MODE_MCLASS)
  m.mem_map(0x08000000,0x20000);m.mem_write(FLASH,host);m.mem_map(0x20000000,0x6000);m.mem_map(0x60000000,0x64000)
  image=bytearray(k6mod.image(code,0,1,None,level=1,lib=0,page=kind,magic=b"K6S"));
  if damage:image[20]^=1
  m.mem_write(0x60000000,b'\xff'*0x64000)
- if not empty:m.mem_write(0x60000000,bytes(image))
+ if not empty:
+  m.mem_write(0x60000000,b"KSD1"+BUILD)
+  m.mem_write(0x60000000+16+8*17,struct.pack("<II",BASE+4096,len(image)))
+  m.mem_write(0x60001000,bytes(image))
+  if directory=="inactive":m.mem_write(0x60000000,b"\xff"*4)
+  if directory=="wrong_build":m.mem_write(0x60000004,b"wrong!!!")
+  if directory=="bounds":m.mem_write(0x60000000+16+8*17,struct.pack("<II",0x1ffffc,len(image)))
+  if directory=="unaligned":m.mem_write(0x60000000+16+8*17,struct.pack("<II",BASE+4097,len(image)))
+  if directory=="wrong_length":m.mem_write(0x60000000+16+8*17,struct.pack("<II",BASE+4096,len(image)+4))
  m.reg_write(UC_ARM_REG_SP,0x20005ff0);m.reg_write(UC_ARM_REG_LR,STOP|1);m.reg_write(UC_ARM_REG_R0,slot);m.reg_write(UC_ARM_REG_R1,5)
  m.emu_start(entry|1,STOP,count=100000);assert m.reg_read(UC_ARM_REG_PC)==STOP
  return struct.unpack('<i',struct.pack('<I',m.reg_read(UC_ARM_REG_R0)))[0]
 
 def test_execute(program):assert execute(program)==42
+@pytest.mark.parametrize("directory",["inactive","wrong_build","bounds","unaligned","wrong_length"])
+def test_directory_reject(program,directory):assert execute(program,directory=directory)<0
 @pytest.mark.parametrize('kind',['wrong_build','wrong_address','wrong_count','bad_pointer','bad_crc','empty','wrong_flag','out_of_range'])
 def test_reject(program,kind):
  code=bytearray(program[2]);opts={}

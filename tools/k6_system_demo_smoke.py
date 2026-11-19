@@ -33,7 +33,10 @@ def main():
  def set_page(code,damage=False):
   image=bytearray(k6mod.image(code,0,1,None,level=1,lib=0,page=True,magic=b"K6S"));
   if damage:image[20]^=1
-  b.flash_data[0x19c000:0x1a0000]=bytes(image).ljust(0x4000,b'\xff')
+  b.flash_data[0x19c000:0x1a0000]=b'\xff'*0x4000
+  b.flash_data[0x19c000:0x19c00c]=b"KSD1"+build
+  struct.pack_into("<II",b.flash_data,0x19c010+8*17,0x19d000,len(image))
+  b.flash_data[0x19d000:0x19d000+len(image)]=image
  b.flash_data[0x19c000:0x1a0000]=b'\xff'*0x4000
  assert request()<0
  set_page(page+build);assert request()==42;assert request()==42

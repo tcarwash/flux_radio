@@ -44,14 +44,43 @@ static char *hex2(char *p, unsigned v) {
   return p;
 }
 
+/* Read-only directory parser. No change to the module ABI. */
+static uint32_t le32(const uint8_t *p) {
+  return (uint32_t)p[0] | (uint32_t)p[1]<<8 | (uint32_t)p[2]<<16 | (uint32_t)p[3]<<24;
+}
+static int directory(const k6_api_t *api, uint32_t base, uint8_t *d) {
+  if (api->fl_read(base,d,1036)<0 || le32(d)!=0x324c554bu || le32(d+12)!=~le32(d+4)) return 0;
+  uint32_t crc=~0u;
+  for (unsigned i=12;i<1036;i++) {crc^=d[i];for(unsigned j=0;j<8;j++)crc=(crc>>1)^(0xedb88320u&-(crc&1));}
+  if (~crc!=le32(d+8)) return 0;
+  uint8_t used[126]={0};
+  for(unsigned i=0;i<255;i++) {const uint8_t *e=d+16+4*i;unsigned n=e[2]|(unsigned)e[3]<<8;
+    if(!n){if(e[0]||e[1])return 0;continue;}
+    if(e[1]!=(n+4095u)/4096u || e[0]+e[1]>126)return 0;
+    for(unsigned j=e[0];j<(unsigned)e[0]+e[1];j++) {if(used[j])return 0;used[j]=1;}
+  }
+  return 1;
+}
+
 int k6_main(const k6_api_t *api) {
   uint8_t h[KM_HDR + 4 + KL_NAME];
   char ln[64], *p;
   int n, i, used = 0;
   if (api->level < 5) return -3;
+  uint8_t d[1036],h0[16],h1[16];
+  if(api->fl_read(KL_BASE,h0,16)<0 || api->fl_read(KL_BASE+4096,h1,16)<0)return -3;
+  int packed=le32(h0)==0x324c554bu || le32(h1)==0x324c554bu;
+  if(packed){
+    uint32_t first=KL_BASE,second=KL_BASE+4096;
+    if(le32(h1)==0x324c554bu && (le32(h0)!=0x324c554bu || (int32_t)(le32(h1+4)-le32(h0+4))>0)){first=second;second=KL_BASE;}
+    if(!directory(api,first,d)&&!directory(api,second,d)){api->say("LIB invalid directory");return -2;}
+  }
   for (n = 0; n < KL_SLOTS; n++) {
     unsigned code, blank = 1, ok;
-    if (api->fl_read(KL_SLOT_ADDR(n), h, sizeof h) < 0) break;
+    uint32_t addr=KL_SLOT_ADDR(n);unsigned extent=KL_SLOT_BYTES;
+    if(packed){const uint8_t*e=d+16+4*n;extent=e[2]|(unsigned)e[3]<<8;if(!extent)continue;addr=KL_BASE+8192u+4096u*e[0];}
+    if(extent<sizeof h)continue;
+    if (api->fl_read(addr, h, sizeof h) < 0) break;
     for (i = 0; i < KM_HDR; i++) blank &= h[i] == 0xFF;
     if (blank) continue;
     used++;
@@ -59,7 +88,7 @@ int k6_main(const k6_api_t *api) {
     p = dec(p, (uint32_t)n);
     code = (unsigned)h[4] | (unsigned)h[5] << 8;
     ok = h[0] == 'K' && h[1] == '6' && h[2] == 'M' && h[3] == KM_ABI && code &&
-         KM_HDR + code + KM_TAG <= KL_SLOT_BYTES;
+         KM_HDR + code + KM_TAG <= extent;
     if (!ok) {
       p = put(p, " BAD");
     } else {

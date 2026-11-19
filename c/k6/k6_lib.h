@@ -87,6 +87,8 @@ enum {
 /* Slot n's address */
 #define KL_SLOT_ADDR(n) (KL_BASE + (uint32_t)(n) * KL_SLOT_BYTES)
 
+int kl_locate(int slot,const kl_flash_t *fl,uint32_t *addr,unsigned *len);
+
 /* Write the checked image at img (KM_READY from km_packet, flag KM_F_LIB) to the slot in its
    byte 15. The image's length, or KL_*. */
 int kl_install(const uint8_t *img, const kl_flash_t *fl);

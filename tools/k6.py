@@ -55,6 +55,7 @@ def command(argv):
         confirm = pack.add_mutually_exclusive_group(required=True)
         confirm.add_argument('--yes', action='store_true', help='authorize this radio write')
         if verb != 'install-pack':
+            pack.add_argument('--recover', type=Path, help='resume a pending packed upgrade journal')
             pack.add_argument('--already-update', action='store_true', help='the radio is already showing UPDATE')
         else:
             confirm.add_argument('--preview', action='store_true', help='show module destinations without writing')
@@ -73,7 +74,7 @@ def command(argv):
         from k6_install import InstallError
         try:
             install(args.pack, json.loads(DEFAULT.read_text()), args.port)
-        except InstallError as exc:
+        except (InstallError, ValueError, OSError) as exc:
             p.error(str(exc))
         return 0
     if args.command == 'plan':
@@ -87,8 +88,8 @@ def command(argv):
                   'preview' if args.preview else 'install')
         try:
             provision_pack(args.pack, json.loads(DEFAULT.read_text()), args.port, args.key_file,
-                           action=action, mode='update' if getattr(args, 'already_update', False) else 'cable')
-        except InstallError as exc:
+                           action=action, mode='update' if getattr(args, 'already_update', False) else 'cable', **({'recovery':args.recover} if getattr(args,'recover',None) else {}))
+        except (InstallError, ValueError, OSError) as exc:
             p.error(str(exc))
         return 0
     if args.command == 'build':

@@ -84,14 +84,6 @@
       "source_module": "explore_scan",
       "expected_api": 21
     },
-    "vfo": {
-      "title": "VFO Radio",
-      "summary": "Receive VFO and memory utility; no voice PTT inside module.",
-      "status": "targeted",
-      "required_packs": [],
-      "source_module": "vfo",
-      "expected_api": 6
-    },
     "surf": {
       "title": "SURF",
       "summary": "Band spectrum and VFO B handoff; compact arena leaves limited scratch.",

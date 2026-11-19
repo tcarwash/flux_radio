@@ -44,3 +44,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+def storage_environment(plan):
+    """All new catalog builds use KUL2. External channel code is a separate gate."""
+    return {'K6_USER_STORE':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0'}

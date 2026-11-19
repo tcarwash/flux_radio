@@ -70,6 +70,8 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
     import k6_install
     from modem import k6mod
 
+    from k6_user_store_migrate import BASE,END,is_packed,objects,compact
+    raw=flash_data[BASE:END];packed=is_packed(raw);catalog=objects(raw) if packed else None
     bundle = k6_install.load_bundle(str(bundle_path))
     key = k6mod.read_key(str(key_path)) if key_path is not None else None
     serials = k6_install.Serials()
@@ -90,16 +92,17 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
             if candidate in fixed_slots or candidate in used_auto_slots:
                 continue
             address = k6_install.LIB_BASE + candidate * k6_install.LIB_SLOT
-            header = bytes(flash_data[address:address + 16])
+            existing=catalog.get(candidate,b'') if packed else bytes(flash_data[address:address+k6_install.LIB_SLOT])
+            header=existing[:16] if existing else b'\xff'*16
             if header == b"\xff" * 16:
-                if flash_data[address:address + k6_install.LIB_SLOT] == b"\xff" * k6_install.LIB_SLOT:
+                if (packed and not existing) or (not packed and existing == b"\xff" * k6_install.LIB_SLOT):
                     free.append(candidate)
                 continue
             if header[:4] != b"K6M" + bytes([k6mod.ABI]) or header[13] != k6mod.LIB_FLAG:
                 continue
             length = int.from_bytes(header[4:6], "little")
             total = 16 + length + 8
-            image_at = flash_data[address:address + total]
+            image_at = existing[:total]
             if (length >= 24 and total <= k6_install.LIB_SLOT
                     and len(image_at) == total
                     and image_at[-8:] == k6mod.image_tag(key, image_at[:-8])
@@ -135,6 +138,10 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
         image = k6_install.sign(entry, serial, key)
         if len(image) > k6_install.LIB_SLOT:
             raise ValueError(f"{entry['name']} image does not fit slot {slot}: {len(image)} bytes")
+        if packed:
+            old=catalog.get(slot)
+            if old is not None and (old[:3]!=b'K6M' or old[13]!=1):raise ValueError(f'slot {slot} contains protected data')
+            catalog[slot]=image;installed.append((slot,entry["name"],len(image)));continue
         address = k6_install.LIB_BASE + slot * k6_install.LIB_SLOT
         end = address + len(image)
         if end > len(flash_data):
@@ -145,6 +152,7 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
         for offset, byte in enumerate(image):
             flash_data[address + offset] &= byte
         installed.append((slot, entry["name"], len(image)))
+    if packed:flash_data[BASE:END]=compact(catalog)[0]
     return installed
 
 

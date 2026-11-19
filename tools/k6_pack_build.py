@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from k6_feature_packs import DEFAULT, resolve, THEMES, DEFAULT_THEME, validate_theme, TX_PROFILES, DEFAULT_TX_PROFILE, validate_tx_profile
 import k6_install
 from k6_flash_policy import assess, flash_bytes
-from k6_pack_policy import POLICY, validate, gate_environment
+from k6_pack_policy import POLICY, validate, gate_environment, storage_environment
 from k6_build_lock import exclusive_build
 from k6_capability_receipt import write as write_receipt
 from k6_build_identity import image_build_id
@@ -25,7 +25,7 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name=''):
+def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name='', system_page=None, packed=False):
     """Stage a deterministic lockfile and module bundles from a prebuilt firmware image."""
     output = Path(output)
     firmware = Path(firmware)
@@ -62,6 +62,14 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
                          'capabilities_verified': verified_firmware},
             'modules': modules, 'install': {'automatic': False,
                 'note': 'The guided flash-and-install action installs bundled modules, the named theme, and startup artwork after reboot when included. OTA packs require a key; cable-only packs use CRC32 integrity.'}}
+    if packed or system_page is not None:
+        lock['storage']={'format':2,'system_pages':[]}
+    if system_page is not None:
+        from k6_system_install import pack as pack_system
+        page=Path(system_page).read_bytes()
+        pack_system(dest.read_bytes(),[page],8192)
+        target=output/'channel-system.bin';target.write_bytes(page)
+        lock['storage']={'format':2,'system_pages':[{'path':target.name,'sha256':digest(target),'bytes':len(page)}]}
     if 'designer' in plan['packs']:
         from k6_theme_package import pack, display_name
         theme_path = output / 'theme.fluxtheme'
@@ -117,6 +125,7 @@ def main():
             env.pop('K6_DESIGNER_TEST_SLOT', None)
             env['K6_IMAGE_NAME'] = 'flux-fd6818b-pack'
             env.update(gate_environment(plan, policy))
+            env.update(storage_environment(plan))
             if "data" in plan["packs"]:
                 env.update(K6_CONFIG_FSK="1", K6_LEAN_TXDOG="1", K6_NATIVE_FM="0",
                            K6_FONT_SUBSET="1", K6_RASTER_BOOT="1")
@@ -129,10 +138,10 @@ def main():
                 if not budget['pass']:
                     raise ValueError(f'firmware exceeds {budget["policy"]}: {budget["used"]} > {budget["limit"]}')
                 image_build_id(image.read_bytes())  # new linked builds must carry an ID
-                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name)
+                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1')
                 lock['flash_budget'] = budget
                 (args.output / 'pack.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
-                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, gate_environment(plan, policy))
+                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, {**gate_environment(plan, policy),**storage_environment(plan)})
             image = None
         if args.skip_firmware_build:
             (args.output / 'firmware.receipt.json').unlink(missing_ok=True)

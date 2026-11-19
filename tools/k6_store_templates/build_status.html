@@ -11,13 +11,15 @@
   <h2>Install on your radio</h2>
   <p><a href="{{ url_for('settings_page') }}">Device settings</a> · {{ radio_settings.port or 'Serial port not selected' }}</p>
   <p>Install the firmware, included module updates, selected theme and startup artwork in one operation. Unrelated installed modules are preserved.</p>
+  {% if job.lock.storage %}<p class="radio-note">Packed storage: existing library backed up and compacted automatically before flashing. Keep the radio connected until verification finishes.</p>{% endif %}
   <form method="post" action="{{ url_for('provision_profile', job_id=job.id) }}" data-provision>
     <input type="hidden" name="token" value="{{ radio_token }}">
     <input type="hidden" name="confirm" value="">
     <input type="hidden" name="action" value="flash-install">
+    {% if recoveries %}<p class="notice failed"><strong>Interrupted installation detected.</strong> Resume the saved library instead of creating a new backup.</p><label>Recovery <select name="recovery" required>{% for recovery in recoveries %}<option value="{{ recovery.name }}">{{ recovery.name }}</option>{% endfor %}</select></label>{% endif %}
     <label>Radio state <select name="mode"><option value="cable">Running Flux</option><option value="update">Already showing UPDATE (first install / recovery)</option></select></label>
-    <div class="top-actions"><button type="button" data-provision-action="flash-install" {% if not radio_settings.port %}disabled{% endif %}>Install firmware</button></div>
-    <details class="readme"><summary>Advanced installation options</summary>
+    <div class="top-actions"><button type="button" data-provision-action="flash-install" {% if not radio_settings.port %}disabled{% endif %}>{{ "Resume installation" if recoveries else "Install firmware" }}</button></div>
+    {% if not recoveries %}<details class="readme"><summary>Advanced installation options</summary>
       <p>Install individual components or retry after a first-boot format prompt.</p>
       <div class="top-actions">
         <button type="button" data-provision-action="flash" {% if not radio_settings.port %}disabled{% endif %}>Flash firmware only</button>
@@ -26,7 +28,7 @@
         {% if job.lock and job.lock.theme_package %}<button type="button" data-provision-action="theme" {% if not radio_settings.port %}disabled{% endif %}>Install theme only</button>{% endif %}
         {% if job.lock and job.lock.boot_splash %}<button type="button" data-provision-action="splash" {% if not radio_settings.port %}disabled{% endif %}>Install splash only</button>{% endif %}
       </div>
-    </details>
+    </details>{% endif %}
     <noscript>JavaScript is required for the installation confirmation.</noscript>
     <dialog id="provision-confirm" aria-labelledby="confirm-title">
       <h2 id="confirm-title">Confirm radio installation</h2>

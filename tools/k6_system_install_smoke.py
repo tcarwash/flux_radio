@@ -4,7 +4,7 @@ import argparse, struct
 from pathlib import Path
 from binascii import crc_hqx
 from k6_system_demo_smoke import build_page, K6Board, k6mod, cps_frame
-from k6_system_install import BASE, END, BEGIN, ERASE, STAGE, DATA, COMMIT, install
+from k6_system_install import BASE, END, BEGIN, ERASE, STAGE, DATA, COMMIT, FINISH, pack, install
 from k6_install import Cable
 
 class SimCable(Cable):
@@ -32,6 +32,10 @@ def main():
         img=a.page.read_bytes();build=img[-16:-8]
     else:
         build,page=build_page(a.firmware,a.elf);img=k6mod.image(page+build,0,1,None,level=1,lib=0,page=True,magic=b"K6S")
+    # Include a second independently linked page, even on channel-only builds.
+    build,code=build_page(a.firmware,a.elf)
+    demo=k6mod.image(code+build,0,1,None,level=1,lib=0,page=True,magic=b"K6S")
+    pages=[demo,img] if img[18]!=17 else [img]
     old=bytearray(a.spi.read_bytes());old[BASE:END]=b'\x00'*(END-BASE)
     b=K6Board(a.firmware,spi_image=a.spi,collect_mmio=False);b.flash_data[:]=old;c=SimCable(b)
     assert c.status(BEGIN,0,bytes(8))<0 and b.flash_data==old
@@ -40,10 +44,12 @@ def main():
     assert c.status(0x4d,0,b'\0'*64)<0
     # Simulate cable disconnect/reboot after first sector, preserving physical SPI.
     partial=bytes(b.flash_data);b=K6Board(a.firmware,spi_image=a.spi,collect_mmio=False);b.flash_data[:]=partial;c=SimCable(b)
-    install(c,a.firmware.read_bytes(),img)
+    install(c,a.firmware.read_bytes(),pages)
     assert bytes(b.flash_data[:BASE])==old[:BASE]
-    assert bytes(b.flash_data[BASE:BASE+len(img)])==img
-    assert bytes(b.flash_data[BASE+len(img):END])==b'\xff'*(END-BASE-len(img))
+    _,_,bank=pack(a.firmware.read_bytes(),pages,8192)
+    assert bytes(b.flash_data[BASE:END])==bank
+    assert c.status(FINISH)==0
+    assert c.status(STAGE,255,struct.pack('<H',len(img)))<0
     # Reboot and execute installed code if demo command present; installation build may omit it.
     print('PASS: wrong build, erase ordering/retry, exclusive mode, interrupted erase, reinstall, preserved non-system SPI')
 if __name__=='__main__':main()

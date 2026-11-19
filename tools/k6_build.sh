@@ -153,6 +153,8 @@ else
 fi
 $CC $CFLAGS -Oz $KM_MODE ${KM:+-DKM_KEY=$KM} -c "$ROOT/c/k6/k6_mod.c" -o "$OUT/k6_mod.o"
 # the SPI module library (k6_lib.h): install / load a module image in its SPI slot
+[ "${K6_USER_STORE:-0}" = 1 ] && CFLAGS="$CFLAGS -DKM_USER_STORE"
+$CC $CFLAGS -Oz -c "$ROOT/c/k6/user_store.c" -o "$OUT/user_store.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/k6_lib.c" -o "$OUT/k6_lib.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/system_page.c" -o "$OUT/system_page.o"
 # PXK6 full-color PixelQSO card record validator and monochrome LCD preview renderer.
@@ -214,7 +216,7 @@ if [ "${K6_EXPLORE_HOST:-0}" = 1 ]; then
     LIBOBJS="$LIBOBJS $OUT/scan_host_unavailable.o"
   fi
 fi
-LIBOBJS="$LIBOBJS $OUT/system_page.o $OUT/k6_lib.o $OUT/card_record.o $OUT/card_store.o $OUT/card_air.o"
+LIBOBJS="$LIBOBJS $OUT/system_page.o $OUT/user_store.o $OUT/k6_lib.o $OUT/card_record.o $OUT/card_store.o $OUT/card_air.o"
 if [ -n "$LR" ]; then     # not hot (field unpacking and shape sums once per 40 ms): -Oz
   $CC $CFLAGS -Oz -Dcalloc=sp_calloc -Dfree=sp_free -c "$ROOT/c/fixed/sotto_fx_lr.c" -o "$OUT/sotto_fx_lr.o"
   LIBOBJS="$LIBOBJS $OUT/sotto_fx_lr.o"

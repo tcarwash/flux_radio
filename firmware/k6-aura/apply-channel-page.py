@@ -43,13 +43,14 @@ extra='''
 fn load_channel_page(app:&mut App)->Option<*mut u8>{
     const CAP:usize=8192;
     let dst=crate::hal::arena::base();let nor=&mut app.storage_mut().norflash;
-    unsafe extern "C" {fn ks_validate(slot:u32,dst:*mut u8,total:u32,id:u32,functions:u32,build:*const u8)->i32;static k6_build_id:[u8;8];fn km_reset();}
+    unsafe extern "C" {fn ks_entry(h:*const u8,e:*const u8,build:*const u8,cap:u32)->i32;fn ks_validate(slot:u32,dst:*mut u8,total:u32,id:u32,functions:u32,build:*const u8)->i32;static k6_build_id:[u8;8];fn km_reset();}
     unsafe {
         km_reset();
-        let hdr=core::slice::from_raw_parts_mut(dst,16);
-        let ok=nor.read_bytes_checked(0x19c000,hdr);
-        let n=24+usize::from(u16::from_le_bytes([hdr[4],hdr[5]]));
-        if !ok||n>CAP||n<50||!nor.read_bytes_checked(0x19c000,core::slice::from_raw_parts_mut(dst,n))||ks_validate(0,dst,n as u32,18,2,core::ptr::addr_of!(k6_build_id).cast())<0{return None;}
+        let build=core::ptr::addr_of!(k6_build_id).cast();
+        let mut hdr=[0u8;12];let mut entry=[0u8;8];
+        if !nor.read_bytes_checked(0x19c000,&mut hdr)||!nor.read_bytes_checked(0x19c010+18*8,&mut entry){return None;}
+        let n=ks_entry(hdr.as_ptr(),entry.as_ptr(),build,CAP as u32);
+        if n<0||!nor.read_bytes_checked(u32::from_le_bytes(entry[..4].try_into().unwrap()),core::slice::from_raw_parts_mut(dst,n as usize))||ks_validate(0,dst,n as u32,18,2,build)<0{return None;}
     }
     Some(dst)
 }

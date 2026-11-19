@@ -6,7 +6,7 @@ static unsigned word(const uint8_t *p) {
 int ks_validate(unsigned slot, uint8_t *dst, unsigned total,
                 unsigned id, unsigned functions, const uint8_t build[8]) {
   unsigned n, i, table, base;
-  if (slot>=KS_SLOTS || !dst || !build || id==0 || id>255 || !functions || functions>255 || total<KM_HDR+KM_TAG || total>KL_SLOT_BYTES) return KL_BAD_HDR;
+  if (slot!=0 || !dst || ((uintptr_t)dst&3) || !build || id==0 || id>255 || !functions || functions>255 || total<KM_HDR+KM_TAG || total>KL_SLOT_BYTES) return KL_BAD_HDR;
   n=total-KM_HDR-KM_TAG; table=8+4*functions;
   if (n<table+2+8) return KL_BAD_HDR;
   if (word(dst)!=(0x0053364bu | (unsigned)KM_ABI<<24) || (dst[4]|(unsigned)dst[5]<<8)!=n || dst[6] || dst[7] || dst[12]>KM_LEVEL || dst[13]!=(KM_F_LIB|KM_F_PAGE) || dst[14] || dst[15]!=slot) return KL_BAD_HDR;
@@ -21,14 +21,18 @@ int ks_validate(unsigned slot, uint8_t *dst, unsigned total,
   return (int)n;
 }
 
-int ks_load(unsigned slot, const kl_flash_t *fl, uint8_t *dst, unsigned cap,
-            unsigned id, unsigned functions, const uint8_t build[8]) {
-  unsigned total; uint32_t addr;
-  if (slot>=KS_SLOTS || !fl || !fl->read || !dst || cap<KM_HDR) return KL_BAD_HDR;
-  addr=KS_BASE+slot*KL_SLOT_BYTES;
-  if(fl->read(addr,dst,KM_HDR)) return KL_IO;
-  total=KM_HDR+(dst[4]|(unsigned)dst[5]<<8)+KM_TAG;
-  if(total>cap || total>KL_SLOT_BYTES) return KL_BAD_HDR;
-  if(fl->read(addr,dst,total)) return KL_IO;
-  return ks_validate(slot,dst,total,id,functions,build);
+/* Directory stores absolute SPI address and image length. Erased entries fail bounds. */
+int ks_entry(const uint8_t h[12],const uint8_t e[8],const uint8_t build[8],unsigned cap){
+  unsigned addr=word(e),n=word(e+4);
+  if(word(h)!=KS_DIRECTORY_MAGIC || word(h+4)!=word(build) || word(h+8)!=word(build+4))return KL_BAD_HDR;
+  if(addr<KS_PAYLOAD || addr>=KS_END || (addr&3) || n<46 || n>cap || n>KS_END-addr)return KL_BAD_HDR;
+  return (int)n;
+}
+int ks_load(unsigned slot,const kl_flash_t *fl,uint8_t *dst,unsigned cap,unsigned id,unsigned functions,const uint8_t build[8]){
+  uint8_t h[12],e[8];int n;
+  if(slot!=0 || !id || id>KS_MAX_ID || !fl || !fl->read || !dst || !build)return KL_BAD_HDR;
+  if(fl->read(KS_BASE,h,12)||fl->read(KS_BASE+16+8*id,e,8))return KL_IO;
+  n=ks_entry(h,e,build,cap);if(n<0)return n;
+  if(fl->read(word(e),dst,(unsigned)n))return KL_IO;
+  return ks_validate(0,dst,(unsigned)n,id,functions,build);
 }
