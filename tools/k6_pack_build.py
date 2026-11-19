@@ -53,7 +53,7 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
             raise ValueError(f'module {name} requires unsupported API level {manifest["library"][0]["level"]}')
         modules.append({'name': name, 'id': manifest['library'][0]['id'],
                         'api_level': manifest['library'][0]['level'],
-                        'path': str(module_file.relative_to(output)), 'sha256': digest(module_file),
+                        'path': module_file.relative_to(output).as_posix(), 'sha256': digest(module_file),
                         'manifest_sha256': digest(folder / 'manifest.json')})
     lock = {'format': 1, 'target': plan['target'], 'theme': plan.get('theme', DEFAULT_THEME),
             'tx_profile': plan.get('tx_profile', DEFAULT_TX_PROFILE), 'packs': plan['packs'],

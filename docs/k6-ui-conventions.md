@@ -16,6 +16,11 @@ shortcuts. Existing behavior is noted separately from proposed conventions.
 | **EXIT** | Leave the module, restoring hardware state; do not leak a held exit press to Aura | Both modules must restore radio/keypad state. |
 | **BAND / #** | Prefer consistent band cycling when the module offers multiple bands | Explore accepts BAND or #; Surf uses BAND for bands and # for channel step. Do not silently change these without UI review. |
 
+EXPLORE's **Try** action opens FM receive audio and the speaker with squelch
+fully open, so weak candidates can be evaluated. A subsequent key resumes
+scanning and restores the previous audio/squelch state; power-off also closes
+the temporary listening path. Candidate detection alone remains silent.
+
 ## VFO handoff contract
 
 - Only act on a deliberate hold or the screen's existing explicit handoff key.

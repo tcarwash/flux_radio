@@ -162,7 +162,7 @@ performance. Keep its unauthenticated server on a trusted local network.
 
 | Find out about | Documentation |
 | --- | --- |
-| Installation and recovery | [First radio](docs/manual/install.md) |
+| Installation and recovery | [First radio](docs/manual/install.md) · [Recovery](docs/manual/recovery.md) |
 | Modules and the local store | [Catalog](docs/module-store.md) |
 | Firmware customization | [Feature packs](docs/k6-feature-packs.md) |
 | Native module development | [Module API](docs/k6-modules.md) |
@@ -178,3 +178,11 @@ Flux builds on [Blowfang](https://github.com/baitisj/blowfang),
 is preserved in [LICENSE](LICENSE); Aura-derived patches and linked
 firmware carry GPL-3.0 obligations. See [THIRD_PARTY.md](THIRD_PARTY.md)
 for the full attribution and licensing scope.
+
+### Cross-platform development
+
+Native macOS and Windows firmware builds are experimental work in progress.
+See the [cross-platform build plan and macOS quick start](docs/k6-windows-build-plan.md)
+for the shared Python C-library builder and contributor tests.
+The [macOS build guide](docs/k6-macos-build.md) records the verified starter
+matrix, toolchain setup and remaining hardware-validation work.
