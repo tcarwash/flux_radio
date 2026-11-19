@@ -72,6 +72,10 @@ else:
 constant = 'const CMD_CABLE_INFO: u8 = 0x56;'
 if text.count(constant) != 1:
     raise SystemExit('could not locate Blowfang cable command definitions')
+# Without this declaration Rust treats the match identifier as a catch-all binding.
+caps_constant = 'const CMD_CABLE_CAPS: u8 = 0x49; // read-only capabilities'
+if caps_constant not in text:
+    text = text.replace(constant, caps_constant + "\n" + constant, 1)
 serial_constant = 'const CMD_CABLE_SERIAL: u8 = 0x4A; // read-only replay watermark'
 if serial_constant not in text:
     text = text.replace(constant, serial_constant + "\n" + constant, 1)

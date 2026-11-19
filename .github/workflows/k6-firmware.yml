@@ -32,7 +32,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang lld llvm build-essential
           rustup toolchain install stable --profile minimal --target thumbv6m-none-eabi
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements.txt pytest unicorn
+      - name: Verify generated capability command definitions
+        run: python -m pytest -q tests/test_k6_capability_query.py
       - name: Build and verify cable-only starter
         run: |
           python tools/k6.py build ${{ matrix.packs }} --tx-profile ${{ matrix.tx }} --output firmware/k6-aura/out-fd6818b/starter
@@ -42,6 +44,14 @@ jobs:
           if [ "${{ matrix.profile }}-${{ matrix.tx }}" = "scan-fcc" ]; then
             python tools/k6_release_source.py dist/flux-corresponding-source.tar.gz
           fi
+      - name: Verify compiled cable commands and module installation
+        env:
+          K6_SIM_DISPATCH_IMAGE: firmware/k6-aura/out-fd6818b/starter/firmware.bin
+          K6_SIM_STARTER_PACK: firmware/k6-aura/out-fd6818b/starter
+        run: >-
+          python -m pytest -q
+          tests/test_k6_capability_sim.py::test_compiled_cable_dispatch
+          tests/test_k6_capability_sim.py::test_compiled_cable_only_install
       - uses: actions/upload-artifact@v4
         with:
           name: flux-fd6818b-${{ matrix.profile }}-${{ matrix.tx }}

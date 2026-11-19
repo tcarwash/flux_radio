@@ -13,7 +13,7 @@ import k6_pack_install
 
 import k6_install
 from k6_build_identity import image_build_id
-from k6_install import CABLE_HANDSHAKE, CMD_CAPS, CPS_HEADER, Cable, InstallError, k6mod
+from k6_install import CABLE_HANDSHAKE, CMD_CAPS, CMD_END, CPS_HEADER, Cable, InstallError, k6mod
 
 TEST_KEY = bytes(range(16))
 
@@ -58,12 +58,12 @@ class SimulatedSerial:
 
 @pytest.fixture
 def simulated_radio(tmp_path, monkeypatch):
-    def start(image):
+    def start(image, *, cable_only=False):
         pytest.importorskip("unicorn")
         from sim.k6emu.__main__ import K6Board
 
         keyed = tmp_path / "keyed-firmware.bin"
-        keyed.write_bytes(k6mod.key_image(image, TEST_KEY))
+        keyed.write_bytes(image if cable_only else k6mod.key_image(image, TEST_KEY))
         board = K6Board(keyed, collect_mmio=False)
         # An erased chip with Aura's first-boot marker is sufficient for boot.
         board.flash_data[0xB000:0xB004] = b"AURA"
@@ -76,6 +76,41 @@ def simulated_radio(tmp_path, monkeypatch):
         ))
         return port
     return start
+
+
+def test_compiled_cable_dispatch(simulated_radio):
+    """Distinct opcodes must reach CAPS, INFO, SERIAL, unknown-command and END handlers."""
+    image_path = os.environ.get('K6_SIM_DISPATCH_IMAGE')
+    if not image_path:
+        pytest.skip('set K6_SIM_DISPATCH_IMAGE to a cable-only starter firmware.bin')
+    port = simulated_radio(Path(image_path).read_bytes(), cable_only=True)
+    before = bytes(port.board.flash_data)
+    cable = Cable(port, log=lambda _: None)
+    assert cable.handshake(CABLE_HANDSHAKE, wait=3.0)
+    assert cable.capabilities()['cable_only']
+    info = cable.info()
+    assert info['protocol'] in (2, 4) and info['slots'] == 32
+    assert info['arena'] > 0
+    assert cable.serial_watermark() == 0
+    with pytest.raises(InstallError, match='refused command 0x7e'):
+        cable.call(0x7e)
+    assert bytes(port.board.flash_data) == before
+    assert cable.call(CMD_END) == b''
+
+
+def test_compiled_cable_only_install(simulated_radio, monkeypatch):
+    """Exercise a starter's real module upload and readback without a signing key."""
+    pack_path = os.environ.get('K6_SIM_STARTER_PACK')
+    if not pack_path:
+        pytest.skip('set K6_SIM_STARTER_PACK to a cable-only starter build directory')
+    pack = Path(pack_path)
+    port = simulated_radio((pack / 'firmware.bin').read_bytes(), cable_only=True)
+    monkeypatch.setattr(k6_install, 'open_port', lambda _: port)
+    spec = json.loads(k6_pack_install.DEFAULT.read_text())
+    messages = []
+    k6_pack_install.provision_pack(pack, spec, 'simulated', action='install', log=messages.append)
+    assert '  bundled modules installed and read back successfully' in messages
+    assert port.closed
 
 
 def test_compiled_base_cable(simulated_radio):
