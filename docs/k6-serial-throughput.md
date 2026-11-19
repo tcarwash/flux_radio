@@ -120,3 +120,5 @@ overhead. The baud itself is a bit rate: 8N1 takes ten line bits per byte.
 These are cable transfer measurements. They do not yet prove uninterrupted ADC/IQ
 capture, DMA operation, or simultaneous RF decoding at those rates. Continuous
 sample streaming needs its own overruns, timing and RF tests.
+
+Live concurrent acquisition results and test commands are in [the IF/IQ lab guide](k6-serial-iq-lab.md).
