@@ -30,12 +30,15 @@ def test_materialize_text_links(tmp_path):
 
 
 @pytest.mark.skipif(not all(shutil.which(t) for t in ('clang','llvm-ar')), reason='requires LLVM')
-def test_portable_host_build(tmp_path):
+@pytest.mark.parametrize('scan', ['0', '1'])
+def test_portable_host_build(tmp_path, scan):
     if not (ROOT / 'sotto/c/fixed/fx.h').is_file():
         pytest.skip('requires Sotto submodule')
     env = dict(os.environ, K6_VOICE='0', K6_CB='spi', K6_CODEC='', K6_EXPLORE_HOST='1',
-               K6_SCAN_SERVICE='0', K6_PKT_YIELD='0', K6_OTA_SERVICE='0')
+               K6_SCAN_SERVICE=scan, K6_PKT_YIELD='0', K6_OTA_SERVICE='0')
     archive = build(tmp_path / 'output with spaces', env=env)
     assert archive.read_bytes().startswith(b'!<arch>\n')
     names = subprocess.check_output(['llvm-ar','t',str(archive)], text=True).splitlines()
-    assert 'scan_host_unavailable.o' in names and 'sp_novoice.o' in names
+    assert 'sp_novoice.o' in names
+    assert ('scan_host_unavailable.o' in names) == (scan == '0')
+    assert ('xscan_modhost.o' in names) == (scan == '1')

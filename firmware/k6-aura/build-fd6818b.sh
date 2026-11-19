@@ -57,14 +57,7 @@ fi
 if ! grep -q 'Two-line message for full Aura builds' "$WORK/src/ui/cps.rs"; then
   git -C "$WORK" apply "$HERE/aura-full-radio.patch"
 fi
-case ",$FEATURES," in
-  *,blowfang-host,*)
-    if ! grep -q 'blowfang-host' "$WORK/Cargo.toml"; then
-      sed -i '/^spilib = \[\]/a blowfang-host = ["spilib"]' "$WORK/Cargo.toml"
-      grep -q '^blowfang-host = ' "$WORK/Cargo.toml"
-    fi
-    ;;
-esac
+python3 "$HERE/ensure-host-feature.py" "$WORK/Cargo.toml"
 if ! grep -q 'PXK6 card data uses explicit commands' "$WORK/src/cps/mod.rs"; then
   git -C "$WORK" apply "$HERE/aura-card-cable.patch"
 fi
@@ -204,7 +197,15 @@ if [ "$FLASH" -gt 122880 ]; then
   exit 1
 fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
-sha256sum "$OUT/$IMAGE.bin" | tee "$OUT/$IMAGE.bin.sha256"
+python3 - "$OUT/$IMAGE.bin" <<'PY'
+import hashlib
+from pathlib import Path
+import sys
+image = Path(sys.argv[1])
+checksum = f"{hashlib.sha256(image.read_bytes()).hexdigest()}  {image}\n"
+image.with_suffix(image.suffix + '.sha256').write_text(checksum)
+print(checksum, end='')
+PY
 case ",$FEATURES," in
   *,blowfang-host,*) python3 "$HERE/build-vfo-module-bundle.py" --out "$OUT/vfo-module-bundle" ;;
 esac

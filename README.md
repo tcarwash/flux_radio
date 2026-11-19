@@ -183,3 +183,5 @@ for the full attribution and licensing scope.
 Native macOS and Windows firmware builds are experimental work in progress.
 See the [cross-platform build plan and macOS quick start](docs/k6-windows-build-plan.md)
 for the shared Python C-library builder and contributor tests.
+The [macOS build guide](docs/k6-macos-build.md) records the verified starter
+matrix, toolchain setup and remaining hardware-validation work.

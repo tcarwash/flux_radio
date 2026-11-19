@@ -24,7 +24,11 @@ jobs:
           tests/test_k6_store_defaults.py tests/test_k6_theme_package.py
           tests/test_k6_unified_cli.py
           tests/test_k6_pack_install.py tests/test_k6_starter_install.py
-          tests/test_k6_port_lock.py
+          tests/test_k6_port_lock.py tests/test_k6_host_feature.py
+      - name: Native loader and APRS host regressions
+        run: |
+          make -C c/k6 km_host kl_host
+          python -m pytest -q tests/test_k6_resident_loader.py tests/test_k6_capability_proof.py tests/test_k6_ota_modes.py tests/test_k6_aprs_resident_rx.py tests/test_k6_aprsclk.py::test_decodes_every_packet_and_sets_the_clock tests/test_k6_aprsclk.py::test_matched_filter_beats_the_discriminator
 
   windows-installer:
     runs-on: windows-latest
@@ -39,6 +43,7 @@ jobs:
           python -m pytest -q tests/test_k6_port_lock.py
           tests/test_k6_starter_install.py tests/test_k6_unified_cli.py
           tests/test_k6_pack_install.py tests/test_k6_store_defaults.py
+          tests/test_k6_host_feature.py
       - name: CLI entry points
         run: |
           python tools/k6.py starter-install --help
@@ -55,12 +60,18 @@ jobs:
         with:
           python-version: '3.12'
       - run: |
-          brew install llvm
+          brew install llvm lld
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
           python -m pip install -r requirements.txt pytest
       - name: Portable C library and installer smoke tests
         run: >-
           python -m pytest -q tests/test_k6_portable_c_build.py
           tests/test_k6_build_lock.py tests/test_k6_port_lock.py
           tests/test_k6_starter_install.py tests/test_k6_pack_install.py
+          tests/test_k6_host_feature.py
       - run: python -m serial.tools.list_ports
+      - name: Native loader and APRS host regressions
+        run: |
+          make -C c/k6 km_host kl_host
+          python -m pytest -q tests/test_k6_resident_loader.py tests/test_k6_capability_proof.py tests/test_k6_ota_modes.py tests/test_k6_aprs_resident_rx.py tests/test_k6_aprsclk.py::test_decodes_every_packet_and_sets_the_clock tests/test_k6_aprsclk.py::test_matched_filter_beats_the_discriminator

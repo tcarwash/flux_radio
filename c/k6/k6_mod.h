@@ -328,14 +328,20 @@ typedef struct {
   char magic[4];                    /* 'K' '6' 'N' 'M' */
   char name[12];                    /* NUL padded */
 } km_name_t;
+/* Native Mac test harnesses use Mach-O; radio cross builds retain ELF sections. */
+#ifdef __APPLE__
+#define K6_MODULE_SECTION(name) __attribute__((used, section("__DATA," name)))
+#else
+#define K6_MODULE_SECTION(name) __attribute__((used, section(name)))
+#endif
 #define K6_MODULE_NAME(s) \
-  __attribute__((used, section(".k6name"))) const km_name_t k6_module_name = {{'K', '6', 'N', 'M'}, s}
+  K6_MODULE_SECTION(".k6name") const km_name_t k6_module_name = {{'K', '6', 'N', 'M'}, s}
 
 /* Stable extension action IDs 32..254. One registration per module in v1.
    The registration explicitly exports the standard entry as an action.
    Additional callbacks can use a versioned action table in a later ABI. */
 #define K6_ACTION(id) \
-  __attribute__((used, section(".k6action"))) const uint8_t k6_action[8] = {'K','6','A',1,id,0}
+  K6_MODULE_SECTION(".k6action") const uint8_t k6_action[8] = {'K','6','A',1,id,0}
 #define K6_ACTION_SURF_OPEN 32
 #define K6_ACTION_VFO_OPEN 33
 #define K6_ACTION_EXPLORE_OPEN 34

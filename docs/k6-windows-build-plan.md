@@ -56,8 +56,17 @@ existing full firmware pipeline still uses the legacy shell builder by default.
 The command above produces an ARM static library and codebook, **not** a flashable
 firmware image. Test both Scan settings (0 and 1). On Linux, the archive and
 codebook matched the legacy shell builder byte-for-byte for both settings.
-Native macOS and Windows compiler execution and full firmware builds remain
-unverified. Do not flash artifacts from an unvalidated full build.
+Native C-library compilation was validated on macOS 15.8.3 / arm64 with
+Homebrew LLVM 23.1.6 and Python 3.10.5. Both Scan settings produced archives
+and codebooks byte-for-byte identical to the legacy shell C builder using the
+same compiler. The contributor smoke tests passed (15 tests), including both
+Scan settings and an output directory containing spaces. This does not validate
+physical-radio behavior. All six cable-only starter profiles have also been
+built, packaged, inspected and executed in the emulator on this Mac; see the
+[macOS build guide](k6-macos-build.md) for setup, measurements and limitations.
+The full firmware orchestration still uses POSIX shell scripts; this does not
+complete the native Windows port. Native Windows compiler execution and full
+firmware builds remain unverified.
 
 Next steps: validate the C builder on each host, port the Aura orchestration
 and module compiler, then add full firmware matrix builds. Report host OS,
