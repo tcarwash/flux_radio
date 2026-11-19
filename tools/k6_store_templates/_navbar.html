@@ -2,7 +2,7 @@
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">F</span> Flux <span>Catalog</span></a>
   <nav class="top-actions" aria-label="Main navigation">
-    {% for section, endpoint, label in [('catalog', 'index', 'Catalog'), ('profiles', 'profiles', 'Feature packs'), ('themes', 'themes_page', 'Theme editor'), ('radio', 'radio', 'My radio'), ('settings', 'settings_page', 'Device settings')] %}
+    {% for section, endpoint, label in [('catalog', 'index', 'Catalog'), ('profiles', 'profiles', 'Feature packs'), ('themes', 'themes_page', 'Theme editor'), ('memories', 'memories_page', 'Memories'), ('radio', 'radio', 'My radio'), ('settings', 'settings_page', 'Device settings')] %}
       <a href="{{ url_for(endpoint) }}{% if section == 'catalog' %}#catalog{% endif %}"{% if nav_section == section %} aria-current="{{ 'page' if request.endpoint == endpoint else 'location' }}"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>

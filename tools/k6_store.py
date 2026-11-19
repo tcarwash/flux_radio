@@ -439,6 +439,50 @@ def create_app(store: ModuleStore | None = None):
     def inject_radio_settings():
         return {"radio_settings": radio_settings()}
 
+    @app.get("/memories")
+    def memories_page():
+        from k6_memories import builtins
+        return render_template("memories.html", packs=builtins())
+
+    @app.post("/memories/import")
+    def memories_import():
+        from k6_memories import read_csv, read_pack
+        try:
+            f = request.files["file"]
+            data = f.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                raise ValueError("Memory file exceeds 2 MB")
+            return jsonify(channels=(read_csv if f.filename.lower().endswith(".csv") else read_pack)(data.decode("utf-8-sig")))
+        except (ValueError, KeyError, UnicodeError) as exc:
+            return jsonify(error=str(exc)), 400
+
+    @app.post("/memories/export")
+    def memories_export():
+        from flask import Response
+        from k6_memories import pack, write_csv
+        try:
+            data = request.get_json()
+            rows = data["channels"]
+            if not isinstance(rows, list) or len(rows) > 10000 or not all(isinstance(r, dict) for r in rows):
+                raise ValueError("Invalid channel list")
+            csv_format = data.get("format") == "csv"
+            body = write_csv(rows) if csv_format else json.dumps(pack(data.get("name", "My memories"), rows), indent=2)
+            ext = "csv" if csv_format else "fluxmem"
+            return Response(body, mimetype="text/csv" if csv_format else "application/json", headers={"Content-Disposition": f'attachment; filename="memories.{ext}"'})
+        except (ValueError, KeyError, TypeError) as exc:
+            return jsonify(error=str(exc)), 400
+
+    @app.get("/memories/repeaters")
+    def memories_repeaters():
+        from k6_memories import repeaters
+        try:
+            rows = repeaters(float(request.args["lat"]), float(request.args["lon"]), float(request.args["radius"]), request.args.get("band", "all"), request.args.get("open", "1") == "1")
+            return jsonify(channels=rows)
+        except (ValueError, KeyError) as exc:
+            return jsonify(error=str(exc)), 400
+        except OSError:
+            return jsonify(error="HearHam is temporarily unavailable"), 502
+
     @app.get("/settings")
     def settings_page():
         return render_template("settings.html", settings=radio_settings(), devices=serial_devices())

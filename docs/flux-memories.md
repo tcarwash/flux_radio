@@ -1,0 +1,6 @@
+# Flux Memories
+Open the Memories tab in the local catalog. Enter coordinates (or use browser location on a supported secure origin), select a radius and band, and search HearHam for operational analog repeaters. Results are sorted by distance; source and distance are included in comments. The provider receives the catalog server's request for the dataset, not your search coordinates. Verify repeater settings before transmitting.
+
+Add built-in packs or import CHIRP CSV / version 1 .fluxmem JSON. Edit the working list, remove unwanted channels, and export either format. CHIRP exports renumber locations from 1 in list order. The native format retains CHIRP field names, including tone and cross-mode settings. The working list is browser-local; export a backup. Receive-only packs use CHIRP Duplex=off. Marine pack is a small selection, not the full channel plan; channel 70 is DSC data, not voice.
+
+Direct programming is intentionally not enabled: a layout-aware, capability-gated channel read/write protocol with backup, bounds checks and readback is required. Do not use raw SPI writes as a substitute. CHIRP export does not imply that CHIRP supports Flux firmware or that every imported channel is supported by K6 hardware. RepeaterBook, route search, remote pack repositories and full tone editing are future work.
