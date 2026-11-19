@@ -132,6 +132,7 @@ python3 "$HERE/apply-compact-edit.py"
 python3 "$HERE/apply-compact-format.py"
 python3 "$HERE/apply-lean-txdog.py"
 python3 "$HERE/apply-el-power.py"
+python3 "$HERE/apply-ram0.py"
 python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
@@ -153,6 +154,12 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+case "${K6_RAM0:-0}" in
+  0) ;;
+  1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
+  small) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_small" ;;
+  *) echo "invalid K6_RAM0" >&2; exit 1 ;;
+esac
 if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || { echo "Config FSK requires Data and watchdog" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
@@ -235,6 +242,9 @@ done
 if [ "$FLASH" -gt 122880 ]; then
   echo "image needs $FLASH bytes; KD32F328 application limit is 122880 bytes" >&2
   exit 1
+fi
+if [ "${K6_RAM0:-0}" != 0 ]; then
+  python3 "$ROOT/tools/k6_ram0_audit.py" "$ELF" --mode "$K6_RAM0" > "$OUT/ram0-layout.json"
 fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
 sha256sum "$OUT/$IMAGE.bin" | tee "$OUT/$IMAGE.bin.sha256"
