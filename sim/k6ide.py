@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import threading
 import time
@@ -39,6 +40,15 @@ class K6Workbench:
         self.image = image.expanduser().resolve()
         self.spi_path = spi_path.expanduser().resolve() if spi_path else None
         self.cpi = cpi
+        self.profiles = {}
+        self.profile = None
+        self.input_queue = deque()
+        self.active_key = None
+        self.key_started = 0
+        self.key_released = False
+        self.key_sample_start = 0
+        self.release_scan_start = 0
+        self.next_key_at = 0
         self.spi_data = bytearray(self.spi_path.read_bytes()) if self.spi_path else bytearray(b"\xff" * (2 * 1024 * 1024))
         if len(self.spi_data) != 2 * 1024 * 1024:
             raise ValueError("virtual SPI image must be exactly 2 MiB")
@@ -51,6 +61,12 @@ class K6Workbench:
         self.worker.start()
 
     def _boot(self):
+        self.input_queue.clear()
+        self.active_key = None
+        self.key_released = False
+        self.key_sample_start = 0
+        self.release_scan_start = 0
+        self.next_key_at = 0
         seed = None
         if self.spi_path:
             self.spi_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,7 +86,9 @@ class K6Workbench:
                 if active:
                     try:
                         # Keep virtual time and peripheral servicing frequent.
-                        self.board.run(18_000, 4096)
+                        self._service_keys()
+                        self.board.run(12_000, 2048)
+                        self._service_keys()
                         if self.board.powered_off:
                             self.running = False
                         elif self.board.fault:
@@ -147,13 +165,58 @@ class K6Workbench:
                 if self.board.fault:
                     self.error = f"Firmware fault: {self.board.fault.get('kind')}"
 
+    # Key transitions are queued in arrival order. Firmware debounces across
+    # consecutive scans. Release after two observed samples, and allow two
+    # idle scans before the next press. A timed fallback covers other consumers.
+    def _service_keys(self):
+        now = self.board.cycles
+        if self.active_key is not None:
+            if (self.active_key, False) in self.input_queue:
+                self.input_queue.remove((self.active_key, False))
+                self.key_released = True
+            if self.key_released and (self.board.key_sample_epoch - self.key_sample_start >= 2 or now - self.key_started >= 9_600_000):
+                self.board.press_key(self.active_key, False)
+                self.active_key = None
+                self.next_key_at = now + 7_680_000
+                self.release_scan_start = self.board.key_scan_epoch
+            return
+        if now < self.next_key_at and self.board.key_scan_epoch - self.release_scan_start < 3:
+            return
+        while self.input_queue:
+            key, down = self.input_queue.popleft()
+            if down:
+                self.board.press_key(key, True)
+                self.active_key = key
+                self.key_started = now
+                self.key_sample_start = self.board.key_sample_epoch
+                self.key_released = False
+                return
+
     def press(self, key: str, down: bool):
         if key not in KEYS:
             raise ValueError("unknown K6 key")
         with self.lock:
-            if not self.board:
-                raise RuntimeError("board is not booted")
-            self.board.press_key(key, down)
+            if not self.board or not self.running:
+                raise RuntimeError("target is not running")
+            if len(self.input_queue) >= 64:
+                raise ValueError("key input queue full")
+            self.input_queue.append((key, down))
+            self._service_keys()
+
+    def select_profile(self, profile):
+        with self.lock:
+            if profile not in self.profiles:
+                raise ValueError("unknown firmware profile")
+            if self.profile == profile:
+                return
+            if self.spi_path and self.board:
+                self.spi_path.write_bytes(self.board.flash_data)
+            spec = self.profiles[profile]
+            self.image = spec['image']
+            self.spi_path = spec['spi']
+            self.spi_data = bytearray(self.spi_path.read_bytes())
+            self.profile = profile
+            self._boot()
 
     def switch(self, name: str, on: bool):
         with self.lock:
@@ -172,7 +235,7 @@ class K6Workbench:
 
     def preview_theme(self, token=None, blob=None):
         """Stage only virtual SPI. Never replace a module or unknown data."""
-        if "designer" not in self.image.name:
+        if (self.profile and "designer" not in self.profiles[self.profile]["packs"]) or (not self.profile and "designer" not in self.image.name):
             raise ValueError("boot a Designer bench firmware image first")
         if token == "demo":
             layers = [bytearray(8192) for _ in range(3)]
@@ -246,7 +309,7 @@ class K6Workbench:
             if tool_dir not in sys.path:
                 sys.path.insert(0, tool_dir)
             import k6_install
-            key_path = Path(k6_install.find_key(str(key_file) if key_file else None,
+            key_path = None if self.profile and self.profiles[self.profile].get("cable_only") else Path(k6_install.find_key(str(key_file) if key_file else None,
                                                 create=False, log=lambda _: None))
             installed = overlay_module_bundle(self.board.flash_data, bundle, key_path, slots)
             self.spi_data[:] = self.board.flash_data
@@ -278,7 +341,10 @@ class K6Workbench:
         with self.lock:
             b = self.board
             return {"model": "Baofeng UV-K6 / FD6818B", "image": str(self.image),
-                    "running": self.running, "error": self.error,
+                    "running": self.running, "error": self.error, "fault": b.fault if b else None,
+                    "profile": self.profile, "profiles": [{"id": k, "label": v["label"], "packs": v["packs"], "bytes": v["image"].stat().st_size} for k,v in self.profiles.items()],
+                    "pending_keys": len(self.input_queue), "active_key": self.active_key,
+                    "key_scans": b.key_scan_epoch, "key_samples": b.key_sample_epoch,
                     "powered_off": b.powered_off, "power_switch_on": not b.gpio_external[("A", 15)],
                     "instructions": b.instructions if b else 0,
                     "virtual_ms": round(b.cycles / 96_000, 1) if b else 0,
@@ -367,6 +433,14 @@ def create_app(workbench: RadioAdapter):
     @app.get("/api/state")
     def api_state():
         return jsonify(workbench.state())
+
+    @app.post("/api/profile")
+    def api_profile():
+        try:
+            workbench.select_profile(str(request.get_json(force=True)["profile"]))
+            return jsonify(ok=True)
+        except (ValueError, KeyError, OSError) as exc:
+            return jsonify(ok=False,error=str(exc)),400
 
     @app.get("/api/module-bundles")
     def api_module_bundles():
@@ -489,6 +563,8 @@ def main():
     parser = argparse.ArgumentParser(description="Flux radio simulator workbench")
     parser.add_argument("--model", choices=RADIO_MODELS, default="k6-fd6818b",
                         help="radio emulator backend (currently K6 FD6818B)")
+    parser.add_argument("--profiles", type=Path, help="JSON manifest of allowed firmware profiles and separate virtual SPI images")
+    parser.add_argument("--profile", help="initial profile ID")
     parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
     parser.add_argument("--spi-image", type=Path, help="persistent 2 MiB virtual SPI flash dump")
     parser.add_argument("--host", default="0.0.0.0",
@@ -496,9 +572,21 @@ def main():
     parser.add_argument("--port", type=int, default=5056)
     parser.add_argument("--cpi", type=float, default=1.5)
     args = parser.parse_args()
+    profiles = {}
+    if args.profiles:
+        manifest = args.profiles.resolve()
+        for k,v in json.loads(manifest.read_text()).items():
+            profiles[k] = {**v, "image": (manifest.parent / v["image"]).resolve(), "spi": (manifest.parent / v["spi"]).resolve()}
+            if not profiles[k]["image"].is_file() or profiles[k]["spi"].stat().st_size != 2*1024*1024:
+                parser.error(f"invalid profile {k}")
+        args.profile = args.profile or next(iter(profiles))
+        if args.profile not in profiles: parser.error("unknown initial profile")
+        args.image, args.spi_image = profiles[args.profile]["image"], profiles[args.profile]["spi"]
     if not args.image.is_file():
         parser.error(f"firmware image not found: {args.image}")
     board = RADIO_MODELS[args.model](args.image, args.spi_image, args.cpi)
+    board.profiles = profiles
+    board.profile = args.profile
     print(f"Flux radio simulator at http://{args.host}:{args.port} (virtual RF only)")
     print(f"On this host: http://127.0.0.1:{args.port}")
     print("On your LAN, use this host's LAN address; Ctrl-C stops the workbench.")

@@ -68,6 +68,8 @@ esac
 if ! grep -q 'PXK6 card data uses explicit commands' "$WORK/src/cps/mod.rs"; then
   git -C "$WORK" apply "$HERE/aura-card-cable.patch"
 fi
+# Normalize the generated API level before reapplying older overlay scripts.
+python3 "$HERE/apply-configurable-fsk.py" --reset-level
 python3 "$HERE/apply-fd6818b-fsk-tx-api.py"
 python3 "$HERE/apply-fd6818b-afsk-module-api.py"
 python3 "$HERE/apply-fd6818b-kiss-api.py"
@@ -111,6 +113,7 @@ case ",$FEATURES," in
     ;;
 esac
 python3 "$HERE/apply-host-feature-trim.py"
+python3 "$HERE/apply-small-arrows.py"
 python3 "$HERE/apply-tx-profile.py"
 python3 "$HERE/apply-module-key-actions.py"
 python3 "$HERE/apply-module-loader-init.py"
@@ -123,7 +126,15 @@ python3 "$HERE/apply-theme-install.py"
 K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-flux-art.py"
 K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" python3 "$HERE/apply-flux-branding.py"
 python3 "$HERE/apply-theme-splash.py"
+K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
 python3 "$HERE/apply-serial-lab.py"
+python3 "$HERE/apply-compact-edit.py"
+python3 "$HERE/apply-compact-format.py"
+python3 "$HERE/apply-lean-txdog.py"
+python3 "$HERE/apply-el-power.py"
+python3 "$HERE/apply-configurable-fsk.py"
+python3 "$HERE/apply-fm-budget-gate.py"
+if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
 grep -q 'FD6818B FSK TBD' "$WORK/src/ui/pager.rs" || {
   echo "FD6818B overlay is missing from $WORK; inspect that checkout before building" >&2
   exit 1
@@ -142,6 +153,23 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
+  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || { echo "Config FSK requires Data and watchdog" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
+fi
+if [ "${K6_EL_POWER:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_el_power"; fi
+if [ "${K6_LEAN_TXDOG:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_lean_txdog"; fi
+if [ "${K6_HEALTH_TELEMETRY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_health_telemetry"; fi
+if [ "${K6_NATIVE_FM:-1}" = 0 ]; then PACK_CFG="$PACK_CFG --cfg k6_no_native_fm"; fi
+if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_font_subset"; fi
+if [ "${K6_RASTER_BOOT:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_raster_boot"; fi
+if [ "${K6_SERIAL_TRANSPORT:-0}" = 1 ]; then
+  PACK_CFG="$PACK_CFG --cfg k6_serial_transport"
+fi
+if [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
+  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "Serial IQ requires Data" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_serial_iq"
+fi
 if [ "${K6_SERIAL_LAB:-0}" = 1 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_serial_lab"
 fi
@@ -186,6 +214,7 @@ FLASH=$(awk '$1==".vector_table" || $1==".text" || $1==".rodata" || $1==".gnu.sg
 for pass in 1 2 3; do
   K6_FLASH_USED_BYTES="$FLASH" K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" python3 "$HERE/apply-flux-branding.py"
   python3 "$HERE/apply-theme-splash.py"
+K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
   if [ -n "$PACK_CFG" ]; then
     (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" cargo build --release --features "$FEATURES")
   else

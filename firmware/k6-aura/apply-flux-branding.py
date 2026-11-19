@@ -115,6 +115,8 @@ where D: DrawTarget<Color = BinaryColor>, {
 
 
 def startup(text):
+    if "// Flux raster boot" in text:
+        return text
     old = '''        let boot_mode = app.settings().boot_display_mode;
         screen!(display, |lcd| ui::boot::draw_flux_splash(lcd, app.settings()));'''
     new = '''        let boot_mode = app.settings().boot_display_mode;

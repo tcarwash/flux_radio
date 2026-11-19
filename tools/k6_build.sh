@@ -139,6 +139,7 @@ if [ -n "${K6_CB:-}" ]; then
   CFLAGS="$CFLAGS $CB"
   echo "codebook in SPI flash: $CB"
 fi
+if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then CFLAGS="$CFLAGS -DKM_LEVEL=24"; fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then
@@ -240,7 +241,7 @@ $CC $CFLAGS -Oz -c "$ROOT/c/k6/vfo_mode_probe.c" -o "$OUT/vfo_mode_probe.o"
 LIBOBJS="$LIBOBJS $OUT/vfo_mode_probe.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/scheduled_dispatch.c" -o "$OUT/scheduled_dispatch.o"
 LIBOBJS="$LIBOBJS $OUT/scheduled_dispatch.o"
-if [ "${K6_SERIAL_LAB:-0}" = 1 ]; then
+if [ "${K6_SERIAL_LAB:-0}" = 1 ] || [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
   for unit in serial_if_lab if_iq if_cic; do
     $CC $CFLAGS -Os -c "$ROOT/c/k6/$unit.c" -o "$OUT/$unit.o"
     LIBOBJS="$LIBOBJS $OUT/$unit.o"

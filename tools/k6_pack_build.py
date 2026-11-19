@@ -49,7 +49,7 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
                 id=f'org.blowfang.k6.{name}', level=None, output=str(folder)), log=lambda *_: None)
         manifest = json.loads((folder / 'manifest.json').read_text())
         module_file = folder / manifest['library'][0]['file']
-        if manifest['library'][0]['level'] > 23:
+        if manifest['library'][0]['level'] > 24:
             raise ValueError(f'module {name} requires unsupported API level {manifest["library"][0]["level"]}')
         modules.append({'name': name, 'id': manifest['library'][0]['id'],
                         'api_level': manifest['library'][0]['level'],
@@ -117,6 +117,9 @@ def main():
             env.pop('K6_DESIGNER_TEST_SLOT', None)
             env['K6_IMAGE_NAME'] = 'flux-fd6818b-pack'
             env.update(gate_environment(plan, policy))
+            if "data" in plan["packs"]:
+                env.update(K6_CONFIG_FSK="1", K6_LEAN_TXDOG="1", K6_NATIVE_FM="0",
+                           K6_FONT_SUBSET="1", K6_RASTER_BOOT="1")
             with exclusive_build():
                 subprocess.run(['sh', str(ROOT / 'firmware/k6-aura/build-fd6818b.sh')],
                                cwd=ROOT, env=env, check=True)

@@ -65,13 +65,13 @@
     },
     "cardlink": {
       "title": "Card Link",
-      "summary": "PixelQSO card transfers working on FD6818B hardware. Requires the Data feature set.",
-      "status": "tested",
+      "summary": "PixelQSO card transfers: original fixed-frame version hardware tested; API 24 native FSK migration awaits RF validation. Requires Data.",
+      "status": "experimental",
       "required_packs": [
         "data"
       ],
       "source_module": "cardlink",
-      "expected_api": 12,
+      "expected_api": 24,
       "native_flux": true
     },
     "explore_scan": {

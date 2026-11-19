@@ -60,7 +60,7 @@ def _unicorn():
                          "sim/k6emu/requirements.txt") from exc
 
 
-def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Path,
+def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Path | None,
                           selected_slots: set[int] | None = None, *, serial_start: int | None = None):
     """Sign bundle modules and install them into the virtual SPI library slots."""
     # Reuse the release installer so signatures and module headers match what the radio accepts.
@@ -71,7 +71,7 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
     from modem import k6mod
 
     bundle = k6_install.load_bundle(str(bundle_path))
-    key = k6mod.read_key(str(key_path))
+    key = k6mod.read_key(str(key_path)) if key_path is not None else None
     serials = k6_install.Serials()
     entries = [dict(entry) for entry in bundle["library"] if entry["kind"] == "module"]
     fixed_slots = {entry["slot"] for entry in entries if entry.get("slot") is not None}
@@ -102,7 +102,7 @@ def overlay_module_bundle(flash_data: bytearray, bundle_path: Path, key_path: Pa
             image_at = flash_data[address:address + total]
             if (length >= 24 and total <= k6_install.LIB_SLOT
                     and len(image_at) == total
-                    and image_at[-8:] == struct.pack("<Q", k6mod.siphash24(key, image_at[:-8]))
+                    and image_at[-8:] == k6mod.image_tag(key, image_at[:-8])
                     and image_at[-32:-8] == marker):
                 matches.append(candidate)
         if len(matches) > 1:
@@ -193,6 +193,10 @@ class K6Board:
         self.flash_output_index = 0
         self.flash_program_data = bytearray()
         self.key_matrix = set()
+        self.key_scan_epoch = 0
+        self.key_sample_epoch = 0
+        self.key_sampled_scan = -1
+        self.last_key_probe = -1
         self.fd_regs = {0x00: 0x0000, 0x67: 0x0000, 0x0C: 0x0000}
         self.fd_active = False
         self.fd_bits: list[int] = []
@@ -316,15 +320,28 @@ class K6Board:
         if name == "B" and not (self.regs.get(0x48000400, 0) & (3 << 12)):
             value = (value & ~(1 << 6)) | (self.fd_read_bit << 6)
         row_pins = {1: 0, 2: 4, 3: 10, 4: 11, 5: 9}
+        # An idle-row column read begins a keypad scan. Count only once until
+        # a different row is driven (side-key scan can end early).
+        rows = self.gpio_odr["B"] & 0xe11
+        if name == "C" and rows == 0xe11 and self.last_key_probe != 0xe11:
+            self.key_scan_epoch += 1
+        if name in ("C", "F", "B"):
+            self.last_key_probe = rows
         for row, col in self.key_matrix:
             if row == 0:  # side keys are sensed with the matrix rows idle
                 pin = col_pins[col]
                 if pin[0] == name:
                     value &= ~(1 << pin[1])
+                    if self.key_sampled_scan != self.key_scan_epoch:
+                        self.key_sample_epoch += 1
+                        self.key_sampled_scan = self.key_scan_epoch
             elif not (self.gpio_odr["B"] & (1 << row_pins[row])):
                 port, pin = col_pins[col]
                 if port == name:
                     value &= ~(1 << pin)
+                    if self.key_sampled_scan != self.key_scan_epoch:
+                        self.key_sample_epoch += 1
+                        self.key_sampled_scan = self.key_scan_epoch
         return value
 
     def set_gpio(self, port: str, pin: int, level: int):
@@ -698,6 +715,8 @@ class K6Board:
                         self._fd_pin_change(old, self.gpio_odr[name])
                     break
                 if address == base + 0x18:    # BSRR
+                    if name == "B" and value & 0xe11 == 0xe11:
+                        self.last_key_probe = -1
                     old = self.gpio_odr[name]
                     self.gpio_odr[name] |= value & 0xFFFF
                     self.gpio_odr[name] &= ~((value >> 16) & 0xFFFF)
