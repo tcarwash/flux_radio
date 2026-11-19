@@ -17,8 +17,8 @@ allow ordinary user modules, the card API or generic raw-write commands to erase
 or program this bank. A firmware-only flash without its bundle must leave the
 system features unavailable, never execute stale pages. Missing, damaged or
 wrong-build pages fail closed and leave the core cable recovery path usable.
-The initial system bank is reserved only: erase/write/execute support is not
-implemented yet. No migration or hardware writes have been performed.
+The opt-in experimental installer and channel page now exist. Bundle integration
+is still pending; no physical radio validation or migration has been performed.
 
 ## Runtime design
 
@@ -39,3 +39,27 @@ library slots remain untouched. The existing full-bank card API on old firmware
 must not be used with new system contents; a later downgrade must wipe the
 system bank or refuse the downgrade. No production activation until physical
 validation and safe installation support are in place.
+
+## Experimental checkpoint (2026-11-19)
+
+`K6_CHANNEL_PAGE=1 K6_SYSTEM_INSTALL=1 K6_RAM0=1` with Base, Scan, Data
+(including serial IQ), Designer, native FM disabled, no Sotto/OTA/resident probe.
+Core image 122720 bytes of 122880 (160 free). Slot 0: K6S envelope, page ID 18,
+two C ABI entry points, 1596 bytes. The page formats channel values and adjusts
+scalar fields; native list UI, digit/name editing, save/delete and storage remain.
+First 8192 arena bytes reserved for page loading, upper 6784 for host call stack;
+reserved main stack 3144 bytes. Page is freshly validated on each load, not cached.
+
+Evidence: 19 targeted host/validator tests passed. Actual Cortex-M0 simulator CPS
+installation passed wrong-build rejection, sequential erase/retry, exclusive mode,
+interruption after first sector, restart, whole-bank readback and byte-for-byte
+preservation outside the system bank. Interactive channel editing in the simulated
+radio, physical stack high-water measurements, hardware recovery and production
+bundle installation remain unverified. No activation record for multi-page
+transactions yet; the current installer supports only slot 0. CRC is integrity,
+not authorization against malicious binaries. Not a release firmware.
+
+Next: verify interactive execution and save/cancel/delete; generalize loader and
+installer to multiple registered pages with a final activation record; migrate
+remaining channel UI, then settings UI and FM/scan code based on measured size.
+Do not disable IQ to claim flash savings. Preserve core radio/storage and recovery.

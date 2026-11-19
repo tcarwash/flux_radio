@@ -9,4 +9,5 @@
    On success return code bytes (table at dst+KM_HDR); on failure never call it. */
 int ks_load(unsigned slot, const kl_flash_t *fl, uint8_t *dst, unsigned cap,
             unsigned id, unsigned functions, const uint8_t build[8]);
+int ks_validate(unsigned slot, uint8_t *dst, unsigned total, unsigned id, unsigned functions, const uint8_t build[8]);
 #endif

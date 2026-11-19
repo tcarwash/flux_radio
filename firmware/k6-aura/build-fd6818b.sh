@@ -123,10 +123,15 @@ K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
 python3 "$HERE/apply-serial-lab.py"
 python3 "$HERE/apply-compact-edit.py"
 python3 "$HERE/apply-compact-format.py"
+
 python3 "$HERE/apply-lean-txdog.py"
 python3 "$HERE/apply-el-power.py"
 python3 "$HERE/apply-ram0.py"
 python3 "$HERE/apply-system-partition.py"
+python3 "$HERE/apply-system-demo.py"
+python3 "$HERE/apply-system-install.py"
+python3 "$HERE/apply-channel-page.py"
+python3 "$HERE/apply-compact-channel-list.py"
 python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
@@ -148,6 +153,18 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] && [ "${K6_SYSTEM_DEMO:-0}" = 0 ] && [ "${K6_VFO_PROBE:-0}" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "Channel page requires expanded cable-only arena and installer (no resident probe/demo)" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_channel_page"
+fi
+if [ "${K6_SYSTEM_DEMO:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "System demo requires cable-only non-voice host" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_system_demo"
+fi
+if [ "${K6_SYSTEM_INSTALL:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || exit 1
+  PACK_CFG="$PACK_CFG --cfg k6_system_install"
+fi
 case "${K6_RAM0:-0}" in
   0) ;;
   1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
@@ -241,6 +258,9 @@ if [ "${K6_RAM0:-0}" != 0 ]; then
   python3 "$ROOT/tools/k6_ram0_audit.py" "$ELF" --mode "$K6_RAM0" > "$OUT/ram0-layout.json"
 fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_channel_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/channel-system.bin"
+fi
 python3 - "$OUT/$IMAGE.bin" <<'PY'
 import hashlib
 from pathlib import Path

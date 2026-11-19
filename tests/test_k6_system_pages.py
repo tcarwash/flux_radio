@@ -39,7 +39,7 @@ def execute(program,code=None,slot=0,damage=False,empty=False,kind=True):
  host,entry,original=program;code=original if code is None else code
  m=u.Uc(u.UC_ARCH_ARM,u.UC_MODE_THUMB|u.UC_MODE_MCLASS)
  m.mem_map(0x08000000,0x20000);m.mem_write(FLASH,host);m.mem_map(0x20000000,0x6000);m.mem_map(0x60000000,0x64000)
- image=bytearray(k6mod.image(code,0,1,None,level=1,lib=0,page=kind));
+ image=bytearray(k6mod.image(code,0,1,None,level=1,lib=0,page=kind,magic=b"K6S"));
  if damage:image[20]^=1
  m.mem_write(0x60000000,b'\xff'*0x64000)
  if not empty:m.mem_write(0x60000000,bytes(image))

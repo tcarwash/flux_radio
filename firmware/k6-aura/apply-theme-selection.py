@@ -75,7 +75,7 @@ patch('app/settings_ops.rs','        SettingItem::ChipId => {','''        #[cfg(
                     let mut name=[0u8;14];
                     if theme.name_len>0 && app.designer_read(base+u32::from(theme.name_offset),&mut name[..usize::from(theme.name_len)]) {
                         if let Ok(label)=core::str::from_utf8(&name[..usize::from(theme.name_len)]) {
-                            let _=write!(w,"{}",label);
+                            let _=w.write_str(label);
                         } else {let _=write!(w,"SLOT {}",v-2);}
                     } else {let _=write!(w,"SLOT {}",v-2);}
                 } else {let _=write!(w,"FACTORY");}
