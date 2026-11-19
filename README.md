@@ -167,6 +167,7 @@ performance. Keep its unauthenticated server on a trusted local network.
 | Firmware customization | [Feature packs](docs/k6-feature-packs.md) |
 | Native module development | [Module API](docs/k6-modules.md) |
 | Emulator development | [Workbench](docs/k6-emulator.md) |
+| Serial data experiments | [Throughput and burst protocol](docs/k6-serial-throughput.md) |
 | Development and tests | [Contributing](CONTRIBUTING.md) |
 
 ## Credits and licensing

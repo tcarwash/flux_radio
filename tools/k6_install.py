@@ -30,6 +30,7 @@ How the pieces get there:
 Needs Python 3.8+, pyserial and numpy (pip install pyserial numpy). SPDX-License-Identifier: MIT
 """
 import argparse
+import binascii
 import datetime
 import hashlib
 import hmac
@@ -86,13 +87,7 @@ class InstallError(Exception):
 
 
 def crc16_xmodem(data):
-    crc = 0
-    for b in bytes(data):
-        crc ^= b << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x1021) if crc & 0x8000 else crc << 1
-        crc &= 0xFFFF
-    return crc
+    return binascii.crc_hqx(bytes(data), 0)
 
 
 def cps_frame(cmd, addr=0, data=b""):
