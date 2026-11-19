@@ -1,0 +1,22 @@
+name: EXPLORE receive audio
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  try-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Cortex-M0 emulator and build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld llvm
+          python -m pip install -r requirements.txt pytest unicorn
+      - name: Verify Try audio and cleanup
+        run: python -m pytest -q tests/test_k6_explore_try_audio.py
