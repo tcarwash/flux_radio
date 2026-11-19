@@ -102,7 +102,10 @@ if '// Flux serial lab commands' not in s:
                 let route=app.radio.fd6818.reg_read(syst,0x34);
                 let mut stats=[0u32;24];
                 unsafe extern "C" { fn k6_serial_if_lab(mem:*mut u8,bytes:u32,ms:u32,mode:u32,ratio:u32,mix:u32,stats:*mut u32)->i32; }
+                #[cfg(not(k6_iq_page))]
                 let result=if route&15!=13 { -9 } else { unsafe { k6_serial_if_lab(crate::hal::arena::base(),crate::hal::arena::ARENA_BYTES as u32,ms,mode as u32,ratio as u32,(((mix as u64)<<32)/96000000) as u32,stats.as_mut_ptr()) } };
+                #[cfg(k6_iq_page)]
+                let result=if route&15!=13 {-9} else {iq_page_capture(app,ms,mode as u32,ratio as u32,(((mix as u64)<<32)/96000000) as u32,&mut stats)};
                 app.radio.rf_off(syst);
                 for (i,r) in [0x33,0x34,0x73].iter().enumerate() { app.radio.fd6818.reg_write(syst,*r,saved[i]); }
                 let mut data=[0u8;112];

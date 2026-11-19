@@ -442,7 +442,23 @@ def create_app(store: ModuleStore | None = None):
     @app.get("/memories")
     def memories_page():
         from k6_memories import builtins
-        return render_template("memories.html", packs=builtins())
+        return render_template("memories.html", packs=builtins(), memory_token=session.setdefault("memory_token",secrets.token_urlsafe(32)))
+
+    @app.post("/memories/radio")
+    def memories_radio():
+        from k6_memory_radio import operate
+        from k6_install import InstallError
+        data=request.get_json(silent=True)
+        if not isinstance(data,dict):return jsonify(error="Invalid request"),400
+        token=session.get("memory_token","")
+        if not token or not secrets.compare_digest(token,str(data.get("token",""))):abort(403)
+        action=data.get("action")
+        if action not in ("read","merge","replace","recover"):return jsonify(error="Unknown action"),400
+        if action!="read" and data.get("confirm")!=action: return jsonify(error="Confirm radio write first"),400
+        settings=radio_settings()
+        if not settings["port"]:return jsonify(error="Select serial port in Device settings first"),400
+        try:return jsonify(operate(settings["port"],settings["key_file"],action,data.get("channels")))
+        except (ValueError,OSError,InstallError) as e:return jsonify(error=str(e)),400
 
     @app.post("/memories/import")
     def memories_import():

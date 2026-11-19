@@ -15,7 +15,7 @@
         "module-loader"
       ],
       "modules": [],
-      "description": "Core radio, module loader and shared services for APRS, including AFSK, KISS and position settings."
+      "description": "Core radio, module loader and shared services for APRS, including AFSK, KISS and position settings. Includes native VFO, packed library and memory-bank programming."
     },
     "scan": {
       "requires": [
@@ -66,7 +66,7 @@
       "modules": [
         "cardlink"
       ],
-      "description": "Raw fixed-frame FSK plus PXK6 cable record list/read/write/erase for Card Link and experimental digital data. Not required for APRS."
+      "description": "Raw fixed-frame FSK plus PXK6 cable record list/read/write/erase for Card Link and experimental digital data. Not required for APRS. Serial IQ acquisition belongs to Data; the SPI IQ overlay is an experimental build option pending flash-budget qualification."
     },
     "ota": {
       "requires": [

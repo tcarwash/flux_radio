@@ -12,6 +12,7 @@
 #define UART 0x40013800u
 #define REG(a) (*(volatile uint32_t *)(a))
 #define CLOCK 96000000u
+#ifndef K6_IQ_IRQ_ONLY
 static uint32_t divu(uint32_t n,uint32_t d) {
   uint32_t q=0,b=1;
   if(!d) return 0;
@@ -26,8 +27,13 @@ static uint16_t crc(const uint8_t *p,unsigned n) {
   while(n--) { uint8_t b=*p++; c=(c<<4)^t[(c>>12)^(b>>4)];c=(c<<4)^t[(c>>12)^(b&15)]; }
   return c;
 }
+#endif
 typedef struct { uint8_t *buf; volatile uint16_t len[2],pos; volatile unsigned head,n; } tx_t;
-static tx_t *volatile active_tx;
+#ifdef K6_IQ_PAGE
+extern tx_t *volatile active_tx;
+#else
+tx_t *volatile active_tx;
+
 /* The UART ISR calls this after servicing RX; zero leaves normal debug TX alone. */
 int k6_serial_if_tx_irq(void) {
   tx_t *t=active_tx;
@@ -38,6 +44,8 @@ int k6_serial_if_tx_irq(void) {
   } else REG(UART)&=~(1u<<7);
   return 1;
 }
+#endif /* resident UART ISR */
+#ifndef K6_IQ_IRQ_ONLY
 static void pump(tx_t *t) { (void)t; /* TXE interrupt drains the queue. */ }
 static uint32_t irq_lock(void) {
   uint32_t mask;__asm__ volatile("mrs %0, primask\n cpsid i":"=r"(mask)::"memory");return mask;
@@ -165,3 +173,9 @@ int k6_serial_if_lab(uint8_t *mem,uint32_t bytes,uint32_t ms,uint32_t mode,
   uint32_t mask=irq_lock();REG(UART)&=~(1u<<7);active_tx=0;irq_unlock(mask);
   return (int32_t)s[0];
 }
+
+#endif /* acquisition engine */
+
+#ifdef K6_IQ_PAGE
+__attribute__((section(".kp_tab"),used)) const uintptr_t kp_tab[]={0x0113504bu,(uintptr_t)kp_tab,(uintptr_t)k6_serial_if_lab};
+#endif

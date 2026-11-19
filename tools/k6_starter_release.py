@@ -40,6 +40,7 @@ def package(profile, pack, output):
                 names.add(str(Path(mod['path']).parent/'manifest.json'))
             for field in ('theme_package','boot_splash'):
                 if field in lock: names.add(lock[field]['path'])
+            for page in lock.get('storage',{}).get('system_pages',[]):names.add(page['path'])
             for name in sorted(names):
                 z.write(pack/name,prefix+'starter/'+name)
             descriptions = {

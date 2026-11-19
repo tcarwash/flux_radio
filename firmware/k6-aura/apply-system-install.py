@@ -57,6 +57,11 @@ impl SystemInstall {
             }
             0x84 if addr==u16::from(self.id) && data.is_empty() && self.len!=0 && self.next==self.len => {
                 let n=self.len as usize;if self.committed{return n as i32;}
+                #[cfg(k6_iq_page)]
+                let base=if self.id==19 {
+                    if n>crate::hal::arena::ARENA_BYTES-11000{return -2;}
+                    unsafe{core::ptr::copy(base,base.add(11000),n);base.add(11000)}
+                }else{base};
                 let bytes=unsafe{core::slice::from_raw_parts(base,n)};
                 let functions=bytes[19] as u32;
                 let r=unsafe{ks_validate(0,base,n as u32,u32::from(self.id),functions,build.as_ptr())};if r<0{return r;}
@@ -75,7 +80,7 @@ impl SystemInstall {
         }
     }
 }
-#[cfg(any(k6_system_install,k6_user_store))]
+#[cfg(any(k6_system_install,k6_user_store,k6_memory_bank))]
 #[inline(never)]
 fn system_write_verified(nor:&mut crate::drivers::norflash::NorFlash<'static>,pos:u32,data:&[u8])->bool{
     nor.write_bytes(pos,data);let mut buf=[0u8;64];

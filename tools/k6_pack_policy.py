@@ -48,4 +48,4 @@ if __name__ == '__main__':
 
 def storage_environment(plan):
     """All new catalog builds use KUL2. External channel code is a separate gate."""
-    return {'K6_USER_STORE':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0'}
+    return {'K6_USER_STORE':'1','K6_MEMORY_BANK':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0','K6_IQ_PAGE':'0','K6_SERIAL_IQ':'0','K6_SERIAL_LAB':'0'}

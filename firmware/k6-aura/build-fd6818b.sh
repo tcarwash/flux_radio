@@ -123,6 +123,7 @@ K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
 python3 "$HERE/apply-serial-lab.py"
 python3 "$HERE/apply-compact-edit.py"
 python3 "$HERE/apply-compact-format.py"
+python3 "$HERE/apply-compact-settings.py"
 
 python3 "$HERE/apply-lean-txdog.py"
 python3 "$HERE/apply-el-power.py"
@@ -158,6 +159,10 @@ if [ "${K6_USER_STORE:-0}" = 1 ]; then
   python3 "$HERE/apply-user-restore.py"
   PACK_CFG="$PACK_CFG --cfg k6_user_store"
 fi
+if [ "${K6_MEMORY_BANK:-0}" = 1 ]; then
+  python3 "$HERE/apply-memory-bank.py"
+  PACK_CFG="$PACK_CFG --cfg k6_memory_bank"
+fi
 if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
   [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] && [ "${K6_SYSTEM_DEMO:-0}" = 0 ] && [ "${K6_VFO_PROBE:-0}" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "Channel page requires expanded cable-only arena and installer (no resident probe/demo)" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_channel_page"
@@ -188,6 +193,11 @@ if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_font_subset
 if [ "${K6_RASTER_BOOT:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_raster_boot"; fi
 if [ "${K6_SERIAL_TRANSPORT:-0}" = 1 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_serial_transport"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  [ "${K6_SERIAL_IQ:-0}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] || { echo "IQ page requires expanded arena and system installer" >&2; exit 1; }
+  python3 "$HERE/apply-iq-page.py"
+  PACK_CFG="$PACK_CFG --cfg k6_iq_page"
 fi
 if [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
   [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "Serial IQ requires Data" >&2; exit 1; }
@@ -265,6 +275,9 @@ fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
 if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
   python3 "$ROOT/tools/k6_channel_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/channel-system.bin"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_iq_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/iq-system.bin"
 fi
 python3 - "$OUT/$IMAGE.bin" <<'PY'
 import hashlib

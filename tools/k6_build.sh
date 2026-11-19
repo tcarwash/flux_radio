@@ -245,10 +245,15 @@ LIBOBJS="$LIBOBJS $OUT/vfo_mode_probe.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/scheduled_dispatch.c" -o "$OUT/scheduled_dispatch.o"
 LIBOBJS="$LIBOBJS $OUT/scheduled_dispatch.o"
 if [ "${K6_SERIAL_LAB:-0}" = 1 ] || [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
+  if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+    $CC $CFLAGS -Os -DK6_IQ_IRQ_ONLY -c "$ROOT/c/k6/serial_if_lab.c" -o "$OUT/serial_if_irq.o"
+    LIBOBJS="$LIBOBJS $OUT/serial_if_irq.o"
+  else
   for unit in serial_if_lab if_iq if_cic; do
     $CC $CFLAGS -Os -c "$ROOT/c/k6/$unit.c" -o "$OUT/$unit.o"
     LIBOBJS="$LIBOBJS $OUT/$unit.o"
   done
+  fi
 fi
 LIBOBJS="$LIBOBJS ${K6_LIBEXTRA:-}"
 # the images' memcpy family (c/k6/k6_mem.c): in the archive only, the bench links shim.c's

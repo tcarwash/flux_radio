@@ -104,3 +104,7 @@ system overlays remain cable-only. Sotto compiles but exceeds the application bu
 The full IQ-enabled four-pack image is 125328 bytes, over the 122880-byte limit.
 Do not ship this checkpoint as a production image. The simulator uses the verified
 IQ-disabled restoration build. Firmware-only packed upgrades still restore storage.
+
+### Combined IQ and Memories development checkpoint
+
+IQ belongs to Data; its opt-in `K6_SERIAL_IQ=1 K6_IQ_PAGE=1` build requires expanded RAM0 and the cable-only system installer. Page 19 occupies the arena tail after 11000 bytes of DMA scratch; the separately linked page measured 2492 bytes with 1484 bytes spare. The resident UART TX ISR remains outside the overlay. Combined Base/Scan/Designer/Data with memory protocol and IQ overlay linked at 123504 bytes (624 over). Catalog defaults keep experimental IQ disabled explicitly until a qualified image fits; do not interpret that as a fully featured Data release. Base memory protocol compiled and passed a real emulator NOAA merge/readback. Host recovery fault model passed; physical RF and combined-image runtime remain unqualified. Packed first-time bootloader installation currently fails closed without a running backup session; starter provisioning needs a dedicated migration path before release.

@@ -25,7 +25,7 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name='', system_page=None, packed=False):
+def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name='', system_page=None, packed=False, system_pages=()):
     """Stage a deterministic lockfile and module bundles from a prebuilt firmware image."""
     output = Path(output)
     firmware = Path(firmware)
@@ -62,14 +62,16 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
                          'capabilities_verified': verified_firmware},
             'modules': modules, 'install': {'automatic': False,
                 'note': 'The guided flash-and-install action installs bundled modules, the named theme, and startup artwork after reboot when included. OTA packs require a key; cable-only packs use CRC32 integrity.'}}
-    if packed or system_page is not None:
+    pages=([system_page] if system_page is not None else [])+list(system_pages)
+    if packed or pages:
         lock['storage']={'format':2,'system_pages':[]}
-    if system_page is not None:
+    if pages:
         from k6_system_install import pack as pack_system
-        page=Path(system_page).read_bytes()
-        pack_system(dest.read_bytes(),[page],8192)
-        target=output/'channel-system.bin';target.write_bytes(page)
-        lock['storage']={'format':2,'system_pages':[{'path':target.name,'sha256':digest(target),'bytes':len(page)}]}
+        pack_system(dest.read_bytes(),[Path(p).read_bytes() for p in pages],8192)
+        for page in pages:
+            page=Path(page);target=output/page.name
+            if page.resolve()!=target.resolve():shutil.copyfile(page,target)
+            lock['storage']['system_pages'].append({'path':target.name,'sha256':digest(target),'bytes':target.stat().st_size})
     if 'designer' in plan['packs']:
         from k6_theme_package import pack, display_name
         theme_path = output / 'theme.fluxtheme'

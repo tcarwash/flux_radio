@@ -33,5 +33,14 @@
   $('discovery').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget;const query=new URLSearchParams(new FormData(form));query.set('open',form.elements.open.checked?'1':'0');const b=form.querySelector('[type=submit]');b.disabled=true;b.textContent='Searching…';$('results').hidden=true;try{const r=await checked(await fetch('/memories/repeaters?'+query));results=(await r.json()).channels;$('result-rows').replaceChildren();$('all-results').checked=true;results.forEach((row,i)=>{const tr=$('result-rows').insertRow(), check=document.createElement('input');check.type='checkbox';check.checked=true;check.dataset.result=i;check.setAttribute('aria-label','Select '+row.Name);tr.insertCell().append(check);for(const k of ['Name','Frequency','Duplex','Offset','Comment'])cell(tr,row[k]);});$('results').hidden=false;status('Found '+results.length+' repeaters.');}catch(err){status(err.message);}finally{b.disabled=false;b.textContent='Find repeaters';}};
   $('all-results').onchange=()=>document.querySelectorAll('[data-result]').forEach(c=>c.checked=$('all-results').checked);
   $('add-results').onclick=()=>add([...document.querySelectorAll('[data-result]:checked')].map(c=>results[Number(c.dataset.result)]));
+  document.querySelectorAll('[data-radio]').forEach(button=>button.onclick=async()=>{
+    const action=button.dataset.radio;
+    if(!confirm(action==='read'?'Read radio and replace the browser working list? Export your current list first if needed.':action==='recover'?'Resume the saved pending memory write for this radio?':action==='replace'?'Replace ALL radio memories with this list? A binary backup will be saved.':'Merge this list into free radio memory slots?'))return;
+    const buttons=[...document.querySelectorAll('[data-radio]')];buttons.forEach(b=>b.disabled=true);status('Communicating with radio — keep cable connected.');
+    try{const response=await checked(await fetch('/memories/radio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('radio-program').dataset.token,action,confirm:action,channels:rows})}));const result=await response.json();
+    if(action==='read'){rows=result.channels;save();render();status('Read '+rows.length+' memories; '+result.opaque_slots.length+' unrecognized records (preserved by Merge).'+(result.pending?' Pending write: choose Resume interrupted write.':''));}
+    else status('Verified '+result.occupied+' memories; '+result.added+' added, '+result.duplicates+' duplicates skipped. Backup: '+result.backup);
+    }catch(e){status(e.message);}finally{buttons.forEach(b=>b.disabled=false);}
+  });
   render();
 })();
