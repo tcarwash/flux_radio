@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import pytest
+from host_link import gc_sections
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from k6_install import Cable, CMD_CAPS, InstallError, k6mod
 
@@ -54,7 +55,7 @@ def test_c_proof_matches_host(tmp_path, keyed):
     source.write_text('#include "k6_mod.c"\nint main(void) { uint8_t record[16]={75,54,67,80,2,7,22,0,1,2,3,4,5,6,7,8}, nonce[16]={0}, tag[8]={0}; int rc=km_capability_proof(record,nonce,tag); if(rc) return 5; for(int i=0;i<8;i++) printf("%02x",tag[i]); return 0; }\n')
     exe = tmp_path / 'proof'
     flags = ['-DKM_KEY='+','.join(map(str,KEY))] if keyed else []
-    subprocess.run([cc,'-include','stdio.h','-I'+str(root/'c/k6'),'-ffunction-sections','-fdata-sections','-Wl,--gc-sections',*flags,str(source),'-o',str(exe)],check=True)
+    subprocess.run([cc,'-include','stdio.h','-I'+str(root/'c/k6'),'-ffunction-sections','-fdata-sections',gc_sections(),*flags,str(source),'-o',str(exe)],check=True)
     result = subprocess.run([str(exe)],capture_output=True,text=True)
     if keyed:
         assert result.returncode == 0

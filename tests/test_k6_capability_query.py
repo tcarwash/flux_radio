@@ -39,6 +39,8 @@ def test_generated_patch_idempotent_and_updates_gates(tmp_path, monkeypatch):
         subprocess.run([sys.executable, str(here / script.name)], env={'K6_SCAN_SERVICE': scan, 'K6_FSK_RX_SERVICE': '0', 'K6_OTA_SERVICE': ota}, check=True)
         output = target.read_text()
         assert output.count('CMD_CABLE_CAPS if f.addr') == 1
+        assert output.count('const CMD_CABLE_CAPS: u8 = 0x49;') == 1
+        assert output.count('const CMD_CABLE_SERIAL: u8 = 0x4A;') == 1
         assert f"2, {1 | (2 if scan == '1' else 0) | (8 if ota == '1' else 16)}, 23, 0" in output
 
 def test_designer_capability_round_trip():

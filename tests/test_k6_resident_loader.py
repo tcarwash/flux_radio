@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from modem import k6mod
+from host_link import gc_sections, exported_symbols
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE, SLOT, FLAGS = 0x110000, 0x4000, 0x25
@@ -33,9 +34,9 @@ def loader(tmp_path):
     # Link only the real library/tag/arming code, discarding unrelated modem paths.
     lib = tmp_path / 'loader.so'
     exports = tmp_path / 'exports.map'
-    exports.write_text('{ global: kl_*; km_arm; km_armed; km_run; local: *; };')
+    export_flag = exported_symbols(exports, ('kl_*', 'km_arm', 'km_armed', 'km_run'))
     subprocess.run(['cc', '-shared', '-fPIC', '-O2', '-ffunction-sections',
-                    '-fdata-sections', '-Wl,--gc-sections', '-Wl,--version-script='+str(exports),
+                    '-fdata-sections', gc_sections(), export_flag,
                     '-DKM_KEY=' + ','.join(map(str, KEY)),
                     str(ROOT/'c/k6/k6_lib.c'), str(ROOT/'c/k6/k6_mod.c'),
                     '-o', str(lib)], check=True)

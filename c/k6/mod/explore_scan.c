@@ -24,6 +24,9 @@ K6_ACTION(K6_ACTION_EXPLORE_OPEN);
 #define BSRR 0x18u
 #define BRR 0x28u
 #define KEYPAD_ROWS ((1u << 0) | (1u << 4) | (1u << 9) | (1u << 10) | (1u << 11))
+#define SPEAKER (1u << 2)
+
+static const uint8_t TRY_SQUELCH_REGS[4] = {0x4D, 0x4E, 0x4F, 0x78};
 
 typedef struct {
   xs_t scan;
@@ -295,12 +298,26 @@ static void try_frequency(explore_t *s, const k6_api_t *api, ex_cand_t *c) {
   int tone_active;
   cw_t *cw = &s->work.cw;
   int i;
+  uint16_t saved_af = api->fd_read(0x47), saved_sq[4];
+  uint32_t saved_speaker = mmio_read(GPIOB + ODR) & SPEAKER;
+  for (i = 0; i < 4; i++) saved_sq[i] = api->fd_read(TRY_SQUELCH_REGS[i]);
+  /* tune() only retunes RX. Try owns the audio path and opens squelch so a weak
+     candidate can be heard; keep the amplifier muted until the PLL has settled. */
+  mmio_write(GPIOB + BRR, SPEAKER);
+  api->fd_write(0x47, 0x6040);
   s->parked_hz = c->hz;
   api->tune(c->hz, 1);
+  api->fd_write(0x4D, (uint16_t)((saved_sq[0] & 0xFF00u) | 0xFFu));
+  api->fd_write(0x4E, (uint16_t)((saved_sq[1] & 0xFF00u) | 0xFFu));
+  api->fd_write(0x4F, 0x7F7F);
+  api->fd_write(0x78, 0);
   c->flags |= EX_F_TRIED;
   api->cw_init(cw);
   td_on(api);
   tone_active = api->tone_start() == 0;
+  api->delay_us(12000);
+  api->fd_write(0x47, 0x6140); /* FM receive audio, as in SURF monitor */
+  mmio_write(GPIOB + BSRR, SPEAKER);
   last_draw = api->ms();
   api->say("EXPLORE Try; key to resume scan");
   screen_frame(s, api, 2);
@@ -347,8 +364,13 @@ static void try_frequency(explore_t *s, const k6_api_t *api, ex_cand_t *c) {
       api->delay_us(2000);
     }
   }
+  mmio_write(GPIOB + BRR, SPEAKER);
+  api->fd_write(0x47, 0x6040);
   if (tone_active) api->tone_stop();
   td_off(api);
+  for (i = 0; i < 4; i++) api->fd_write(TRY_SQUELCH_REGS[i], saved_sq[i]);
+  api->fd_write(0x47, saved_af);
+  mmio_write(GPIOB + (saved_speaker ? BSRR : BRR), SPEAKER);
   api->explore_xs_resume(&s->scan);
   api->say("EXPLORE scan resumed");
   if (s->list) screen_list(s, api);

@@ -32,23 +32,54 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang lld llvm build-essential
           rustup toolchain install stable --profile minimal --target thumbv6m-none-eabi
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements.txt pytest unicorn
+      - name: Verify generated capability command definitions
+        run: python -m pytest -q tests/test_k6_capability_query.py
       - name: Build and verify cable-only starter
         run: |
           python tools/k6.py build ${{ matrix.packs }} --tx-profile ${{ matrix.tx }} --output firmware/k6-aura/out-fd6818b/starter
           python tools/k6.py inspect firmware/k6-aura/out-fd6818b/starter
           python tools/k6_starter_release.py ${{ matrix.profile }} firmware/k6-aura/out-fd6818b/starter dist/flux-fd6818b-${{ matrix.profile }}-${{ matrix.tx }}.zip
+          python tools/k6_validate_starter.py dist/flux-fd6818b-${{ matrix.profile }}-${{ matrix.tx }}.zip
+          if [ "${{ matrix.profile }}-${{ matrix.tx }}" = "scan-fcc" ]; then
+            python tools/k6_release_source.py dist/flux-corresponding-source.tar.gz
+          fi
+      - name: Verify compiled cable commands and module installation
+        env:
+          K6_SIM_DISPATCH_IMAGE: firmware/k6-aura/out-fd6818b/starter/firmware.bin
+          K6_SIM_STARTER_PACK: firmware/k6-aura/out-fd6818b/starter
+        run: >-
+          python -m pytest -q
+          tests/test_k6_capability_sim.py::test_compiled_cable_dispatch
+          tests/test_k6_capability_sim.py::test_compiled_cable_only_install
       - uses: actions/upload-artifact@v4
         with:
           name: flux-fd6818b-${{ matrix.profile }}-${{ matrix.tx }}
           path: dist/*
+  release-tests:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt pytest
+      - run: >-
+          python -m pytest -q tests/test_k6_port_lock.py
+          tests/test_k6_starter_install.py tests/test_k6_unified_cli.py
+          tests/test_k6_pack_install.py tests/test_k6_store_defaults.py
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: starter
+    needs: [starter, release-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: flux-fd6818b-*
@@ -57,4 +88,12 @@ jobs:
       - name: Publish experimental starter bundles
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --prerelease --generate-notes
+        run: |
+          test -f dist/flux-corresponding-source.tar.gz
+          for profile in base scan designer-scan; do
+            for tx in ce fcc; do
+              test -f "dist/flux-fd6818b-$profile-$tx.zip"
+              test -f "dist/flux-fd6818b-$profile-$tx.zip.sha256"
+            done
+          done
+          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --verify-tag --prerelease --title "Flux ${GITHUB_REF_NAME} — Technical Preview" --notes-file .github/technical-preview.md
