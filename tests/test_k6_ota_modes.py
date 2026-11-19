@@ -20,6 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from host_link import gc_sections
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -105,7 +106,7 @@ def loaders(tmp_path_factory):
         exe = work / name
         subprocess.run([cc(), "-O1", "-I" + str(C6), "-I" + str(C6.parent),
                         "-ffunction-sections", "-fdata-sections",
-                        "-Wl,--gc-sections", *extra, str(src), "-o", str(exe)],
+                        gc_sections(), *extra, str(src), "-o", str(exe)],
                        check=True, cwd=str(ROOT))
         return exe
 

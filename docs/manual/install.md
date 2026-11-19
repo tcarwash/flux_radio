@@ -213,6 +213,7 @@ Neither CRC nor module signatures sandbox native code.
   while powering on. Use a known-compatible image. If UPDATE itself is
   unavailable, stop and seek hardware-specific recovery assistance.
 
+See the dedicated [recovery guide](recovery.md) for recovering a compatible Flux installation.
 There is no guaranteed stock recovery path in this repository. Keep your
 backup and record the firmware build, model, chip variant and complete
 installer error when asking for help.
