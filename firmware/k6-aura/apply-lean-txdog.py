@@ -6,7 +6,14 @@ p=root/'hal/txdog.rs';s=p.read_text()
 s=s.replace('#[cfg(not(feature = "lean"))]', '#[cfg(any(not(feature = "lean"), k6_lean_txdog))]')
 s=s.replace('#[cfg(feature = "lean")]', '#[cfg(all(feature = "lean", not(k6_lean_txdog)))]')
 # Do not permit a second key-up to replace an already armed deadline.
-s=s.replace('    arm(ARM_TX, true);\n    LIMIT.store', '    if KEYED_AT.load(Ordering::Relaxed) != 0 { return; }\n    arm(ARM_TX, true);\n    LIMIT.store')
+anchor='    arm(ARM_TX, true);\n    LIMIT.store'
+guard='    if KEYED_AT.load(Ordering::Relaxed) != 0 { return; }\n'
+# Normalize older generated trees where the guard accumulated on each build.
+while guard+guard in s:
+    s=s.replace(guard+guard,guard)
+if guard+anchor not in s:
+    if s.count(anchor)!=1: raise SystemExit("watchdog key-up anchor changed")
+    s=s.replace(anchor,guard+anchor,1)
 # Explicit readiness for fail-closed TX in the opt-in build.
 if 'pub fn ready()' not in s:s+='\n#[cfg(k6_lean_txdog)]\npub fn ready() -> bool { LIVE.load(Ordering::Relaxed) }\n'
 p.write_text(s)
