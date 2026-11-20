@@ -61,7 +61,7 @@ download artifacts from the latest successful [Flux starter firmware workflow](h
 (run for the main branch). Unzip the Actions artifact first, then the starter ZIP.
 For most users, choose `flux-fd6818b-scan-fcc.zip` in the US or the CE variant
 where appropriate. Select a transmit profile that complies with local rules.
-The installer supports Linux; Windows installation is experimental. Extract the ZIP, open a terminal in
+The Python CLI and local browser Catalog run on Linux and macOS without native app packaging; Windows installation is experimental. Extract the ZIP, open a terminal in
 the extracted directory, and run:
 
 ```sh
@@ -70,6 +70,11 @@ python3 -m venv .venv
 python -m pip install -r requirements.txt
 python tools/k6.py starter-install starter --port /dev/ttyUSB0
 ```
+
+On macOS, use the same Python virtual-environment steps, but find your serial port with
+`python -m serial.tools.list_ports` and pass its `/dev/cu.*` path instead of
+`/dev/ttyUSB0`. For source builds, install the macOS toolchain described in
+[the macOS guide](docs/k6-macos-build.md). No `.app` or `.dmg` is required.
 
 On Windows, extract the ZIP and run `install.bat`, or follow the
 [PowerShell installation instructions](docs/manual/install.md#windows-experimental).
