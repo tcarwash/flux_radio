@@ -15,7 +15,7 @@ stop and ask in the project's [Issues](https://github.com/tcarwash/flux_radio/is
 ## What you need
 
 - A compatible radio, charged battery and a working two-pin USB programming cable.
-- A Linux or Windows computer with Python 3.10+ and serial-port access. Windows support is experimental.
+- A Linux, macOS, or Windows computer with Python 3.10+ and serial-port access. macOS uses the same Python CLI and local browser Catalog as Linux; Windows support is experimental.
 - A complete starter pack, either from a trusted release or built using the
   [README](../../README.md#build-from-source). Keep the pack together.
 - A safe location for your radio's 2 MiB SPI backup.
@@ -64,6 +64,15 @@ python tools/k6.py starter-install starter --port /dev/ttyUSB0
 Follow the prompts; never press MENU at FORMAT FLASH? before the backup
 succeeds. The guided path is experimental. The manual procedure below is
 also available, including if a guided install is interrupted.
+
+## macOS (Python CLI and Catalog)
+
+On macOS, the Python installer and local Catalog do not require a packaged `.app` or `.dmg`.
+Use the Linux virtual-environment commands above, replacing `/dev/ttyUSB0` with
+the actual `/dev/cu.*` serial port found via `python -m serial.tools.list_ports`.
+For firmware builds from source, follow the [macOS toolchain guide](../k6-macos-build.md).
+The physical workflow has been exercised on Apple Silicon; Intel Macs and the
+full test suite remain unverified.
 
 ## Windows (experimental)
 
