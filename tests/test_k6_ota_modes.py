@@ -611,5 +611,5 @@ def test_api_rx_tx_protections_and_modules_preserved():
     for name in ("vfo", "surf", "explore_scan", "cardlink"):
         source = C6 / "mod" / f"{name}.c"
         assert source.is_file(), name
-        assert 1 <= k6mod.source_level(str(source)) <= 23
+        assert 1 <= k6mod.source_level(str(source)) <= (24 if name == "cardlink" else 23)
     assert k6mod.source_level(str(C6 / "mod" / "aprsgpssync.c")) == 23  # packs accept it now

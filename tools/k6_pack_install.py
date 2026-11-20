@@ -10,6 +10,7 @@ import sys
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tools'))
 from k6_feature_packs import DEFAULT, resolve
 from k6_build_identity import image_build_id
