@@ -39,7 +39,17 @@ def test_control_and_refusals():
     assert link.tunes == [146550000]
 
 @pytest.fixture
-def server(socket_enabled):
+def local_socket_access(request):
+    """Works with optional pytest-socket and ordinary CI pytest alike."""
+    try:
+        request.getfixturevalue("socket_enabled")
+    except pytest.FixtureLookupError:
+        # Without pytest-socket, Python's loopback sockets work normally.
+        pass
+
+
+@pytest.fixture
+def server(local_socket_access):
     link = MockLink()
     with Server(("127.0.0.1", 0), Rig(link)) as s:
         t = threading.Thread(target=s.serve_forever, daemon=True)
@@ -96,7 +106,7 @@ def test_optional_mode_vfo():
     assert r.execute("T 1")=="RPRT -11\n"
 
 @pytest.mark.skipif(not shutil.which("rigctl"), reason="Hamlib not installed")
-def test_real_hamlib_mode_and_vfo(socket_enabled):
+def test_real_hamlib_mode_and_vfo(local_socket_access):
     link = CatLink()
     with Server(("127.0.0.1", 0), Rig(link, ["status", "tune", "mode", "vfo"])) as s:
         t = threading.Thread(target=s.serve_forever, daemon=True)
@@ -158,7 +168,7 @@ def test_capability_advertisement_is_consistent_with_setters():
             assert rig.execute(cmd)=="RPRT -11\n"
 
 
-def test_discovery_on_real_hamlib_does_not_advertise_ptt(socket_enabled):
+def test_discovery_on_real_hamlib_does_not_advertise_ptt(local_socket_access):
     link=CatLink()
     with Server(("127.0.0.1",0),Rig(link,["status","tune","mode","vfo"])) as server:
         worker=threading.Thread(target=server.serve_forever,daemon=True)
