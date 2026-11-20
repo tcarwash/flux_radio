@@ -6,7 +6,7 @@ from k6_pack_install import provision_artifacts, provision_pack, PackError, pack
 from k6_flash_policy import assess
 
 def install(pack, spec, port, *, ask=input, log=print):
-    lock, firmware, _, key = provision_artifacts(pack, spec, None)
+    lock, firmware, identity, key = provision_artifacts(pack, spec, None)
     if key is not None or 'ota' in lock['packs']:
         raise PackError('starter-install supports cable-only packs')
     if not assess(len(firmware),lock['packs'])['pass']:
@@ -47,8 +47,16 @@ def install(pack, spec, port, *, ask=input, log=print):
             connection.close()
     if (mode == "cable" or path.exists()) and (not path.is_file() or path.stat().st_size != radio.CHIP_BYTES):
         raise PackError('backup incomplete; refusing to flash')
-    # Existing pack path retains build ID, budget and artifact checks.
-    provision_pack(pack,spec,port,action='flash',mode=mode,log=log)
+    packed=lock.get('storage',{}).get('format')==2
+    journal=None
+    # Stock bootloader cannot read SPI; newly flashed firmware exposes a
+    # read-only dump before any destructive first-boot formatting.
+    if packed and mode=='update':
+        with pack_port(port):
+            connection=radio.open_port(SimpleNamespace(port=port))
+            try:radio.flash(connection,firmware,None,'update',log=log)
+            finally:connection.close()
+    else:provision_pack(pack,spec,port,action='flash',mode=mode,log=log)
     # Do not wait for a legacy codebook banner; cable-only images may omit it.
     ask('If UPDATE remains, power cycle normally. Do not press MENU at FORMAT FLASH?. Press Enter: ')
     with pack_port(port):
@@ -59,6 +67,7 @@ def install(pack, spec, port, *, ask=input, log=print):
                 cable.end()
                 if not path.exists():
                     raise PackError('no pre-format backup available; stop and investigate before installing modules')
+                if packed and mode=='update':raise PackError('expected first-boot backup screen; do not initialize an unidentified library')
             else:
                 link=radio.CpsLink(connection,log)
                 if not link.handshake(radio.AURA_HANDSHAKE,wait=10.0):
@@ -66,6 +75,9 @@ def install(pack, spec, port, *, ask=input, log=print):
                 try:
                     if not path.exists():
                         radio.backup(link,path,log)
+                    if packed and mode=='update':
+                        from k6_user_store_restore import prepare_first_install,BACKUP_DIR
+                        journal=prepare_first_install(link,BACKUP_DIR,identity,port,path,log)
                 finally:
                     link.end()
                 if not path.exists() or path.stat().st_size!=radio.CHIP_BYTES:
@@ -76,7 +88,9 @@ def install(pack, spec, port, *, ask=input, log=print):
                 ask('Press MENU on radio now, wait for VFO screen, then press Enter: ')
         finally:
             connection.close()
-    provision_pack(pack,spec,port,action='install',log=log)
+    if journal is not None:
+        provision_pack(pack,spec,port,action='install',log=log,first_install=journal)
+    else:provision_pack(pack,spec,port,action='install',log=log)
     if lock.get('theme_package'):
         theme=lock['theme_package']
         # Use normal typed theme installer instead of reflashing firmware.

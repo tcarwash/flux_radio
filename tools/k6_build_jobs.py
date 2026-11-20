@@ -20,7 +20,7 @@ class BuildJobs:
         self._jobs = {}
         self._radio_jobs = {}
 
-    def start(self, packs, theme='flux', tx_profile='ce', theme_name=''):
+    def start(self, packs, theme='flux', tx_profile='ce', theme_name='', iq=False):
         from k6_feature_packs import DEFAULT, resolve
         from k6_pack_policy import POLICY, validate
         spec = json.loads(DEFAULT.read_text())
@@ -36,6 +36,7 @@ class BuildJobs:
             log = folder / 'build.log'
             output = folder / 'pack'
             command = [sys.executable, str(ROOT / 'tools/k6.py'), 'build', *plan['packs'], '--output', str(output), '--tx-profile', plan['tx_profile'], '--theme', plan['theme']]
+            if iq:command.append('--iq')
             if theme_name:
                 command += ['--theme-name', theme_name]
             with log.open('wb') as stream:

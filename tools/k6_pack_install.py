@@ -48,6 +48,11 @@ def verify_pack(root, spec, *, require_attested=True):
     fw = checked_file(root, firmware['path'], firmware['sha256'])
     if fw.stat().st_size != firmware['bytes']:
         raise PackError('firmware byte count mismatch')
+    optional=lock.get('optional_services',[])
+    if optional not in ([],['serial-iq']):raise PackError('invalid optional services')
+    if optional:
+        from k6_pack_policy import storage_environment
+        storage_environment(plan,iq=True)
     storage=lock.get('storage')
     if storage is not None:
         from k6_system_install import pack as pack_system
@@ -60,6 +65,8 @@ def verify_pack(root, spec, *, require_attested=True):
             if len(data)!=page['bytes']:raise PackError('system page size mismatch')
             images.append(data)
         if images:pack_system(fw.read_bytes(),images,8192)
+        if optional and {p[18] for p in images}!={18,19}:raise PackError('missing IQ/channel system pages')
+    elif optional:raise PackError('IQ requires packed system pages')
     splash = lock.get('boot_splash')
     if splash is not None:
         splash_path = checked_file(root, splash['path'], splash['sha256'])
@@ -201,7 +208,7 @@ def provision_artifacts(root, spec, key_file):
     policy = json.loads(POLICY.read_text())
     validate(spec, policy)
     receipt = json.loads((Path(root) / 'firmware.receipt.json').read_text())
-    verify(receipt, firmware, plan, {**gate_environment(plan, policy),**(storage_environment(plan) if lock.get('storage') else {})})
+    verify(receipt, firmware, plan, {**gate_environment(plan, policy),**(storage_environment(plan,iq=bool(lock.get('optional_services'))) if lock.get('storage') else {})})
     data = firmware.read_bytes()
     if hashlib.sha256(data).hexdigest() != lock['firmware']['sha256']:
         raise PackError('firmware changed during verification')
@@ -215,7 +222,7 @@ def provision_artifacts(root, spec, key_file):
     return lock, data, identity, key
 
 
-def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log=print, recovery=None):
+def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log=print, recovery=None, first_install=None):
     import k6_install as radio
 
     if mode not in ('cable', 'update'):
@@ -226,6 +233,7 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
     packed=lock.get('storage',{}).get('format')==2
     is_flash=action in ('flash','flash-install')
     firmware_only=action=='flash'
+    if first_install is not None and (not packed or action!='install'):raise PackError('first-install journal requires packed install')
     if recovery is not None and (not packed or not is_flash):raise PackError('recovery requires a packed flash-install')
     if packed and is_flash:action='flash-install'
     prepared=None
@@ -325,7 +333,9 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
             if not report['build_id_match'] or not report['capabilities_match']:
                 raise PackError(f'connected firmware does not match the pack: {json.dumps(report)}')
 
-            if packed and is_flash:
+            if first_install is not None:
+                journal=Path(first_install);prepared=load_recovery(journal,cable,identity,port)
+            if packed and (is_flash or first_install is not None):
                 if prepared is None:raise PackError('missing pre-flash user library backup')
                 restore(cable,bytes.fromhex(identity),prepared,log,key=key)
                 if pages:

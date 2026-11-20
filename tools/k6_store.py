@@ -543,21 +543,23 @@ def create_app(store: ModuleStore | None = None):
             flash(str(exc), "error")
         return render_template("index.html", repos=repos, catalog_themes=theme_library.list())
 
-    def profile_plan(selected, theme, tx_profile):
+    def profile_plan(selected, theme, tx_profile, iq=False):
         from k6_feature_packs import DEFAULT, resolve, DEFAULT_TX_PROFILE
         from k6_pack_policy import POLICY, validate, gate_environment
         spec = json.loads(DEFAULT.read_text())
         policy = json.loads(POLICY.read_text())
         choices = {name: dict(item) for name, item in spec['packs'].items() if name != 'base'}
         if 'sotto' in choices:
-            choices['sotto']['status'] = 'Temporarily tabled until a linked size is verified'
+            choices['sotto']['status'] = 'WIP — not ready for installation'
         try:
             if any(name not in choices or choices[name].get('status') for name in selected):
                 raise ValueError('unknown feature pack')
             validate(spec, policy)
             plan = resolve(spec, selected or ['base'], theme, tx_profile)
             from k6_flash_estimate import estimate
-            result = {'ok': True, 'plan': plan, 'gates': gate_environment(plan, policy), 'estimate': estimate(plan)}
+            from k6_pack_policy import storage_environment
+            plan['iq']=iq
+            result = {'ok': True, 'plan': plan, 'gates': {**gate_environment(plan, policy),**storage_environment(plan,iq=iq)}, 'estimate': estimate(plan)}
         except (ValueError, KeyError) as exc:
             result = {'ok': False, 'error': str(exc)}
         return choices, result
@@ -570,14 +572,14 @@ def create_app(store: ModuleStore | None = None):
         theme = request.form.get('theme', DEFAULT_THEME)
         theme_name = request.form.get('theme_name', '')
         tx_profile = request.form.get('tx_profile', DEFAULT_TX_PROFILE)
-        choices, result = profile_plan(selected, theme, tx_profile)
+        choices, result = profile_plan(selected, theme, tx_profile, request.form.get('iq')=='1')
         saved_themes = theme_library.list()
         matching_theme_index = next((i for i, item in enumerate(saved_themes)
                                      if item['token'] == theme and (not theme_name or item['name'] == theme_name)), -1)
         return render_template('profiles.html', choices=choices, result=result,
                                selected=selected, themes=THEMES, selected_theme=theme, selected_theme_name=theme_name,
                                saved_themes=saved_themes, matching_theme_index=matching_theme_index,
-                               tx_profiles=TX_PROFILES, selected_tx_profile=tx_profile), (200 if result['ok'] else 400)
+                               tx_profiles=TX_PROFILES, selected_tx_profile=tx_profile, selected_iq=request.form.get('iq')=='1'), (200 if result['ok'] else 400)
 
     @app.get("/themes")
     def themes_page():
@@ -644,7 +646,7 @@ def create_app(store: ModuleStore | None = None):
     def preview_profile():
         from k6_feature_packs import DEFAULT_THEME, DEFAULT_TX_PROFILE
         _, result = profile_plan(request.form.getlist('pack'), request.form.get('theme', DEFAULT_THEME),
-                                 request.form.get('tx_profile', DEFAULT_TX_PROFILE))
+                                 request.form.get('tx_profile', DEFAULT_TX_PROFILE),request.form.get('iq')=='1')
         return jsonify(result), (200 if result['ok'] else 400)
 
     @app.post("/profiles/build")
@@ -657,14 +659,14 @@ def create_app(store: ModuleStore | None = None):
         theme = request.form.get('theme', DEFAULT_THEME)
         theme_name = request.form.get('theme_name', '').strip()
         tx_profile = request.form.get('tx_profile', DEFAULT_TX_PROFILE)
-        _, result = profile_plan(selected, theme, tx_profile)
+        _, result = profile_plan(selected, theme, tx_profile, request.form.get('iq')=='1')
         if not result['ok']:
             abort(400)
         if not result['estimate']['allowed']:
             flash('Estimated firmware size exceeds this profile’s flash budget. Remove feature sets before building.', 'error')
             return redirect(url_for('profiles'))
         try:
-            job_id = app.config['build_jobs'].start(selected, theme, tx_profile, theme_name)
+            job_id = app.config['build_jobs'].start(selected, theme, tx_profile, theme_name, **({'iq':True} if request.form.get('iq')=='1' else {}))
         except (ValueError, OSError) as exc:
             flash(str(exc), 'error')
             return redirect(url_for('profiles'))

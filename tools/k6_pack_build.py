@@ -102,6 +102,7 @@ def main():
     p.add_argument('--allow-unverified-firmware', action='store_true',
                    help='explicitly allow staging a prebuilt image without verifying capabilities')
     p.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
+    p.add_argument('--iq', action='store_true', help='experimental serial IQ (Data only)')
     p.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     p.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
     args = p.parse_args()
@@ -111,6 +112,7 @@ def main():
         validate(spec, policy)
         plan = resolve(spec, args.packs, args.theme, args.tx_profile)
         if args.skip_firmware_build:
+            if args.iq:p.error('IQ requires a fresh build')
             if args.theme != DEFAULT_THEME:
                 p.error('non-default themes require a fresh firmware build')
             if args.firmware is None:
@@ -127,7 +129,7 @@ def main():
             env.pop('K6_DESIGNER_TEST_SLOT', None)
             env['K6_IMAGE_NAME'] = 'flux-fd6818b-pack'
             env.update(gate_environment(plan, policy))
-            env.update(storage_environment(plan))
+            env.update(storage_environment(plan,iq=args.iq))
             if "data" in plan["packs"]:
                 env.update(K6_CONFIG_FSK="1", K6_LEAN_TXDOG="1", K6_NATIVE_FM="0",
                            K6_FONT_SUBSET="1", K6_RASTER_BOOT="1")
@@ -140,10 +142,11 @@ def main():
                 if not budget['pass']:
                     raise ValueError(f'firmware exceeds {budget["policy"]}: {budget["used"]} > {budget["limit"]}')
                 image_build_id(image.read_bytes())  # new linked builds must carry an ID
-                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1')
+                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1',system_pages=[image.parent/'iq-system.bin'] if args.iq else [])
+                if args.iq:lock['optional_services']=['serial-iq']
                 lock['flash_budget'] = budget
                 (args.output / 'pack.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
-                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, {**gate_environment(plan, policy),**storage_environment(plan)})
+                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, {**gate_environment(plan, policy),**storage_environment(plan,iq=args.iq)})
             image = None
         if args.skip_firmware_build:
             (args.output / 'firmware.receipt.json').unlink(missing_ok=True)

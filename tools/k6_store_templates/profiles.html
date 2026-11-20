@@ -2,7 +2,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Feature packs · Flux</title><link rel="stylesheet" href="{{ url_for('static', filename='store.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='builder.css') }}"></head>
 <body>{% with nav_section = 'profiles' %}{% include '_navbar.html' %}{% endwith %}
-<main class="layout detail-layout profile-workspace"><p class="eyebrow">FIRMWARE PROFILE PLANNER</p><div class="detail-title"><div><h1>Build your radio</h1><p class="summary">Choose optional services. Base firmware and module loader are always included. APRS apps install from the Catalog without an additional feature set. This preview does not build, flash, or install anything.</p></div></div>
+<main class="layout detail-layout profile-workspace"><p class="eyebrow">FIRMWARE PROFILE PLANNER</p><div class="detail-title"><div><h1>Build your radio</h1><p class="summary">Choose optional services. Base firmware, native memory programming and module loader are always included. APRS apps install from the Catalog without an additional feature set. This preview does not build, flash, or install anything.</p></div></div>
 {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="flash {{ category }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
 {% set themes = themes|default({'flux': {'name': 'Flux', 'description': 'Default status layout with top bar and side indicator.'}, 'classic': {'name': 'Classic', 'description': 'Arrow-guided layout familiar from earlier firmware.'}, 'minimal': {'name': 'Minimal', 'description': 'Compact rail-only layout with essential VFO readout.'}}, true) %}
 {% set selected_theme = selected_theme|default('flux') %}
@@ -14,6 +14,7 @@
 <legend class="visually-hidden">Feature packs</legend>
 {% for name, pack in choices.items() %}<label class="pack-card"><input type="checkbox" name="pack" value="{{ name }}" {% if name in selected %}checked{% endif %} {% if pack.status is defined %}disabled{% endif %} data-pack-checkbox> <strong>{{ name|upper }}</strong> — {{ pack.description|default(pack.capabilities|join(', ')) }}{% if pack.status is defined %} ({{ pack.status }}){% endif %}</label>{% endfor %}
 </fieldset>
+<label class="pack-card"><input type="checkbox" name="iq" value="1" {% if selected_iq %}checked{% endif %}> <strong>Data: experimental serial IQ</strong> — optional receiver acquisition engine; not needed for KISS. Requires Data, excludes OTA and Sotto. Exact flash limit enforced at build time.</label>
 <section class="tx-profile-select">
 <div class="section-heading"><div><p class="eyebrow">TRANSMIT INHIBIT</p><h2>Starting band profile</h2></div></div>
 <p class="radio-note">This sets the radio’s initial profile. You can change it on the device later; transmit is checked against the profile currently selected there. Unrestricted still observes the radio’s hardware tuning limits.</p>

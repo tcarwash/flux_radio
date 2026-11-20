@@ -86,3 +86,23 @@ def pending_for_pack(directory,build,port):
         if r.get('version')==1 and r.get('status')=='pending' and r.get('build')==build and r.get('port')==str(port):
             result.append(p)
     return result
+
+
+def prepare_first_install(cable, directory, build, port, full_backup, log=print):
+    """Save factory bytes before format; stock voice assets are not user modules."""
+    raw=Path(full_backup).read_bytes()
+    if len(raw)!=0x200000:raise ValueError('first-install backup must contain the complete SPI chip')
+    if cable.read(0xf000,4096)!=raw[0xf000:0x10000]:raise ValueError('first-install calibration mismatch')
+    # A genuine factory image may occupy the entire future library with voice data.
+    # Never silently discard a recognizable Flux library or opaque data: the full
+    # factory backup remains recoverable and initialization is explicitly authorized.
+    from k6_user_store_migrate import compact,is_packed
+    original=raw[BASE:END]
+    if is_packed(original) or any(original[i:i+3] in (b'K6M',b'K6T') for i in range(0,len(original),16384)):
+        bank,_=upgrade(original,preserve_opaque=True)
+    else:bank,_=compact({})
+    directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
+    fd,name=tempfile.mkstemp(prefix='flux-library-',suffix='.spi',dir=directory);os.close(fd)
+    path=Path(name);persist(path,original);packed=path.with_suffix('.kul2');persist(packed,bank)
+    record={'version':1,'build':build,'port':str(port),'original':path.name,'packed':packed.name,'packed_sha256':hashlib.sha256(bank).hexdigest(),'original_sha256':hashlib.sha256(original).hexdigest(),'calibration_sha256':hashlib.sha256(raw[0xf000:0x10000]).hexdigest(),'status':'pending','first_install':True,'factory_backup':str(Path(full_backup).resolve())}
+    journal=path.with_suffix('.json');persist(journal,json.dumps(record,indent=2).encode());log(f'  first-install recovery journal: {journal}');return journal

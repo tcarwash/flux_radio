@@ -751,8 +751,8 @@ def backup(link, path, log=print):
     cal = link.read(0xF000, 0x1000)
     if cal != data[0xF000:0x10000]:
         raise InstallError("the calibration sector read differently twice: the cable is unreliable, try again")
-    with open(path, "wb") as f:
-        f.write(data)
+    from k6_user_store_restore import persist
+    persist(path,data)
     log(f"wrote {path}: {len(data) >> 10} KB in {time.monotonic() - t:.0f} s, sha256 {hashlib.sha256(data).hexdigest()[:16]}; "
         "keep it: it holds your radio's factory calibration")
     return data

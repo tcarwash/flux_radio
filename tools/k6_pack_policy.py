@@ -46,6 +46,10 @@ if __name__ == '__main__':
     main()
 
 
-def storage_environment(plan):
+def storage_environment(plan, *, iq=False):
     """All new catalog builds use KUL2. External channel code is a separate gate."""
-    return {'K6_USER_STORE':'1','K6_MEMORY_BANK':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0','K6_IQ_PAGE':'0','K6_SERIAL_IQ':'0','K6_SERIAL_LAB':'0'}
+    env={'K6_USER_STORE':'1','K6_MEMORY_BANK':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0','K6_IQ_PAGE':'0','K6_SERIAL_IQ':'0','K6_SERIAL_LAB':'0'}
+    if iq:
+        if 'data' not in plan['packs'] or {'ota','sotto'}&set(plan['packs']):raise ValueError('Experimental IQ requires Data and excludes OTA/Sotto')
+        env.update(K6_SYSTEM_INSTALL='1',K6_CHANNEL_PAGE='1',K6_IQ_PAGE='1',K6_SERIAL_IQ='1',K6_RAM0='1',K6_SERIAL_TRANSPORT='1',K6_EL_POWER='1',K6_HEALTH_TELEMETRY='1')
+    return env
