@@ -21,6 +21,8 @@ Connect a Hamlib client (the first process owns the serial port):
     rigctl -m 2 -r 127.0.0.1:4532 m
     rigctl -m 2 -r 127.0.0.1:4532 M FM 15000
     rigctl -m 2 -r 127.0.0.1:4532 V VFOB
+    rigctl -m 2 -r 127.0.0.1:4532 l STRENGTH
+    rigctl -m 2 -r 127.0.0.1:4532 get_dcd
 
 The daemon binds loopback only, owns the normal cross-process serial lock,
 and serializes all client transactions. Use Ctrl-C before running a separate
@@ -34,20 +36,27 @@ recent successfully accepted command wins, so coordinate them.
 | m/M | Get/set FM, AM, USB, CW; setters require new mode capability |
 | v/V | Get/select VFOA/VFOB; setter requires new VFO capability |
 | t | Read actual cached TX status |
+| l STRENGTH | Approximate RX signal strength in dB relative to S9 |
+| get_dcd | Read RF squelch-open status (0 closed, 1 open) |
 | T | Not supported, both on and off return feature unavailable |
 | dump_state, chk_vfo, get_vfo_info, get_powerstat, get_info | Discovery and read status |
 
 FM widths 8000/15000, AM 4000/8000, USB 2400 and CW 500 Hz are nominal
 Hamlib mappings, not measured IF passbands. Width 0 or -1 selects the normal
 mapping. CWF is reported as CW because Hamlib has no exact Flux CWF mode;
-set CW selects true CW, not CWF. PTT, levels, split, tone, memory editing and
+set CW selects true CW, not CWF. STRENGTH uses the firmware's existing
+estimated RSSI and VHF/UHF S9 reference of -93 dBm. This is an indicative
+meter, not a calibrated RF measurement. STRENGTH and DCD reject queries
+when TX, sleep, scan/app mode or dual watch makes the active VFO sample
+unavailable; they do not tune or wake the radio. DCD reflects RF squelch,
+not tone-decoder/audio gating. PTT, other levels and level setters, split, tone, memory editing and
 CW message actions remain unimplemented. Setters return errors on failure;
 no implicit loader fallback or serial retries.
 
 ## Verification
 
 Real Hamlib 4.6.5 model 2 connection tested against mocked serial hardware
-over a local TCP socket, including tuning/status, mode selection and VFO selection through the actual Hamlib client.
+over a local TCP socket, including tuning/status, mode and VFO selection, STRENGTH and DCD through the actual Hamlib client.
 Packed compiled image (110,408 bytes) passed status/tune, module execution and CAT mode/VFO emulator tests (3 tests); RF
 behavior, device-specific audio and real hardware Hamlib use need validation.
 Remote PTT is deliberately absent until the firmware has a fail-closed

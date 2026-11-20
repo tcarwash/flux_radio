@@ -14,7 +14,8 @@ class MockLink:
         self.hz = 146520000
         self.tunes = []
     def status(self):
-        return dict(master=0, transmitting=False, vfos=[
+        return dict(master=0, watching=0, transmitting=False, standby_idle=True, sleeping=False,
+                    rssi_dbm=-105, squelch_open=True, vfos=[
             dict(hz=self.hz, mode="FM", wide=False),
             dict(hz=433500000, mode="CW", wide=False)])
     def tune(self, hz):
@@ -111,3 +112,29 @@ def test_real_hamlib_mode_and_vfo(socket_enabled):
         finally:
             s.shutdown()
             t.join()
+
+def test_rx_telemetry_and_invalid_context():
+    link=MockLink()
+    rig=Rig(link)
+    assert rig.execute("l STRENGTH")=="-12\n"
+    assert rig.execute(r"\get_dcd")=="1\n"
+    assert rig.execute("L SQL 0.5")=="RPRT -11\n"
+    assert rig.execute("l RAWSTR")=="RPRT -11\n"
+    original=link.status
+    for invalid in (dict(watching=1),dict(transmitting=True),dict(sleeping=True),
+                    dict(standby_idle=False)):
+        link.status=lambda:dict(original(),**invalid)
+        assert rig.execute("l STRENGTH")=="RPRT -9\n"
+        assert rig.execute(r"\get_dcd")=="RPRT -9\n"
+    link.status=lambda:dict(original(),squelch_open=False,rssi_dbm=-83)
+    assert rig.execute("l STRENGTH")=="10\n"
+    assert rig.execute(r"\get_dcd")=="0\n"
+
+@pytest.mark.skipif(not shutil.which("rigctl"), reason="Hamlib not installed")
+def test_real_hamlib_rx_meter(server):
+    s,_=server
+    cmd=["rigctl","-m","2","-r",f"127.0.0.1:{s.server_address[1]}"]
+    result=subprocess.run(cmd+["l","STRENGTH","get_dcd"],
+                          capture_output=True,text=True,timeout=10)
+    assert result.returncode==0, result.stderr
+    assert result.stdout.splitlines()==["-12","1"],result.stdout

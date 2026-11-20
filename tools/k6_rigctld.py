@@ -37,12 +37,13 @@ DUMP_STATE = """1
 0
 0x0
 0x0
-0x0
+0x40000000
 0x0
 0x0
 0x0
 vfo_ops=0x0
 ptt_type=0x0
+dcd_type=0x1
 targetable_vfo=0x0
 has_set_vfo=0
 has_get_vfo=1
@@ -63,7 +64,7 @@ done
 ALIASES = {
     r"\get_freq": "f", r"\set_freq": "F", r"\get_mode": "m", r"\set_mode": "M",
     r"\get_vfo": "v", r"\set_vfo": "V", r"\get_ptt": "t", r"\set_ptt": "T",
-    r"\get_level": "l", r"\get_info": "_",
+    r"\get_level": "l", r"\get_info": "_", r"\get_dcd": "dcd",
 }
 
 class Rig:
@@ -108,6 +109,21 @@ class Rig:
             return "1\n"
         if op == "_":
             return "Flux live serial bridge (RX/CAT; remote TX disabled)\n"
+        if op == "l" and args == ["?"]:
+            return "STRENGTH\n"
+        if (op == "l" and args == ["STRENGTH"]) or (op == "dcd" and not args):
+            s = self.link.status()
+            # RSSI/DCD belong to the currently watched receiver, not the
+            # inactive VFO. Do not present a cached sample during TX/sleep,
+            # scans, or when dual watch is sampling the other VFO.
+            if (not s["standby_idle"] or s["transmitting"] or s["sleeping"]
+                    or s["watching"] != s["master"]):
+                return "RPRT -9\n"
+            if op == "l":
+                # Match the firmware's S-meter: VHF/UHF S9 = -93 dBm.
+                # The underlying raw-to-dBm conversion is not yet calibrated.
+                return f"{s['rssi_dbm'] + 93}\n"
+            return f"{int(s['squelch_open'])}\n"
         if op == "M" and len(args) == 2 and "mode" in self.features:
             mode, width = args[0], int(args[1])
             widths = {"FM": (8000,15000), "AM": (4000,8000), "USB": (2400,), "CW": (500,)}
