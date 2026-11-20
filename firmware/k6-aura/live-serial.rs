@@ -11,6 +11,9 @@ pub const READ: u8 = 0x61;
 pub const TUNE: u8 = 0x62;
 pub const RUN: u8 = 0x66;
 pub const RUN_EVENT: u8 = 0x67;
+pub const CAPS: u8 = 0x68;
+pub const MODE: u8 = 0x69;
+pub const VFO: u8 = 0x6a;
 const OK: u8 = 0;
 const BUSY: u8 = 1;
 const INVALID: u8 = 2;
@@ -116,6 +119,29 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             reply(req, &[result]);
             uart::flush();
         }
+        // Capability bits are protocol features, not the module API level.
+        CAPS if req.arg == 0 => {
+            let flags: u32 = 1 | 2 | 4 | 16 | 32
+                | if cfg!(feature="spilib") {8} else {0}
+                | if cfg!(k6_health_telemetry) {64} else {0};
+            let mut d=[0u8;10];
+            d[1..5].copy_from_slice(b"FLCP");
+            d[5]=1;
+            d[6..10].copy_from_slice(&flags.to_le_bytes());
+            reply(req,&d);
+        }
+        #[cfg(k6_health_telemetry)]
+        0x65 if req.arg == 0 => {
+            if !idle || app.power_save_is_asleep() {reply(req,&[BUSY]);return;}
+            let (temp,vref)=App::serial_lab_temp(syst);
+            if temp<=0 || vref<=0 {reply(req,&[IO]);return;}
+            let vals=[temp,vref,app.battery_voltage_cv() as i32];
+            let mut d=[0u8;13];
+            for (i,v) in vals.iter().enumerate(){d[1+i*4..5+i*4].copy_from_slice(&v.to_le_bytes());}
+            reply(req,&d);
+        }
+        MODE => {let r=app.live_set_mode(syst,req.arg);reply(req,&[r]);}
+        VFO => {let r=app.live_select_vfo(syst,req.arg);reply(req,&[r]);}
         TUNE => {
             if !idle || app.power_save_is_asleep() {
                 reply(req, &[BUSY]); return;

@@ -153,3 +153,43 @@ insert(pager, '    rl!("K6 MOD ret={} ({:#x}) in {} ms stack_free={} B", ret, re
        '''    #[cfg(all(k6_live_serial, feature = "spilib"))]
     if unsafe { core::ptr::read_volatile(core::ptr::addr_of!(LIVE_ACTIVE)).is_some() } { unsafe { LIVE_RESULT = Some(ret); } }
     rl!("K6 MOD ret={} ({:#x}) in {} ms stack_free={} B", ret, ret, ms, sfree);''')
+
+# Volatile CAT changes use the existing app control path, not SPI writes.
+if "pub fn live_set_mode(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
+           '''    #[cfg(k6_live_serial)]
+    fn live_cat_idle(&mut self) -> bool {
+        if self.mode()!=Mode::Standby || self.is_transmitting() || self.cw_tx_active
+            || self.cw_key_down() || self.radio_mut().ptt_asserted()
+            || self.power_save_is_asleep() { return false; }
+        #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
+        if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
+        true
+    }
+
+    #[cfg(k6_live_serial)]
+    pub fn live_set_mode(&mut self, syst: &mut SYST, arg: u32) -> u8 {
+        if arg & !0x1ff != 0 || (arg & 0xff)>4 { return 2; }
+        if !self.live_cat_idle() { return 1; }
+        let side=&mut self.sides[self.master];
+        if side.vfo_chan!=ChVfoMode::Vfo || side.reversed {return 1;}
+        side.cfg.modulation=modulation_from_raw(arg as u8);
+        side.cfg.wide_band=arg & 0x100 != 0;
+        self.input.clear();
+        self.ani_target_override=None;
+        self.cw_hang_ticks=0;
+        self.sync_watching_to_master(syst);
+        0
+    }
+
+    #[cfg(k6_live_serial)]
+    pub fn live_select_vfo(&mut self, syst: &mut SYST, arg: u32) -> u8 {
+        if arg>1 {return 2;}
+        if !self.live_cat_idle() {return 1;}
+        let side=&self.sides[arg as usize];
+        if side.vfo_chan!=ChVfoMode::Vfo || side.reversed {return 1;}
+        if self.master!=arg as usize {side_ops::switch_side(self,syst);}
+        0
+    }
+
+    pub fn master_index(&self) -> usize {''')

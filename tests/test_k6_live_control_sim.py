@@ -75,3 +75,34 @@ def test_compiled_live_module_run(simulated_radio, monkeypatch):
     assert after['standby_idle'] and after['vfos'] == status['vfos'] and not after['transmitting']
     assert bytes(port.board.flash_data) == before
     assert all(x.startswith(k6_live.MAGIC) for x in port.requests)
+
+
+def test_compiled_cat_controls(simulated_radio, monkeypatch):
+    image = os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:
+        pytest.skip("set K6_SIM_LIVE_IMAGE to a K6_LIVE_SERIAL=1 image")
+    from k6_live import MODE, VFO
+    from k6_install import InstallError
+    port = simulated_radio(Path(image).read_bytes(), cable_only=True)
+    monkeypatch.setattr(k6_live, "time", SimpleNamespace(monotonic=port.monotonic))
+    link = LiveLink(port, timeout=3.0)
+    before = bytes(port.board.flash_data)
+    first = link.status()
+    features = link.capabilities()["features"]
+    assert {"mode", "vfo", "run"} <= set(features)
+    initial = first["master"]
+    for m in ("AM","USB","CW","FM"):
+        result=link.set_mode(m, m == "FM")
+        assert result["vfos"][initial]["mode"] == m
+        assert result["vfos"][initial]["wide"] == (m == "FM")
+        assert not result["transmitting"]
+    changed = link.select_vfo(1-initial)
+    assert changed["master"] == 1-initial
+    assert changed["watching"] == 1-initial
+    assert not changed["transmitting"]
+    assert link.select_vfo(initial)["master"] == initial
+    for op,arg in [(MODE,5),(MODE,0x200),(VFO,2)]:
+        with pytest.raises(InstallError, match="Unsupported"):
+            link.request(op,arg)
+    assert bytes(port.board.flash_data) == before
+    assert all(x.startswith(k6_live.MAGIC) for x in port.requests)

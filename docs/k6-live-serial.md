@@ -125,3 +125,33 @@ and integrity refusals, standby/live status recovery, SPI preservation and
 absence of legacy loader traffic. The physical radio advertised legacy cable
 protocol 5 (packed library), so use a compatible packed build for hardware
 validation. No physical flash or live execution validated at this checkpoint.
+
+## CAT control and feature discovery
+
+The serial/Hamlib branch adds these v1 commands (existing wire format unchanged):
+
+| Opcode | Argument | Success data after result byte |
+|---|---|---|
+| 65 | 0 | MCU temperature ADC sum, VREF sum, battery centivolts (three signed LE32); opt-in health build, awake idle RX only |
+| 68 | 0 | FLCP, schema byte 1, LE32 feature bitmap |
+| 69 | mode 0–4 in low byte; bit 8 wide; remaining bits zero | empty |
+| 6a | 0=A, 1=B | empty |
+
+Capabilities bits 0–6: status, memory read, tune, installed foreground
+module execution, mode control, VFO selection, health. Unknown bits are
+ignored by older clients. These bits do not advertise module ABI version,
+RF capabilities, or TX authorization. CW research opcodes 63/64 remain
+reserved (not ported, because they depend on research-only watchdog work).
+Mode and VFO changes are volatile and reuse the normal App radio
+configuration path. Both require idle awake standby and no resident engine,
+PTT or CW keying; mode requires an unreversed VFO and VFO selection requires
+an unreversed VFO target. Nothing writes SPI. The advertised wide/narrow
+state is the radio configuration, not a calibrated filter bandwidth.
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 caps
+    python3 tools/k6_live.py --port /dev/ttyUSB0 vfo 1
+    python3 tools/k6_live.py --port /dev/ttyUSB0 mode USB
+    python3 tools/k6_live.py --port /dev/ttyUSB0 health
+
+See [Hamlib](k6-hamlib.md) for the compatible NET rigctl bridge and
+[protocol roadmap](k6-live-serial-roadmap.md) for the development transport.

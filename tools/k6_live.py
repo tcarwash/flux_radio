@@ -14,6 +14,8 @@ from k6_port_lock import serial_lock
 MAGIC = b"FLXLV1"
 STATUS, READ, TUNE = 0x60, 0x61, 0x62
 RUN, RUN_EVENT = 0x66, 0x67
+CAPS, MODE, VFO = 0x68, 0x69, 0x6a
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -74,6 +76,36 @@ class LiveLink(CpsLink):
             raise InstallError("Unexpected tune reply")
         return self.status()
 
+    def capabilities(self):
+        d = self.request(CAPS)
+        if len(d) != 9 or d[:5] != b"FLCP\x01":
+            raise InstallError("Unexpected capability response")
+        bits = struct.unpack("<I", d[5:])[0]
+        return dict(version=1, flags=bits, features=[f for i,f in enumerate(FEATURES) if bits & (1 << i)])
+
+    def set_mode(self, mode, wide=False):
+        if mode not in MODES or not isinstance(wide, bool):
+            raise ValueError("Invalid Flux mode or bandwidth")
+        if self.request(MODE, MODES.index(mode) | (0x100 if wide else 0)):
+            raise InstallError("Unexpected mode response")
+        return self.status()
+
+    def select_vfo(self, index):
+        if index not in (0, 1) or isinstance(index, bool):
+            raise ValueError("VFO must be 0 or 1")
+        if self.request(VFO, index):
+            raise InstallError("Unexpected VFO response")
+        return self.status()
+
+    def health(self):
+        d = self.request(0x65)
+        if len(d) != 12:
+            raise InstallError("Invalid health response length")
+        temp, vref, cv = struct.unpack("<3i", d)
+        if temp <= 0 or vref <= 0:
+            raise InstallError("Invalid health ADC sample")
+        return dict(temp_sum=temp, vref_sum=vref, temp_index=temp/vref, battery_cv=cv)
+
     def run_module(self, slot, *, timeout=30.0, allow_higher_api=False, on_report=None):
         """Queue exactly once; collect framed reports and completion without more writes."""
         if isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot < 32:
@@ -129,6 +161,13 @@ def main():
     p.add_argument("--port", required=True)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
+    sub.add_parser("caps")
+    sub.add_parser("health")
+    mode = sub.add_parser("mode")
+    mode.add_argument("mode", choices=MODES)
+    mode.add_argument("--wide", action="store_true")
+    vfo = sub.add_parser("vfo")
+    vfo.add_argument("index", type=int, choices=(0,1))
     tune = sub.add_parser("tune")
     tune.add_argument("hz", type=int)
     run = sub.add_parser("run", help="launch an installed foreground module; wait for reports and completion")
@@ -148,6 +187,14 @@ def main():
                 while True:
                     print(json.dumps(link.status()), flush=True)
                     time.sleep(a.interval)
+            elif a.cmd == "caps":
+                print(json.dumps(link.capabilities(), indent=2))
+            elif a.cmd == "health":
+                print(json.dumps(link.health(), indent=2))
+            elif a.cmd == "mode":
+                print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
+            elif a.cmd == "vfo":
+                print(json.dumps(link.select_vfo(a.index), indent=2))
             elif a.cmd == "run":
                 result = link.run_module(a.slot, timeout=a.timeout,
                                          allow_higher_api=a.allow_higher_api,

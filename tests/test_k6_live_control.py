@@ -151,3 +151,23 @@ def test_run_refusal_timeout_and_higher_api():
     p.reply = lambda d: (cps_frame(RUN, d[7], b"\0") +
                          cps_frame(RUN_EVENT, d[7], b"\1" + struct.pack("<BiBi", 25, -200, 0, 0)))
     assert link.run_module(25)["result"] is None
+
+
+def test_caps_and_cat_commands():
+    from k6_live import CAPS, MODE, VFO
+    def reply(d):
+        return cps_frame(d[6],d[7],b"\0" + (
+            b"FLCP\x01" + struct.pack("<I",127) if d[6] == CAPS else
+            status_data() if d[6] == STATUS else b""))
+    p=Port(reply)
+    link=LiveLink(p,initial_seq=0)
+    assert link.capabilities()["features"] == ["status","read","tune","run","mode","vfo","health"]
+    link.set_mode("USB",True)
+    link.select_vfo(1)
+    assert p.writes == [request_bytes(CAPS,1),request_bytes(MODE,2,0x102),
+                        request_bytes(STATUS,3),request_bytes(VFO,4,1),request_bytes(STATUS,5)]
+    with pytest.raises(ValueError):
+        link.set_mode("LSB")
+    with pytest.raises(ValueError):
+        link.select_vfo(2)
+    assert len(p.writes)==5
