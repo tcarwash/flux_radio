@@ -26,6 +26,7 @@ def restore(cable,build,bank,log=print,*,key=None):
     def cmd(op,addr=0,data=b''):
         r=cable.call(op,addr,data)
         if r!=bytes(4):raise InstallError(f'user restore command {op:#x} block {addr} failed: {r.hex()}')
+    if hasattr(cable,"invalidate_library_directory"):cable.invalidate_library_directory()
     cmd(0x86,data=build)
     for sector in range(128):cmd(0x87,sector)
     staged=bytearray(bank);staged[:4]=staged[4096:4100]=b'\xff'*4

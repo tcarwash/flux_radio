@@ -397,19 +397,19 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
                 theme_blob = pack(theme_token, theme_name)
                 if cable.info()['protocol'] < 3:
                     raise PackError('Designer typed theme protocol 3 is required')
-                theme_slot = radio.find_empty_theme_slot(cable)
-                address = radio.LIB_BASE + theme_slot * radio.LIB_SLOT
-                if radio.library_read(cable,theme_slot,radio.LIB_SLOT) != b'\xff' * radio.LIB_SLOT:
-                    raise PackError('selected theme slot is no longer empty')
-                theme_serial = serials.next()
-                theme_image = radio.k6mod.image(theme_blob, 0, theme_serial, key,
-                                                lib=theme_slot, theme=True)
-                result_code, _have, _count, written = cable.send_image(theme_image, theme_serial & 255)
-                if (result_code != 3 or written != len(theme_blob) or
-                        radio.library_read(cable,theme_slot,len(theme_blob)) != theme_blob):
-                    raise PackError(f'theme install/readback failed: {result_code}, {written}')
+                theme_slot,theme_blob,current = radio.select_theme_install(cable,theme_blob)
+                _,theme_name = unpack(theme_blob,include_name=True)
+                if not current:
+                    theme_serial = serials.next()
+                    theme_image = radio.k6mod.image(theme_blob, 0, theme_serial, key,
+                                                    lib=theme_slot, theme=True)
+                    result_code, _have, _count, written = cable.send_image(theme_image, theme_serial & 255)
+                    if (result_code != 3 or written != len(theme_blob) or
+                            radio.library_read(cable,theme_slot,len(theme_blob)) != theme_blob):
+                        raise PackError(f'theme install/readback failed: {result_code}, {written}')
                 if theme_name:
-                    log(f"  theme verified in slot {theme_slot}: {theme_name!r} is registered in DISP > THEME")
+                    log(f"  theme verified in slot {theme_slot}: {theme_name!r} is registered in DISP > THEME" +
+                        (' (already current)' if current else ''))
                 else:
                     log(f'  theme verified in slot {theme_slot}; registered in DISP > THEME')
         except radio.InstallError as exc:
@@ -423,7 +423,9 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
         if action == 'flash-install' and lock.get('boot_splash'):
             splash = lock['boot_splash']
             splash_path = checked_file(Path(root), splash['path'], splash['sha256'])
-            radio.install_boot_logo(port, str(splash_path), yes=True, log=log)
+            # The previous session was closed; boot-logo installer needs an open serial object.
+            with radio.open_port(SimpleNamespace(port=port)) as splash_connection:
+                radio.install_boot_logo(splash_connection, str(splash_path), yes=True, log=log)
         if action == 'flash-install':
             log('  firmware, bundled modules, and all included theme/startup artwork installed and verified')
 
