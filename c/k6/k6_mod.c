@@ -143,6 +143,19 @@ static int check(const uint8_t *a, unsigned have_bytes, unsigned dl) {
   return KM_READY;
 }
 
+/* Live RAM upload: an exact complete standalone image, never a library
+   mutation or resident callback. Keep the boot-local replay watermark. */
+int km_live_verify(const uint8_t *a, unsigned n) {
+  int r;
+  km_reset();
+  if (n < KM_HDR + KM_TAG + 1 || a[12] < 1 || a[12] > 2 ||
+      a[13] || a[14] || a[15]) return KM_BAD_HDR;
+  r = check(a, n, 1);
+  if (r != KM_READY) return r;
+  km_arm(a, 0); /* no RF/ARQ report, clear reply and partial transfer state */
+  return K.code_len;
+}
+
 int km_tag_check(const uint8_t *a, unsigned code) {
 #ifdef KM_CABLE_ONLY
   const uint8_t *t=a+KM_HDR+code;

@@ -51,7 +51,7 @@ new='''    #[cfg(k6_designer)]
     }
 
 '''+old
-if new not in s:
+if 'fn designer_read(' not in s:
     if s.count(old)!=1: raise SystemExit('app anchor changed')
     s=s.replace(old,new)
 p.write_text(s)

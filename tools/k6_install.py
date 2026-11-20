@@ -1304,6 +1304,28 @@ def find_empty_theme_slot(link):
     raise InstallError("no empty theme slot is available; remove a theme or module slot first")
 
 
+def report_library(c, log, *, live=False):
+    info = c.info()
+    log(f"Flux {'live serial, storage protocol' if live else 'cable session'} {info['protocol']}, build ID "
+        f"{info['build_id'].hex() if info['build_id'] else '(not the voice + EXPLORE image)'}")
+    for what, img in codebooks(c):
+        log(f"missing: {what} (the {img} image installs it)")
+    for s in range(LIB_SLOTS):
+        if info["protocol"] >= 3:
+            theme = c.theme_at(s)
+            if theme is not None:
+                name, blob = theme
+                log(f"slot {s:2d} theme  {name:12s} {len(blob):6d} B code, serial 0")
+                log(f"theme revision {s} v{blob[3]} sha256 {hashlib.sha256(blob).hexdigest()}")
+                continue
+        h = c.slot_head(s)
+        if h:
+            hdr, name = h
+            code, serial, flags = struct.unpack_from("<H", hdr, 4)[0], struct.unpack_from("<I", hdr, 8)[0], hdr[13]
+            kind = "page" if flags & 2 else "cards" if flags & 4 else "module"
+            log(f"slot {s:2d} {kind:6s} {name or '(unnamed)':12s} {code:6d} B code, serial {serial}")
+
+
 def main(argv=None, log=None, ask=input):
     log = log or (lambda *x, **k: print(*x, **k, flush=True))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1322,6 +1344,7 @@ def main(argv=None, log=None, ask=input):
                                                        "(flashes the codebook installers again)")
     b = sub.add_parser("backup", help="the whole 2 MB SPI flash to a file")
     b.add_argument("-o", "--output")
+    b.add_argument("--legacy", action="store_true", help="explicitly use rebooting cable/stock programming protocol")
     f = sub.add_parser("flash", help="key an image with your key and flash it")
     f.add_argument("image")
     fg = f.add_mutually_exclusive_group()
@@ -1354,7 +1377,8 @@ def main(argv=None, log=None, ask=input):
     splash = sub.add_parser("install-boot-logo", help="install a 1024-byte full-screen boot bitmap, backing up the old one")
     splash.add_argument("image")
     splash.add_argument("--yes", action="store_true")
-    sub.add_parser("status", help="what the radio runs, its codebooks and its library")
+    status = sub.add_parser("status", help="what the radio runs, its codebooks and its library (live by default)")
+    status.add_argument("--legacy", action="store_true", help="explicitly use rebooting cable session")
     sub.add_parser("key", help="make your module key")
     bd = sub.add_parser("bundle", help="a release folder from build.sh's or CI's out/")
     bd.add_argument("out")
@@ -1391,8 +1415,24 @@ def main(argv=None, log=None, ask=input):
                 return 0
             if a.cmd == "install":
                 return cmd_install(a, bundle, port, key, log, ask)
+            if a.cmd == "status" and not a.legacy:
+                from k6_live import LiveLink
+                from k6_port_lock import serial_lock
+                with serial_lock(a.port or port.port):
+                    link = LiveLink(port)
+                    link.status()
+                    report_library(link, log, live=True)
+                return 0
             if a.cmd == "backup":
                 path = a.output or default_backup_path()
+                if not a.legacy:
+                    from k6_live import LiveLink
+                    from k6_port_lock import serial_lock
+                    with serial_lock(a.port or port.port):
+                        link = LiveLink(port)
+                        link.status()
+                        backup(link, path, log)
+                    return 0
                 c = open_cable(port, log, wait=4.0)
                 link = c or CpsLink(port, log)
                 if not c and not link.handshake(AURA_HANDSHAKE, wait=4.0):
@@ -1538,33 +1578,17 @@ def main(argv=None, log=None, ask=input):
                     log(f"  slot {slot} erased")
                 log("  radio restarting when the cable session ends")
             else:
-                info = c.info()
-                log(f"Flux cable session {info['protocol']}, build ID "
-                    f"{info['build_id'].hex() if info['build_id'] else '(not the voice + EXPLORE image)'}")
-                for what, img in codebooks(c):
-                    log(f"missing: {what} (the {img} image installs it)")
-                for s in range(LIB_SLOTS):
-                    if info["protocol"] >= 3:
-                        theme = c.theme_at(s)
-                        if theme is not None:
-                            name, blob = theme
-                            log(f"slot {s:2d} theme  {name:12s} {len(blob):6d} B code, serial 0")
-                            log(f"theme revision {s} v{blob[3]} sha256 {hashlib.sha256(blob).hexdigest()}")
-                            continue
-                    h = c.slot_head(s)
-                    if h:
-                        hdr, name = h
-                        code, serial, flags = struct.unpack_from("<H", hdr, 4)[0], struct.unpack_from("<I", hdr, 8)[0], hdr[13]
-                        kind = "page" if flags & 2 else "cards" if flags & 4 else "module"
-                        log(f"slot {s:2d} {kind:6s} {name or '':12s} {code:6d} B code, serial {serial}")
+                report_library(c, log)
             c.end()
             return 0
         finally:
             port.close()
-    except InstallError as e:
+    except (InstallError, OSError) as e:
         log(f"\nstopped: {e}")
         return 1
 
 
 if __name__ == "__main__":
+    # Share exception classes with the imported live client.
+    sys.modules.setdefault("k6_install",sys.modules[__name__])
     sys.exit(main())

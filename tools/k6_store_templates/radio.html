@@ -29,9 +29,9 @@
     </section>
     <section class="panel radio-connect">
       <div class="section-heading"><div><p class="eyebrow">CONNECT OVER THE PROGRAMMING CABLE</p><h2>Read installed slots</h2></div><span class="badge">Local USB serial</span></div>
-      <p class="radio-note">Reading status opens and closes a Flux cable session. The current firmware restarts the radio when that session ends.</p>
+      <p class="radio-note">Live reads are the default and do not reboot the radio. For older firmware, explicitly select the legacy cable session (reboots).</p>
       {% if radio_settings.port %}<p class="radio-note">Using <strong>{{ radio_settings.port }}</strong>{% if radio_settings.key_file %} · key file <code>{{ radio_settings.key_file }}</code>{% else %} · default key{% endif %}. <a href="{{ url_for('settings_page') }}">Change connection settings</a></p>
-      <form method="post" action="{{ url_for('inspect_radio') }}" class="session-action-form"><button type="submit">Read radio library <span>→</span></button></form>
+      <form method="post" action="{{ url_for('inspect_radio') }}" class="session-action-form"><label><input type="checkbox" name="legacy" value="1"> Legacy mode (reboots)</label><button type="submit">Read radio library <span>→</span></button></form>
       {% else %}<p class="radio-note">Set the serial device once before connecting.</p><a class="primary-link" href="{{ url_for('settings_page') }}">Set device connection <span>→</span></a>{% endif %}
     </section>
 
@@ -51,7 +51,7 @@
         {% elif inventory.ok %}
           <div class="empty radio-empty"><p class="eyebrow">EMPTY LIBRARY</p><h3>No occupied slots reported</h3><p>Add modules from a compatible project page in the catalog.</p><a class="primary-link" href="{{ url_for('index') }}#catalog">Browse catalog <span>→</span></a></div>
         {% else %}<pre class="install-result failed">{{ inventory.output }}</pre>{% endif %}
-        {% if inventory.ok %}<details class="readme"><summary>Show cable status output</summary><pre>{{ inventory.output }}</pre></details>{% endif %}
+        {% if inventory.ok %}<details class="readme"><summary>Show radio status output</summary><pre>{{ inventory.output }}</pre></details>{% endif %}
       </section>
     {% endif %}
     <section class="panel notice radio-capability"><strong>Module erasure is permanent.</strong> Cable protocol 2 firmware accepts only module slots (0–8 and 16–31), verifies the slot type, erases and reads back the entire 16 KB slot. Themes require Designer protocol 4 for removal and are excluded from bulk module operations. EXPLORE pages and help decks remain protected. Removing a module restarts the radio when the cable session ends.</section>

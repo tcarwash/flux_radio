@@ -30,3 +30,8 @@ for path,anchor in [('src/main.rs','static mut APP_SLOT:'),('src/hal/arena.rs','
  else:
   s=s.replace('#[cfg(all(not(small_arena),not(k6_ram0)))]','#[cfg(all(not(small_arena),any(not(k6_ram0),k6_ram0_small)))]').replace('#[cfg(all(not(small_arena),k6_ram0))]','#[cfg(all(not(small_arena),k6_ram0,not(k6_ram0_small)))]')
  p.write_text(s)
+
+# Diagnostic full relocation with the original arena, reserving the gain as stack.
+p=root/'src/hal/arena.rs';s=p.read_text()
+s=s.replace('any(not(k6_ram0),k6_ram0_small)', 'any(not(k6_ram0),k6_ram0_small,k6_ram0_stack)').replace('k6_ram0,not(k6_ram0_small)))]', 'k6_ram0,not(k6_ram0_small),not(k6_ram0_stack)))]')
+p.write_text(s)

@@ -127,7 +127,7 @@ old = '''    let mut app: &'static mut app::App = place_app(
         flashlight,
         fm_radio,
         ChannelConfig {'''
-if "km_call_on_stack(" not in text and old in text:
+if "let mut args = BootAppArgs {" not in text and old in text:
     text = text.replace(old, '''    #[cfg(feature = "blowfang-host")]
     let mut app: &'static mut app::App = {
         let mut args = BootAppArgs {
@@ -191,7 +191,7 @@ if "km_call_on_stack(" not in text and old in text:
         &mut cp.SYST,
     );''', 1)
 else:
-    if "km_call_on_stack(" not in text:
+    if "let mut args = BootAppArgs {" not in text:
         raise SystemExit("could not find App::new call site")
 helpers_anchor = "/// The boot logo's 1 KB buffer exists only during this call"
 helper_addition = addition[addition.index("#[cfg(feature = \"blowfang-host\")]\nstruct UiDrawArgs"):]

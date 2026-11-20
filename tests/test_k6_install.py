@@ -580,7 +580,7 @@ def test_backup(keyfile, tmp_path, monkeypatch):
     radio = Radio()
     radio.kl_cmd("flip 0f010")                               # something to find in the calibration sector
     out = tmp_path / "backup.bin"
-    r, log = run(["backup", "-o", str(out)], radio, monkeypatch)
+    r, log = run(["backup", "--legacy", "-o", str(out)], radio, monkeypatch)
     assert r == 0, log
     data = out.read_bytes()
     assert len(data) == 0x20000 and data[0xF010] == 0xFE and data.count(0xFF) == len(data) - 1

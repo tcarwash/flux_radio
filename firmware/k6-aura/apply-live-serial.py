@@ -16,12 +16,14 @@ def insert(path, old, new):
 (src / "cps/live.rs").write_text((here / "live-serial.rs").read_text())
 cps = src / "cps/mod.rs"
 insert(cps, "mod frame;", 'mod frame;\n#[cfg(all(feature = "blowfang-host", k6_live_serial))]\npub mod live;')
-insert(cps, "pub enum HostHandshake { Aura, Cable }",
+if "Live(live::Request)" not in cps.read_text():
+    insert(cps, "pub enum HostHandshake { Aura, Cable }",
        '''pub enum HostHandshake { Aura, Cable,
     #[cfg(k6_live_serial)]
     Live(live::Request),
 }''')
-insert(cps, "            if self.len >= HANDSHAKE.len()",
+if "live::decode(" not in cps.read_text():
+    insert(cps, "            if self.len >= HANDSHAKE.len()",
        '''            #[cfg(k6_live_serial)]
             if self.len >= live::REQUEST_LEN {
                 if let Some(req) = live::decode(&self.tail[self.len - live::REQUEST_LEN..self.len]) {
@@ -31,7 +33,8 @@ insert(cps, "            if self.len >= HANDSHAKE.len()",
             }
             if self.len >= HANDSHAKE.len()''')
 main = src / "main.rs"
-insert(main, "            Some(cps::HostHandshake::Aura) =>",
+if "Some(cps::HostHandshake::Live(req))" not in main.read_text():
+    insert(main, "            Some(cps::HostHandshake::Aura) =>",
        '''            #[cfg(k6_live_serial)]
             Some(cps::HostHandshake::Live(req)) => {
                 cps::live::dispatch(&mut app, &mut cp.SYST, req);
@@ -158,7 +161,7 @@ insert(pager, '    rl!("K6 MOD ret={} ({:#x}) in {} ms stack_free={} B", ret, re
 if "pub fn live_set_mode(" not in app.read_text():
     insert(app, "    pub fn master_index(&self) -> usize {",
            '''    #[cfg(k6_live_serial)]
-    fn live_cat_idle(&mut self) -> bool {
+    pub(crate) fn live_cat_idle(&mut self) -> bool {
         if self.mode()!=Mode::Standby || self.is_transmitting() || self.cw_tx_active
             || self.cw_key_down() || self.radio_mut().ptt_asserted()
             || self.power_save_is_asleep() { return false; }
@@ -193,3 +196,90 @@ if "pub fn live_set_mode(" not in app.read_text():
     }
 
     pub fn master_index(&self) -> usize {''')
+
+# Upgrade already generated checkouts to the shared guard visibility.
+a=app.read_text().replace("    fn live_cat_idle(&mut self)", "    pub(crate) fn live_cat_idle(&mut self)")
+app.write_text(a)
+
+if "pub(crate) fn live_bulk_idle(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
+           '''    #[cfg(all(k6_live_serial,k6_serial_transport))]
+    pub(crate) fn live_bulk_idle(&mut self) -> bool {
+        if self.mode()!=Mode::Standby || self.is_transmitting() || self.cw_tx_active
+            || self.cw_key_down() || self.radio_mut().ptt_asserted() { return false; }
+        #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
+        if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
+        true
+    }
+
+    pub fn master_index(&self) -> usize {''')
+
+# V2 prefix is recognized separately so body bytes are never passed to the
+# legacy detector. Keep the V1 sliding-window path untouched.
+insert(cps, "    Live(live::Request),",
+       "    Live(live::Request),\n    #[cfg(k6_live_serial)]\n    LiveV2,")
+insert(cps, "            if self.len >= live::REQUEST_LEN {",
+       """            if self.len >= live::MAGIC_V2.len()
+                && self.tail[self.len-live::MAGIC_V2.len()..self.len] == *live::MAGIC_V2 {
+                self.len=0;
+                return Some(HostHandshake::LiveV2);
+            }
+            #[cfg(k6_live_serial)]
+            if self.len >= live::REQUEST_LEN {""")
+if "Some(cps::HostHandshake::LiveV2)" not in main.read_text():
+    insert(main, "            Some(cps::HostHandshake::Live(req)) => {",
+       """            Some(cps::HostHandshake::LiveV2) => cps::live::dispatch_v2(&mut app, &mut cp.SYST),
+            #[cfg(k6_live_serial)]
+            Some(cps::HostHandshake::Live(req)) => {""")
+
+# Only the bounded staging call owns the arena. No partial upload spans
+# the normal UI/pager scheduler, and execution happens on the original stack.
+m=main.read_text().replace("Some(cps::HostHandshake::LiveV2) => cps::live::dispatch_v2(),",
+                           "Some(cps::HostHandshake::LiveV2) => cps::live::dispatch_v2(&mut app, &mut cp.SYST),")
+main.write_text(m)
+if "pub(crate) fn live_ram_begin(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
+           '''    #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+    pub(crate) fn live_ram_begin(&mut self) -> bool {
+        self.live_module_idle() && pager::live_ram_begin(self)
+    }
+    #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+    pub(crate) fn live_ram_abort(&mut self) {pager::live_ram_abort(self);}
+    #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+    pub(crate) fn live_ram_finish(&mut self,syst:&mut SYST,seq:u8,n:i32) {
+        pager::live_ram_finish(self,syst,seq,n);
+    }
+
+    pub fn master_index(&self) -> usize {''')
+insert(pager, "/// Enter Aura's sideloaded-module picker from the normal launcher.",
+       '''#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+pub(super) fn live_ram_begin(app:&mut App)->bool {
+    if app.pager.play_pending || stream_on() || unsafe {
+        LIVE_JOB.is_some() || LIVE_ACTIVE.is_some() || PENDING_LIB_SLOT != 255 || PENDING_MENU_OPEN
+    } {return false;}
+    live_ram_abort(app);
+    true
+}
+
+#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+pub(super) fn live_ram_abort(app:&mut App) {
+    unsafe {ffi::km_reset();}
+    clear_store(app);
+}
+
+#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack))]
+pub(super) fn live_ram_finish(app:&mut App,syst:&mut SYST,seq:u8,n:i32) {
+    // The loader's verified image is still in the arena; no other App
+    // handling has intervened between the commit and this call.
+    let result=if app.live_module_idle() && !unsafe{mod_power_off_requested()} {
+        unsafe {LIVE_ACTIVE=Some(seq);LIVE_RESULT=None;}
+        run_module(app,syst);
+        let r=unsafe{LIVE_ACTIVE=None;LIVE_RESULT};
+        return_to_aura(app,syst);
+        r
+    }else{None};
+    live_ram_abort(app);
+    crate::cps::live::module_finish(seq,255,n,result);
+}
+
+/// Enter Aura's sideloaded-module picker from the normal launcher.''')

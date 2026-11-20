@@ -46,7 +46,8 @@ def test_read_bounds_and_busy():
     link = LiveLink(p)
     assert link.read(0xb000, 64) == bytes(range(64))
     assert len(p.writes) == 1
-    with pytest.raises(ValueError): link.read(0xb040, 1)
+    p.reply = lambda d: cps_frame(d[6],d[7],b"\2")
+    with pytest.raises(InstallError, match="lacks live bulk"): link.read(0xb040, 1)
     with pytest.raises(ValueError): link.read(1, 64)
     p.reply = lambda d: cps_frame(d[6], d[7], b"\x01")
     with pytest.raises(InstallError, match="busy"): link.read(0, 64)
@@ -171,3 +172,100 @@ def test_caps_and_cat_commands():
     with pytest.raises(ValueError):
         link.select_vfo(2)
     assert len(p.writes)==5
+
+
+def test_bulk_negotiation_and_recovery(monkeypatch):
+    import k6_live as live
+    from k6_live import BURST, BURST_DATA, BURST_END, CAPS
+    class BulkPort(Port):
+        baudrate = 115200
+        def reset_input_buffer(self):
+            self.buf = b""
+    p = BulkPort()
+    attempts = []
+    data = bytes((i * 73 + i//256) & 255 for i in range(16384))
+    def respond(d):
+        cmd,seq,arg=struct.unpack_from("<BBI",d,6)
+        assert p.baudrate==115200
+        if cmd==CAPS:
+            return cps_frame(cmd,seq,b"\0FLCP\x01"+struct.pack("<I",128))
+        if cmd==STATUS:
+            return cps_frame(cmd,seq,b"\0"+status_data())
+        assert cmd==BURST
+        start=(arg&0x7fff)*64
+        count=(arg>>15)&31
+        rate=live.BAUDS[arg>>20]
+        attempts.append((start,count,rate))
+        ack=cps_frame(cmd,seq,b"\0"+struct.pack("<I",96000000//round(96000000/rate)))
+        frames=b"".join(cps_frame(BURST_DATA,seq,struct.pack("<I",start+i*256)+data[start+i*256:start+(i+1)*256]) for i in range(count))
+        end=cps_frame(BURST_END,seq,struct.pack("<BB4I",0,count,0,0,0,0))
+        # Reject 500k during validation, then lose a frame at 192k in the backup.
+        if rate==500000 or (rate==192000 and start>=4096):
+            frames=frames[268:]
+        return ack+frames+end
+    p.reply=respond
+    monkeypatch.setattr(live.time,"sleep",lambda _:None)
+    link=LiveLink(p,initial_seq=0,timeout=.01)
+    assert link.read(0,8192)==data[:8192]
+    assert (0,16,500000) in attempts and (0,16,192000) in attempts
+    assert any(a>=4096 and r==115200 for a,_,r in attempts)
+    assert p.baudrate==115200 and link._download_rate==115200
+    assert all(x.startswith(live.MAGIC) for x in p.writes)
+
+
+def test_bulk_busy_does_not_retry(monkeypatch):
+    import k6_live as live
+    from k6_live import BURST,CAPS
+    class B(Port):
+        baudrate=115200
+    p=B(lambda d: cps_frame(d[6],d[7],b"\0FLCP\x01"+struct.pack("<I",128) if d[6]==CAPS else b"\1"))
+    with pytest.raises(InstallError,match="busy"):
+        LiveLink(p).read(0,4096)
+    assert [d[6] for d in p.writes]==[CAPS,BURST]
+
+
+def test_installer_primary_live_routes(tmp_path,monkeypatch):
+    import k6_install as ki
+    import k6_live
+    import k6_port_lock
+    from contextlib import nullcontext
+    calls=[]
+    class FakePort:
+        port="mock-port"
+        def close(self):calls.append("close")
+    class FakeLive:
+        def __init__(self,p):calls.append("live")
+        def status(self):calls.append("status")
+    monkeypatch.setattr(ki,"open_port",lambda _:FakePort())
+    monkeypatch.setattr(k6_live,"LiveLink",FakeLive)
+    monkeypatch.setattr(k6_port_lock,"serial_lock",lambda _:nullcontext())
+    monkeypatch.setattr(ki,"open_cable",lambda *a,**k:pytest.fail("legacy handshake not allowed"))
+    monkeypatch.setattr(ki,"backup",lambda link,path,log:calls.append(("backup",path)))
+    monkeypatch.setattr(ki,"report_library",lambda link,log,live=False:calls.append(("inventory",live)))
+    path=str(tmp_path/"full.bin")
+    assert ki.main(["--port","mock-port","backup","-o",path])==0
+    assert ki.main(["--port","mock-port","status"])==0
+    assert calls==["live","status",("backup",path),"close","live","status",("inventory",True),"close"]
+
+
+def test_ram_commit_is_not_retried():
+    import k6_live as live
+    from k6_live_v2 import decode_request,RAM_BEGIN,RAM_CHUNK,RAM_COMMIT
+    from modem import k6mod
+    env=k6mod.image(b"\x70\x47",0,7,None,level=1)
+    def reply(d):
+        if d.startswith(b"FLXLV1"):
+            cmd,seq,arg=struct.unpack_from("<BBI",d,6)
+            if cmd==live.CAPS:
+                return cps_frame(cmd,seq,b"\0FLCP\x01"+struct.pack("<I",1024))
+            if cmd==live.WATERMARK:
+                return cps_frame(cmd,seq,b"\0"+struct.pack("<I",6))
+        cmd,seq,arg,payload=decode_request(d)
+        if cmd==RAM_COMMIT:return b""
+        return cps_frame(cmd,seq,b"\0")
+    p=Port(reply)
+    with pytest.raises(LiveUnavailable,match="commit acknowledgment lost"):
+        LiveLink(p,timeout=.002).run_ram(env)
+    frames=[decode_request(x) for x in p.writes if x.startswith(b"FLXLV2")]
+    assert [x[0] for x in frames]==[RAM_BEGIN,RAM_CHUNK,RAM_COMMIT]
+    assert frames[1][3]==env

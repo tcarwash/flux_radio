@@ -51,3 +51,32 @@ read/volatile CAT paths. Bench use: verify no unintended PTT or reboot,
 mode/frequency changes, local control and audio continuity, safety checks
 with properly rated RF load. Keep observations separate from claims.
 Consider a native upstream Hamlib backend once wire ABI is stable.
+
+## Direction: primary live interface
+
+Normal operation, readback, inventory, and development should use live serial.
+Retain the legacy transport for bootloader entry, MCU flash, stock/factory
+provisioning and explicit recovery; migrate other mutations once their live
+transactions have been verified. No automatic legacy fallback.
+
+Transport-first checkpoint: v1 bounded downlink bursts and auto-probe at
+500/192/115.2 kbaud, full SPI backup and library INFO/inventory. Separate
+uplink negotiation is still required for staged variable-length module
+transfer. Keep release feature enablement gated on complete profile size/
+stack audits and physical verification. Do not claim the prior legacy
+40 kB/s measurement as a live result.
+
+### V2/RAM checkpoint (2026-11-20)
+
+Initial V2 and temporary execution implemented: binary-safe 128-byte
+payloads, bounded staging in arena and explicit verified commit, replay
+watermark, structured reports/return code. Require K6_RAM0=stack for
+temporary execution; the previous small-stack emulator build corrupted
+the UART binary-mode flag, so full relocation with the original arena
+and boot constructor fix were ported from CW research. Expanded-stack
+image passed all compiled-image tests. The initial 4 KiB/API 1–2 limits
+are deliberate; no arbitrary unsigned execution on keyed firmware.
+Cable-only firmware retains its existing CRC-only physical-trust model.
+Remaining: physical validation, negotiated sustained uplink, cooperative
+cancel/job IDs and reconnect, larger module streaming/arena sizing,
+live persistent mutations and full CAT/remote TX safety.

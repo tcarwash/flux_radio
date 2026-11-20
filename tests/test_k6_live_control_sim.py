@@ -106,3 +106,112 @@ def test_compiled_cat_controls(simulated_radio, monkeypatch):
             link.request(op,arg)
     assert bytes(port.board.flash_data) == before
     assert all(x.startswith(k6_live.MAGIC) for x in port.requests)
+
+
+def test_compiled_live_bulk_reads(simulated_radio, monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:
+        pytest.skip("set K6_SIM_LIVE_IMAGE to a K6_LIVE_SERIAL=1 image")
+    from k6_live import BURST
+    from k6_install import InstallError
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    # Simulator models data and register writes, not electrical baud fidelity.
+    port.baudrate=115200
+    link=LiveLink(port,timeout=3)
+    if "bulk_read" not in link.capabilities()["features"]:
+        pytest.skip("requires K6_SERIAL_TRANSPORT=1")
+    assert link.status()["standby_idle"]
+    assert link.info()["protocol"] in (2,4,5)
+    addr=0x1fe000
+    pattern=bytes((i*73+i//256)&255 for i in range(8192))
+    port.board.flash_data[addr:addr+len(pattern)]=pattern
+    before=bytes(port.board.flash_data)
+    assert link.read(addr,8192)==pattern
+    assert link._download_rate==500000
+    assert port.baudrate==115200
+    assert link.read(0x1fffc0,64)==pattern[-64:]
+    for arg in (0, 17<<15, 5<<15, 3<<20|1<<15, 0x7fff|1<<15):
+        with pytest.raises(InstallError,match="Unsupported"):
+            link.request(BURST,arg)
+    assert link.status()["standby_idle"]
+    assert bytes(port.board.flash_data)==before
+    assert all(x.startswith(k6_live.MAGIC) for x in port.requests)
+
+
+def test_compiled_live_v2(simulated_radio, monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:
+        pytest.skip("set K6_SIM_LIVE_IMAGE to a K6_LIVE_SERIAL=1 image")
+    from k6_live_v2 import request_bytes_v2, ECHO
+    from k6_install import InstallError
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    link=LiveLink(port,timeout=3,initial_seq=0)
+    if "v2" not in link.capabilities()["features"]:
+        pytest.skip("requires live v2")
+    before=bytes(port.board.flash_data)
+    for data in [b"",b"PROGRAMBF-K6BLWF PROGRAMBF-K6AURA FLXLV1",bytes(range(128)),bytes(range(128,256))]:
+        assert link.request_v2(ECHO,payload=data)==data
+    with pytest.raises(InstallError,match="Unsupported"):
+        link.request_v2(ECHO,1,b"abc")
+    # Bad CRC produces no frame, and a subsequent ordinary request is safe.
+    wire=bytearray(request_bytes_v2(ECHO,220,payload=b"abc"))
+    wire[-3]^=1
+    port.write(wire)
+    port.sleep(.2)
+    assert link.status()["standby_idle"]
+    wire=request_bytes_v2(ECHO,221,payload=b"PROGRAMBF-K6BLWF")
+    port.write(wire[:12])
+    port.sleep(.2)
+    port.write(wire[12:])  # orphaned high-bit body cannot enter a loader
+    assert link.status()["standby_idle"]
+    assert bytes(port.board.flash_data)==before
+    assert all(x.startswith((k6_live.MAGIC,b"FLXLV2")) or x==wire[12:] for x in port.requests)
+
+
+def test_compiled_live_ram_module(simulated_radio, monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:
+        pytest.skip("set K6_SIM_LIVE_IMAGE")
+    from modem import k6mod
+    from k6_install import InstallError
+    from k6_live_v2 import RAM_BEGIN,RAM_CHUNK,RAM_COMMIT
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    link=LiveLink(port,timeout=3,initial_seq=0)
+    if "ram_run" not in link.capabilities()["features"]:
+        pytest.skip("requires expanded stack live RAM")
+    before=bytes(port.board.flash_data)
+    status=link.status()
+    code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/"c/k6/mod/hello.c"))
+    floor=link.serial_watermark()
+    env=k6mod.image(code,entry,floor+1,None,level=1)
+    bad=env[:-1]+bytes([env[-1]^1])
+    with pytest.raises(InstallError,match="verification refused"):
+        link.run_ram(bad)
+    assert link.serial_watermark()==floor
+    assert link.status()["standby_idle"]
+    # A partial staging job expires without arming or consuming a serial.
+    assert link.request_v2(RAM_BEGIN,len(env))==b""
+    assert link.request_v2(RAM_CHUNK,0,env[:20])==b""
+    port.sleep(.8)
+    assert link.status()["standby_idle"]
+    with pytest.raises(InstallError,match="Unsupported"):
+        link.request_v2(RAM_COMMIT,len(env))
+    assert link.serial_watermark()==floor
+    result=link.run_ram(env,timeout=5)
+    assert result["returned"] and result["ram"] and result["slot"] is None, result
+    assert result["result"]==0x6b and result["load"]==len(code),result
+    assert len(result["reports"])==2 and result["reports"][0].startswith("hello world from RAM"),result
+    assert link.serial_watermark()==floor+1
+    with pytest.raises(InstallError,match="watermark"):
+        link.run_ram(env)
+    # Bypass the host-side replay check; target independently rejects replay.
+    assert link.request_v2(RAM_BEGIN,len(env))==b""
+    for i in range(0,len(env),128):
+        assert link.request_v2(RAM_CHUNK,i,env[i:i+128])==b""
+    assert int.from_bytes(link.request_v2(RAM_COMMIT,len(env)),"little",signed=True)==-6
+    after=link.status()
+    assert after["standby_idle"] and after["vfos"]==status["vfos"] and not after["transmitting"]
+    assert bytes(port.board.flash_data)==before

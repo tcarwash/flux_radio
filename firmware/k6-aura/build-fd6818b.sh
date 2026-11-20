@@ -188,6 +188,7 @@ case "${K6_RAM0:-0}" in
   0) ;;
   1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
   small) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_small" ;;
+  stack) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_stack" ;;
   *) echo "invalid K6_RAM0" >&2; exit 1 ;;
 esac
 if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then

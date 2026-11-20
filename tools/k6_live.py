@@ -8,17 +8,25 @@ import sys
 import time
 from types import SimpleNamespace
 
-from k6_install import CpsLink, InstallError, crc16_xmodem, open_port
+from k6_install import CpsLink, Cable, InstallError, crc16_xmodem, open_port
 from k6_port_lock import serial_lock
 
 MAGIC = b"FLXLV1"
 STATUS, READ, TUNE = 0x60, 0x61, 0x62
 RUN, RUN_EVENT = 0x66, 0x67
 CAPS, MODE, VFO = 0x68, 0x69, 0x6a
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health")
+BURST, BURST_DATA, BURST_END, INFO = 0x6b, 0x6c, 0x6d, 0x6e
+WATERMARK = 0x6f
+BAUDS = (115200, 192000, 500000)
+CHIP_BYTES = 0x200000
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
+
+
+class LiveBulkError(InstallError):
+    """Incomplete or corrupt download; radio returns to baseline by itself."""
 
 
 class LiveUnavailable(InstallError):
@@ -47,10 +55,19 @@ class LiveLink(CpsLink):
     def __init__(self, port, timeout=1.0, *, initial_seq=None):
         super().__init__(port, log=lambda *_: None, timeout=timeout)
         self.seq = secrets.randbelow(256) if initial_seq is None else initial_seq
+        self._bulk_cap = None
+        self._download_rate = None
 
     def request(self, cmd, arg=0):
+        return self._exchange(cmd, lambda seq: request_bytes(cmd,seq,arg))
+
+    def request_v2(self, cmd, arg=0, payload=b""):
+        from k6_live_v2 import request_bytes_v2
+        return self._exchange(cmd, lambda seq: request_bytes_v2(cmd,seq,arg,payload))
+
+    def _exchange(self, cmd, encode):
         self.seq = (self.seq + 1) % 256
-        self.port.write(request_bytes(cmd, self.seq, arg))
+        self.port.write(encode(self.seq))
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             frame = self._frame(deadline)
@@ -117,6 +134,51 @@ class LiveLink(CpsLink):
                 raise InstallError("Unexpected launch acknowledgment")
         except LiveUnavailable as exc:
             raise LiveUnavailable("Launch acknowledgment lost; execution unknown. Do not retry blindly.") from exc
+        return self._collect_module(slot, timeout, on_report)
+
+    def serial_watermark(self):
+        d = self.request(WATERMARK)
+        if len(d)!=4:
+            raise InstallError("Bad live replay watermark")
+        return struct.unpack("<I",d)[0]
+
+    def run_ram(self, image, *, timeout=30.0, on_report=None):
+        """Upload a complete typed standalone envelope and commit once.
+        The host never retries or sends an abort after an uncertain commit.
+        """
+        from k6_live_v2 import RAM_BEGIN,RAM_CHUNK,RAM_COMMIT,RAM_MAX,MAX_PAYLOAD
+        image=bytes(image)
+        if not 25<=len(image)<=RAM_MAX or image[:4]!=b"K6M\x01":
+            raise ValueError("Expected standalone K6M image, at most 4096 bytes")
+        code,entry,serial,level,flags,tlm,slot=struct.unpack_from("<HHIBBBB",image,4)
+        if code+24!=len(image) or entry>=code or entry&1 or level not in (1,2) or flags or tlm or slot or not serial:
+            raise ValueError("RAM execution requires standalone API 1–2 image with exact length")
+        if not 0<timeout<=3600:
+            raise ValueError("Module wait timeout must be in (0,3600] seconds")
+        if "ram_run" not in self.capabilities()["features"]:
+            raise InstallError("Firmware lacks live RAM execution")
+        if serial<=self.serial_watermark():
+            raise InstallError("Module serial is not newer than radio's replay watermark")
+        if self.request_v2(RAM_BEGIN,len(image)):
+            raise InstallError("Invalid RAM BEGIN acknowledgment")
+        for offset in range(0,len(image),MAX_PAYLOAD):
+            if self.request_v2(RAM_CHUNK,offset,image[offset:offset+MAX_PAYLOAD]):
+                raise InstallError("Invalid RAM CHUNK acknowledgment")
+        try:
+            d=self.request_v2(RAM_COMMIT,len(image))
+        except LiveUnavailable as exc:
+            raise LiveUnavailable("RAM commit acknowledgment lost; execution unknown. Do not retry blindly.") from exc
+        if len(d)!=4:
+            raise InstallError("Malformed RAM commit acknowledgment; execution unknown")
+        result=struct.unpack("<i",d)[0]
+        if result!=code:
+            raise InstallError(f"RAM image verification refused ({result})" if result<=0 else "RAM commit length mismatch; execution unknown")
+        result=self._collect_module(255,timeout,on_report)
+        result["slot"]=None
+        result["ram"]=True
+        return result
+
+    def _collect_module(self, slot, timeout, on_report):
         seq = self.seq
         deadline = time.monotonic() + timeout
         reports = []
@@ -144,15 +206,143 @@ class LiveLink(CpsLink):
                 raise InstallError("Invalid module event; execution state unknown")
         raise LiveUnavailable("Module completion not received; it may still be running. Do not retry blindly.")
 
-    def read(self, addr, n, window=1):
-        if addr < 0 or addr % 64 or n < 0 or not (addr + n <= 0xb040 or (addr >= 0xf000 and addr + n <= 0x10000)):
-            raise ValueError("Live reads require 64-byte alignment within memory/settings SPI.")
+    def info(self):
+        if not hasattr(self, "_info"):
+            d = self.request(INFO)
+            if len(d) != 16 or d[:4] != b"BLWF" or d[4] not in (2,4,5) or d[5]!=32:
+                raise InstallError("Unexpected live library info")
+            self._info = dict(protocol=d[4],slots=d[5],arena=struct.unpack_from("<H",d,6)[0],
+                              build_id=d[8:] if any(d[8:]) else None)
+        return self._info
+
+    # The library parsers are transport-independent; reuse the exact packed
+    # directory, fixed-slot and typed theme validation from the installer.
+    library_directory = Cable.library_directory
+    library_read = Cable.library_read
+    slot_head = Cable.slot_head
+    theme_at = Cable.theme_at
+
+    def _bulk_supported(self):
+        if self._bulk_cap is None:
+            try:
+                self._bulk_cap = "bulk_read" in self.capabilities()["features"]
+            except InstallError as exc:
+                if str(exc) != ERRORS[2]:
+                    raise
+                self._bulk_cap = False
+        return self._bulk_cap
+
+    def _burst(self, start, count, rate):
+        if start % 64 or not 0 <= start < CHIP_BYTES or not 1 <= count <= (4 if rate == 115200 else 16) or start+count*256 > CHIP_BYTES:
+            raise ValueError("Invalid bulk read bounds")
+        seq = (self.seq + 1) % 256
+        arg = start//64 | (count << 15) | (BAUDS.index(rate) << 20)
+        bad = self.bad_response_crcs
+        try:
+            ack = self.request(BURST, arg)
+        except LiveUnavailable as exc:
+            raise LiveBulkError("Bulk acknowledgment lost") from exc
+        actual = 96000000 // round(96000000/rate)
+        if ack != struct.pack("<I", actual):
+            raise LiveBulkError("Bad bulk baud acknowledgment")
+        data = bytearray()
+        try:
+            if rate != 115200:
+                self.port.baudrate = rate
+            while True:
+                f = self._frame(time.monotonic()+2)
+                if f is None or f[1] != seq:
+                    raise LiveBulkError("Missing or mismatched bulk frame")
+                if f[0] == BURST_END:
+                    if len(f[2]) != 18:
+                        raise LiveBulkError("Malformed bulk completion")
+                    result, sent, *errors = struct.unpack("<BB4I", f[2])
+                    if result:
+                        raise InstallError(ERRORS.get(result,"Bulk read refused"))
+                    if sent != count or len(data) != count*256 or any(errors) or self.bad_response_crcs != bad:
+                        raise LiveBulkError("Bulk length, UART or CRC verification failed")
+                    break
+                if f[0] != BURST_DATA or len(f[2]) != 260 or len(data) >= count*256:
+                    raise LiveBulkError("Unexpected bulk frame")
+                if struct.unpack_from("<I", f[2])[0] != start + len(data):
+                    raise LiveBulkError("Out-of-order bulk frame")
+                data.extend(f[2][4:])
+        finally:
+            if rate != 115200:
+                self.port.baudrate = 115200
+            # Radio waits for the last byte to leave, then restores the rate.
+            # Do not transmit anything while the radio is transitioning.
+            time.sleep(.04)
+        return bytes(data)
+
+    def _recover_download(self):
+        if hasattr(self.port, "baudrate"):
+            self.port.baudrate = 115200
+        # Radio sends at most 4096 bytes and returns without host input.
+        # No reset or legacy handshake, including on a lost acknowledgment.
+        time.sleep(1.0)
+        self.buf = self.text = b""
+        if hasattr(self.port, "reset_input_buffer"):
+            self.port.reset_input_buffer()
+        self.status()
+
+    def negotiate_download(self, addr=0):
+        if self._download_rate is not None:
+            return self._download_rate
+        if not self._bulk_supported():
+            return 115200
+        self._download_rate = 115200
+        if getattr(self.port, "baudrate", None) != 115200:
+            return self._download_rate
+        # A reference read at the base rate, compared byte-for-byte.
+        start = min(addr & ~255, CHIP_BYTES-4096)
+        ref = b"".join(self._burst(start+i*1024,4,115200) for i in range(4))
+        for rate in reversed(BAUDS[1:]):
+            try:
+                if self._burst(start,16,rate) != ref:
+                    raise LiveBulkError("Bulk probe differs from base-rate data")
+                self.status()  # verify the return to 115200 before accepting
+            except (LiveBulkError, LiveUnavailable, OSError):
+                self._recover_download()
+            else:
+                self._download_rate = rate
+                break
+        return self._download_rate
+
+    def read(self, addr, n, window=1, progress=None):
+        if addr < 0 or addr % 64 or n < 0 or addr+n > CHIP_BYTES:
+            raise ValueError("Live reads require 64-byte alignment within SPI")
+        old_range = addr+n <= 0xb040 or (addr >= 0xf000 and addr+n <= 0x10000)
+        if not n:
+            return b""
+        if (n >= 4096 or not old_range) and self._bulk_supported():
+            rate = self.negotiate_download(addr) if n >= 4096 else 115200
+            start = addr & ~255
+            end = (addr+n+255) & ~255
+            out = bytearray()
+            while start+len(out) < end:
+                offset = start+len(out)
+                count = min(4 if rate==115200 else 16, (end-offset)//256)
+                try:
+                    out.extend(self._burst(offset,count,rate))
+                except (LiveBulkError, OSError):
+                    self._recover_download()
+                    if rate == 115200:
+                        raise
+                    self._download_rate = rate = 115200
+                    continue  # retry only the read, never a mutation or launch
+                if progress:
+                    progress(min(n,max(0,start+len(out)-addr)),n)
+            return bytes(out[addr-start:addr-start+n])
+        if not old_range:
+            raise InstallError("Firmware lacks live bulk SPI read; update it or explicitly use legacy backup")
         blocks = bytearray()
-        for offset in range(addr, addr + n, 64):
+        for offset in range(addr, addr+n, 64):
             block = self.request(READ, offset)
             if len(block) != 64:
                 raise InstallError("Short live SPI read")
             blocks.extend(block)
+            if progress: progress(min(n,len(blocks)),n)
         return bytes(blocks[:n])
 
 
@@ -163,6 +353,8 @@ def main():
     sub.add_parser("status")
     sub.add_parser("caps")
     sub.add_parser("health")
+    backup = sub.add_parser("backup", help="non-rebooting full SPI backup")
+    backup.add_argument("-o", "--output", required=True)
     mode = sub.add_parser("mode")
     mode.add_argument("mode", choices=MODES)
     mode.add_argument("--wide", action="store_true")
@@ -175,6 +367,12 @@ def main():
     run.add_argument("--timeout", type=float, default=30)
     run.add_argument("--allow-higher-api", action="store_true",
                      help="explicitly allow modules above level 2 (may transmit or write hardware)")
+    ram = sub.add_parser("run-ram", help="compile and execute a temporary API 1–2 C module without writing SPI")
+    ram.add_argument("source")
+    auth = ram.add_mutually_exclusive_group(required=True)
+    auth.add_argument("--key-file", help="keyed firmware: sign with this existing key")
+    auth.add_argument("--cable-only", action="store_true", help="physical-cable-only firmware uses CRC, not authentication")
+    ram.add_argument("--timeout",type=float,default=30)
     watch = sub.add_parser("watch")
     watch.add_argument("--interval", type=float, default=0.5)
     a = p.parse_args()
@@ -187,6 +385,9 @@ def main():
                 while True:
                     print(json.dumps(link.status()), flush=True)
                     time.sleep(a.interval)
+            elif a.cmd == "backup":
+                from k6_install import backup as save_backup
+                save_backup(link, a.output)
             elif a.cmd == "caps":
                 print(json.dumps(link.capabilities(), indent=2))
             elif a.cmd == "health":
@@ -195,6 +396,26 @@ def main():
                 print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
             elif a.cmd == "vfo":
                 print(json.dumps(link.select_vfo(a.index), indent=2))
+            elif a.cmd == "run-ram":
+                from k6_install import k6mod, Serials
+                level=k6mod.source_level(a.source)
+                if level not in (1,2):
+                    raise ValueError("Temporary live execution is currently restricted to API levels 1–2")
+                code,entry=k6mod.build(a.source)
+                key=None if a.cable_only else k6mod.read_key(a.key_file)
+                if key==k6mod.PLACEHOLDER:
+                    raise ValueError("Do not sign with the key placeholder")
+                serials=Serials()
+                serials.advance_after(link.serial_watermark())
+                serial=serials.next()
+                if serial>0xffffffff:
+                    raise ValueError("Module replay watermark exhausted")
+                image=k6mod.image(code,entry,serial,key,level=level)
+                result=link.run_ram(image,timeout=a.timeout,
+                                    on_report=lambda line:print(line,file=sys.stderr,flush=True))
+                print(json.dumps(result,indent=2))
+                if not result["returned"]:
+                    p.exit(1,"Temporary module did not execute to completion\n")
             elif a.cmd == "run":
                 result = link.run_module(a.slot, timeout=a.timeout,
                                          allow_higher_api=a.allow_higher_api,

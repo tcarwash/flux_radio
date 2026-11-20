@@ -425,6 +425,8 @@ void km_report_text(uint8_t out[64], uint8_t seq, uint8_t part, uint8_t parts, c
    km_run for a checked image already in the block (air 0: from the library, no serial check and
    no upload reply: k6_lib.h) */
 int km_tag_check(const uint8_t *a, unsigned code);
+/* Verify an exact standalone live RAM envelope, API 1–2 only; return code bytes or KM_*. */
+int km_live_verify(const uint8_t *a, unsigned n);
 int km_capability_proof(const uint8_t record[16], const uint8_t nonce[16], uint8_t tag[8]);
 /* Run the last module again (Jeff, 2026-11-10: a key re-runs it instead of a resend). The image
    that ran is still at a (the core keeps it until the store is wanted again); this checks its

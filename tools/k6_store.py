@@ -857,7 +857,7 @@ def create_app(store: ModuleStore | None = None):
     @app.post("/radio")
     def inspect_radio():
         try:
-            command = cable_command("status")
+            command = cable_command("status", "--legacy") if request.form.get("legacy") == "1" else cable_command("status")
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("settings_page"))
@@ -871,7 +871,7 @@ def create_app(store: ModuleStore | None = None):
                                      "slots": [], "protocol": 0}, port=port, key_file=key_file,
                                    action_result=None), 504
         output = result.stdout + ("\n" + result.stderr if result.stderr else "")
-        protocol_match = re.search(r"cable session (\d+)", result.stdout)
+        protocol_match = re.search(r"(?:cable session|live serial, storage protocol) (\d+)", result.stdout)
         protocol = int(protocol_match.group(1)) if protocol_match else 0
         slots = []
         pattern = re.compile(r"^slot\s+(\d+)\s+(page|cards|module|theme)\s+(.+?)\s+(\d+)\s+B code, serial (\d+)$")
