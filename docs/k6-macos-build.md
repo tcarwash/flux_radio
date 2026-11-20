@@ -116,3 +116,17 @@ definition in this branch is not evidence of a completed hosted CI run.
   available for direct testing.
 
 Keep generated firmware, logs, calibration backups and signing keys out of Git.
+
+### Cargo discovery in catalog builds
+
+The firmware builder checks Rust before applying source patches. It uses
+`K6_CARGO` (or `CARGO`) when set, then searches `PATH`, then
+`$CARGO_HOME/bin` (default `~/.cargo/bin`). Windows uses `cargo.exe`.
+An invalid explicit override fails rather than silently selecting another Cargo.
+Use a full executable path for overrides, including paths containing spaces.
+The selected executable is shared by font metadata and all firmware links.
+
+Install Rust with rustup and install the firmware target with
+`rustup target add thumbv6m-none-eabi`. Restart the catalog process after
+changing its environment. Build-environment failures appear in the catalog's
+compiler output before any firmware overlays are applied.

@@ -33,6 +33,12 @@ case ",$FEATURES," in
   *) echo "FD6818B builds require the blowfang-host feature." >&2; exit 1 ;;
 esac
 
+# Fail before cloning or applying overlays; propagate one executable to all helpers.
+K6_CARGO=$(python3 "$ROOT/tools/k6_toolchain.py" "$WORK")
+CARGO="$K6_CARGO"
+PATH="$(dirname "$K6_CARGO"):${PATH:-}"
+export K6_CARGO CARGO PATH
+
 if [ ! -d "$WORK/.git" ]; then
   git clone -q "$REPO" "$WORK"
   git -C "$WORK" checkout -q --detach "$REV"
@@ -242,9 +248,9 @@ if [ "$K6_SOTTO_SERVICE" = 0 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_no_sotto"
 fi
 if [ -n "$PACK_CFG" ]; then
-  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" cargo build --release --features "$FEATURES")
+  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" "$K6_CARGO" build --release --features "$FEATURES")
 else
-  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" cargo build --release --features "$FEATURES")
+  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" "$K6_CARGO" build --release --features "$FEATURES")
 fi
 ELF="${CARGO_TARGET_DIR:-$WORK/target}/thumbv6m-none-eabi/release/aura"
 llvm-size -A "$ELF" > "$OUT/size.txt"
@@ -254,9 +260,9 @@ for pass in 1 2 3; do
   python3 "$HERE/apply-theme-splash.py"
 K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
   if [ -n "$PACK_CFG" ]; then
-    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" cargo build --release --features "$FEATURES")
+    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" "$K6_CARGO" build --release --features "$FEATURES")
   else
-    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" cargo build --release --features "$FEATURES")
+    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" "$K6_CARGO" build --release --features "$FEATURES")
   fi
   llvm-size -A "$ELF" > "$OUT/size.txt"
   NEXT_FLASH=$(awk '$1==".vector_table" || $1==".text" || $1==".rodata" || $1==".gnu.sgstubs" || $1==".k6_id" || $1==".data" {n += $2} END {print n+0}' "$OUT/size.txt")

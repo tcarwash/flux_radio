@@ -40,7 +40,7 @@
 </section>
 {% endif %}
 <section class="panel">
-  {% if job.state == 'failed' %}<p class="notice failed"><strong>Build failed.</strong> Expand the compiler output below for diagnostic details.</p>{% endif %}
+  {% if job.state == 'failed' %}<p class="notice failed"><strong>Build failed.</strong> {{ job.error or 'Expand the compiler output below for diagnostic details.' }}</p>{% endif %}
   <details class="readme" id="compiler-output">
     <summary>Compiler output · technical details</summary>
     <pre class="install-result" style="white-space:pre-wrap;max-height:55vh;overflow:auto">{{ job.log }}</pre>

@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Preserve all ASCII ProFont14 pixels while dropping unused Latin-1 atlas rows."""
 from pathlib import Path
-import os
-src=Path(__file__).parent/'build/aura-fd6818b-port/src/ui'
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+from k6_toolchain import resolve_cargo
+src=Path(__file__).resolve().parent/'build/aura-fd6818b-port/src/ui'
 import json, subprocess
 work=src.parent.parent
-meta=json.loads(subprocess.check_output(['cargo','metadata','--format-version','1','--manifest-path',str(work/'Cargo.toml')]))
+try:
+ cargo = resolve_cargo()
+ meta=json.loads(subprocess.check_output([cargo,'metadata','--format-version','1','--manifest-path',str(work/'Cargo.toml')], cwd=work))
+except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+ raise SystemExit(f'Build environment error: font metadata failed: {exc}') from None
 fonts=[Path(pkg['manifest_path']).parent/'data/ProFont14Point.raw' for pkg in meta['packages'] if pkg['name']=='profont']
 if len(fonts)!=1: raise SystemExit('Expected exactly one pinned ProFont dependency')
 raw=fonts[-1].read_bytes()

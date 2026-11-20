@@ -149,3 +149,16 @@ def test_download_completed_pack(tmp_path):
         assert 'FORMAT FLASH?' in guide and 'COM5' in guide and '/dev/cu.*' in guide
     (output/'firmware.bin').write_bytes(b'tampered')
     assert client.get(route).status_code == 409
+
+
+def test_catalog_shows_actionable_environment_error(tmp_path):
+    jobs = BuildJobs(tmp_path, runner=lambda *a, **kw: FakeProcess())
+    job_id = jobs.start(['base'])
+    message = 'Build environment error: Cargo was not found. Set K6_CARGO.'
+    (tmp_path / job_id / 'build.log').write_text(message + '\n')
+    jobs._jobs[job_id]['process'].code = 1
+    assert jobs.get(job_id)['error'] == message
+    app = k6_store.create_app()
+    app.config['build_jobs'] = jobs
+    page = app.test_client().get(f'/profiles/build/{job_id}').data.decode()
+    assert message in page.split('<details class="readme" id="compiler-output">')[0]

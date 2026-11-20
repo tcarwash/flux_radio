@@ -141,4 +141,5 @@ class BuildJobs:
         lock = json.loads(output.read_text()) if code == 0 and output.is_file() else None
         log = (job['folder'] / 'build.log').read_text(errors='replace')
         return {'id': job_id, 'packs': job['packs'], 'theme': job['theme'], 'tx_profile': job.get('tx_profile', 'ce'), 'state': 'running' if code is None else ('success' if code == 0 and lock else 'failed'),
+                'error': next((line for line in log.splitlines() if line.startswith('Build environment error:')), ''),
                 'exit_code': code, 'log': log[-16000:], 'lock': lock, 'output': str(output.parent) if lock else None}
