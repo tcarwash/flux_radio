@@ -9,6 +9,8 @@ pub const REQUEST_LEN: usize = 14;
 pub const STATUS: u8 = 0x60;
 pub const READ: u8 = 0x61;
 pub const TUNE: u8 = 0x62;
+pub const RUN: u8 = 0x66;
+pub const RUN_EVENT: u8 = 0x67;
 const OK: u8 = 0;
 const BUSY: u8 = 1;
 const INVALID: u8 = 2;
@@ -29,6 +31,27 @@ fn reply(req: &Request, data: &[u8]) {
     let mut buf = [0u8; 73];
     let n = frame::encode(&mut buf, req.cmd, req.seq as u16, data);
     for &b in &buf[..n] { uart::send_byte(b); }
+}
+
+// Events are emitted by the normal deferred module dispatcher, not the
+// live request stack. Text is bounded by the module API (60 bytes).
+pub fn module_text(seq: u8, text: &[u8]) {
+    let mut d = [0u8; 61];
+    let n = text.len().min(60);
+    d[1..1+n].copy_from_slice(&text[..n]);
+    reply(&Request { cmd: RUN_EVENT, seq, arg: 0 }, &d[..1+n]);
+}
+
+pub fn module_finish(seq: u8, slot: u8, load: i32, result: Option<i32>) {
+    let mut d = [0u8; 11];
+    d[0] = 1;
+    d[1] = slot;
+    d[2..6].copy_from_slice(&load.to_le_bytes());
+    if let Some(ret) = result {
+        d[6] = 1;
+        d[7..11].copy_from_slice(&ret.to_le_bytes());
+    }
+    reply(&Request { cmd: RUN_EVENT, seq, arg: 0 }, &d);
 }
 
 // Use the same *returning* arena stack trampoline as normal UI/key work,
@@ -83,6 +106,15 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             if app.storage_mut().norflash.read_bytes_checked(req.arg, &mut d[1..]) {
                 reply(req, &d);
             } else { reply(req, &[IO]); }
+        }
+        #[cfg(feature = "spilib")]
+        RUN if req.arg & !0x11f == 0 => {
+            if !idle || app.power_save_is_asleep() {
+                reply(req, &[BUSY]); return;
+            }
+            let result = app.live_queue_module(req.arg as u8, req.seq, req.arg & 0x100 != 0);
+            reply(req, &[result]);
+            uart::flush();
         }
         TUNE => {
             if !idle || app.power_save_is_asleep() {

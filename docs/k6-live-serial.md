@@ -80,3 +80,48 @@ never switches to the disruptive loader on its own.
 
 Emulator and host results do not prove physical RF, cable/PTT electrical
 behavior, timing, or receive continuity.
+
+## Foreground module launch (experimental)
+
+With the updated live-enabled firmware, run an already installed Catalog
+module by physical library slot:
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 run 24 --timeout 30
+
+The client emits module `say` reports to stderr as they arrive and prints a
+JSON result with slot, loader result, whether the entry returned, its signed
+32-bit return code, and all reports. A negative module return is distinct
+from failure to load or execute. `--allow-higher-api` explicitly permits
+modules whose declared API level exceeds 2; those can use hardware-changing
+and TX APIs. Native modules are trusted code, not sandboxed by the declared
+level. Only run known modules appropriate for the bench and authorization.
+
+- Request 0x66: low five bits of argument are the slot (0–31); bit 8 permits
+  API levels above 2; other bits must be zero. Normal response status only.
+- Report event 0x67, same sequence: kind byte 0 then up to 60 UTF-8 bytes.
+- Completion event 0x67, same sequence: kind 1, slot byte, signed LE32 loader
+  result, byte 0/1 indicating entry returned, signed LE32 entry result.
+  Loader result -200 means the deferred dispatch was cancelled by its guard.
+  The event is sent after the existing runner's cleanup, not at acceptance.
+
+The command queues the existing normal Catalog dispatcher rather than
+executing native code on the live request's stack. It requires awake, idle
+standby, rejects resident/data/page/deck/empty slots, and repeats the mode
+and module guards before dispatch. Loader verification remains unchanged.
+The request stack returns before module execution; no legacy handshake or
+END is sent. The host waits for reports without sending further requests,
+keeps the existing serial lock, and never automatically retries execution.
+A timeout or disconnect is an unknown execution state, not a cancellation.
+Resume only after establishing whether the module finished. These are
+foreground modules; long-running modules still need cooperative stop logic.
+Framed reports work independently of debug logging. No remote PTT opcode
+was added. Physical execution requires a compatible image and an installed
+module; the existing legacy installer is unchanged.
+
+Validation (2026-11-20): 12 focused Python tests passed; compiled firmware
+emulator tests passed for both fixed-slot and packed-library builds (2 tests
+each). They exercise module execution, framed reports, return code, slot/type
+and integrity refusals, standby/live status recovery, SPI preservation and
+absence of legacy loader traffic. The physical radio advertised legacy cable
+protocol 5 (packed library), so use a compatible packed build for hardware
+validation. No physical flash or live execution validated at this checkpoint.

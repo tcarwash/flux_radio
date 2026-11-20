@@ -109,3 +109,45 @@ def test_catalog_routes_and_explicit_legacy(monkeypatch):
     assert client.post("/memories/radio/live-bank",json={"token":memory_token}).json["pending"]
     assert client.post("/memories/radio/live-bank").status_code == 403
     assert calls == [("mock-port", "location", False), ("mock-port", "location", True)]
+
+
+def test_run_collects_framed_reports_and_completion_without_retry():
+    from k6_live import RUN, RUN_EVENT
+    def reply(d):
+        seq = d[7]
+        return (cps_frame(RUN, seq, b"\0") +
+                cps_frame(RUN_EVENT, (seq + 1) % 256, b"\0unrelated") +
+                cps_frame(RUN_EVENT, seq, b"\0gp0 baseline") +
+                cps_frame(RUN_EVENT, seq, b"\0gp0 correlation") +
+                cps_frame(RUN_EVENT, seq, b"\1" + struct.pack("<BiBi", 25, 865, 1, -6)))
+    port = Port(reply)
+    lines = []
+    result = LiveLink(port, initial_seq=0).run_module(25, on_report=lines.append)
+    assert result == dict(slot=25, load=865, returned=True, result=-6,
+                          reports=["gp0 baseline", "gp0 correlation"])
+    assert lines == result["reports"]
+    assert port.writes == [request_bytes(RUN, 1, 25)]
+
+
+def test_run_refusal_timeout_and_higher_api():
+    from k6_live import RUN, RUN_EVENT
+    p = Port(lambda d: cps_frame(RUN, d[7], b"\2"))
+    link = LiveLink(p, initial_seq=0, timeout=.001)
+    with pytest.raises(ValueError):
+        link.run_module(32)
+    assert not p.writes
+    with pytest.raises(InstallError, match="Unsupported"):
+        link.run_module(25)
+    assert len(p.writes) == 1
+    p.reply = lambda d: cps_frame(RUN, d[7], b"\0")
+    with pytest.raises(LiveUnavailable, match="Do not retry"):
+        link.run_module(25, timeout=.001, allow_higher_api=True)
+    assert p.writes[-1] == request_bytes(RUN, 2, 0x119)
+    assert len(p.writes) == 2
+    p.reply = lambda d: b""
+    with pytest.raises(LiveUnavailable, match="acknowledgment lost"):
+        link.run_module(25)
+    assert len(p.writes) == 3
+    p.reply = lambda d: (cps_frame(RUN, d[7], b"\0") +
+                         cps_frame(RUN_EVENT, d[7], b"\1" + struct.pack("<BiBi", 25, -200, 0, 0)))
+    assert link.run_module(25)["result"] is None

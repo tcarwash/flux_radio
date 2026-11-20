@@ -38,7 +38,8 @@ insert(main, "            Some(cps::HostHandshake::Aura) =>",
             }
             Some(cps::HostHandshake::Aura) =>''')
 app = src / "app/mod.rs"
-insert(app, "    pub fn master_index(&self) -> usize {",
+if "pub fn live_tune(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
        '''    #[cfg(k6_live_serial)]
     pub fn live_modulation(&self, side: usize) -> u8 {
         modulation_to_raw(self.sides[side].cfg.modulation)
@@ -64,3 +65,91 @@ insert(app, "    pub fn master_index(&self) -> usize {",
     }
 
     pub fn master_index(&self) -> usize {''')
+
+# Queue through the existing foreground module runner on its own stack.
+# The live request only accepts the job; completion is emitted after cleanup.
+if "pub fn live_module_idle(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
+       '''    #[cfg(all(k6_live_serial, feature = "spilib"))]
+    pub fn live_module_idle(&mut self) -> bool {
+        if self.mode() != Mode::Standby || self.is_transmitting()
+            || self.cw_key_down() || self.radio_mut().ptt_asserted()
+            || self.power_save_is_asleep() { return false; }
+        #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
+        if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
+        true
+    }
+
+    #[cfg(all(k6_live_serial, feature = "spilib"))]
+    pub fn live_queue_module(&mut self, slot: u8, seq: u8, higher: bool) -> u8 {
+        if !self.live_module_idle() { return 1; }
+        pager::live_queue_module(self, slot, seq, higher)
+    }
+
+    pub fn master_index(&self) -> usize {''')
+pager = src / "app/pager.rs"
+# The insert helper's idempotence check matches the entire replacement.
+insert(pager, "/// Enter Aura's sideloaded-module picker from the normal launcher.",
+       '''#[cfg(all(k6_live_serial, feature = "spilib"))]
+static mut LIVE_JOB: Option<(u8, u8, bool)> = None;
+#[cfg(all(k6_live_serial, feature = "spilib"))]
+static mut LIVE_ACTIVE: Option<u8> = None;
+#[cfg(all(k6_live_serial, feature = "spilib"))]
+static mut LIVE_LOAD: i32 = -200;
+#[cfg(all(k6_live_serial, feature = "spilib"))]
+static mut LIVE_RESULT: Option<i32> = None;
+
+#[cfg(all(k6_live_serial, feature = "spilib"))]
+fn live_module_allowed(app: &mut App, slot: u8, higher: bool) -> bool {
+    if slot as i32 >= KL_SLOTS || app.pager.play_pending || stream_on() { return false; }
+    unsafe { CB_NOR = &mut app.storage.norflash as *mut _; }
+    let mut info = ffi::KlInfo::default();
+    (unsafe { ffi::kl_info(slot as i32, &LIB_FL, &mut info) == 0 })
+        && info.flags == 1 && info.level > 0 && (higher || info.level <= 2)
+}
+
+#[cfg(all(k6_live_serial, feature = "spilib"))]
+pub(super) fn live_queue_module(app: &mut App, slot: u8, seq: u8, higher: bool) -> u8 {
+    if unsafe { core::ptr::read_volatile(core::ptr::addr_of!(LIVE_JOB)).is_some() || core::ptr::read_volatile(core::ptr::addr_of!(LIVE_ACTIVE)).is_some() } { return 1; }
+    if !live_module_allowed(app, slot, higher) { return 2; }
+    if !host_dispatch_slot(slot, false) { return 1; }
+    unsafe { LIVE_JOB = Some((slot, seq, higher)); }
+    0
+}
+
+/// Enter Aura's sideloaded-module picker from the normal launcher.''')
+insert(pager, '        lib_run(app, syst, slot);\n        #[cfg(feature = "blowfang-host")]',
+       '''        #[cfg(all(k6_live_serial, feature = "spilib"))]
+        let live = unsafe { core::ptr::replace(core::ptr::addr_of_mut!(LIVE_JOB), None) };
+        #[cfg(all(k6_live_serial, feature = "spilib"))]
+        if let Some((expected, seq, higher)) = live {
+            if slot != expected || !app.live_module_idle() || !live_module_allowed(app, slot, higher) {
+                crate::cps::live::module_finish(seq, expected, -200, None);
+                return;
+            }
+            unsafe { LIVE_ACTIVE = Some(seq); LIVE_LOAD = -200; LIVE_RESULT = None; PENDING_ACTION = 0; }
+        }
+        lib_run(app, syst, slot);
+        #[cfg(all(k6_live_serial, feature = "spilib"))]
+        if let Some((_, seq, _)) = live {
+            let (load, result) = unsafe {
+                LIVE_ACTIVE = None;
+                (LIVE_LOAD, LIVE_RESULT)
+            };
+            crate::cps::live::module_finish(seq, slot, load, result);
+        }
+        #[cfg(feature = "blowfang-host")]''')
+insert(pager, '    rl!("K6 LIB run slot={} r={}", n, r);',
+       '''    #[cfg(all(k6_live_serial, feature = "spilib"))]
+    if unsafe { core::ptr::read_volatile(core::ptr::addr_of!(LIVE_ACTIVE)).is_some() } { unsafe { LIVE_LOAD = r; } }
+    rl!("K6 LIB run slot={} r={}", n, r);''')
+insert(pager, '    tlm_add(t.as_bytes());',
+       '''    #[cfg(all(k6_live_serial, feature = "spilib"))]
+    if let Some(seq) = unsafe { LIVE_ACTIVE } {
+        crate::cps::live::module_text(seq, t.as_bytes());
+    }
+    tlm_add(t.as_bytes());''')
+insert(pager, '    rl!("K6 MOD ret={} ({:#x}) in {} ms stack_free={} B", ret, ret, ms, sfree);',
+       '''    #[cfg(all(k6_live_serial, feature = "spilib"))]
+    if unsafe { core::ptr::read_volatile(core::ptr::addr_of!(LIVE_ACTIVE)).is_some() } { unsafe { LIVE_RESULT = Some(ret); } }
+    rl!("K6 MOD ret={} ({:#x}) in {} ms stack_free={} B", ret, ret, ms, sfree);''')

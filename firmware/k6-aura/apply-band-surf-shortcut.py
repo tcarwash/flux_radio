@@ -118,7 +118,7 @@ if old_poll in text:
     text = text.replace(old_poll, new_poll, 1)
 elif new_poll.replace("if reopen && app.mode == Mode::Pager", "if reopen") in text:
     text = text.replace(new_poll.replace("if reopen && app.mode == Mode::Pager", "if reopen"), new_poll, 1)
-elif new_poll not in text:
+elif new_poll not in text and not ("LIVE_JOB" in text and new_poll.split("\n", 1)[1] in text):
     raise SystemExit("pager.rs: cannot locate module-queue completion")
 
 state = '''#[cfg(feature = "spilib")]
