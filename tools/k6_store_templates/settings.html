@@ -10,6 +10,7 @@
 <body>
   {% with nav_section = 'settings' %}{% include '_navbar.html' %}{% endwith %}
   <main class="layout detail-layout">
+    {% if return_job %}<a href="{{ url_for('build_status', job_id=return_job) }}">Back to firmware pack</a>{% endif %}
     <p class="eyebrow">RADIO CONNECTION</p>
     <div class="detail-title"><div><h1>Device connection</h1><p class="summary">Select your programming cable before using radio tools. The last device can be remembered, but USB port names may change when you reconnect.</p></div></div>
 
@@ -20,6 +21,7 @@
     <section class="panel radio-connect session-settings">
       <div class="section-heading"><div><p class="eyebrow">K6 PROGRAMMING CABLE</p><h2>Connection defaults</h2></div></div>
       <form method="post" action="{{ url_for('save_settings') }}" class="settings-form">
+        {% if return_job %}<input type="hidden" name="build" value="{{ return_job }}">{% endif %}
         <label>USB serial device<input name="port" value="{{ settings.port or settings.saved_port }}" list="serial-devices" placeholder="/dev/ttyUSB0 or COM5" required autocomplete="off"><datalist id="serial-devices">{% for device in devices %}<option value="{{ device.device }}">{{ device.description }}</option>{% endfor %}</datalist><small>Choose a detected port or enter its path (Linux) or COM number (Windows). Detection does not identify your radio. {% if settings.saved_port %}Last used: {{ settings.saved_port }}. Verify it is still correct.{% endif %}</small></label>
         <label>Module signing key file<input name="key_file" value="{{ settings.key_file }}" placeholder="~/.config/flux/k6-mod.key" autocomplete="off"><small>Optional. Leave blank to use the installer's configured default key.</small></label>
         <label>Remember serial device<select name="remember_port"><option value="yes">Remember for next use</option><option value="no">This session only</option></select><small>Next session will require confirmation before any radio operation.</small></label>

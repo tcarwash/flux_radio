@@ -501,17 +501,28 @@ def create_app(store: ModuleStore | None = None):
         except OSError:
             return jsonify(error="HearHam is temporarily unavailable"), 502
 
+    def device_return_job(job_id):
+        # Accept only an existing build ID, never an arbitrary redirect URL.
+        if job_id:
+            try:
+                app.config['build_jobs'].get(job_id)
+                return job_id
+            except KeyError:
+                pass
+        return None
+
     @app.get("/settings")
     def settings_page():
-        return render_template("settings.html", settings=radio_settings(), devices=serial_devices())
+        return render_template("settings.html", settings=radio_settings(), devices=serial_devices(), return_job=device_return_job(request.args.get("build")))
 
     @app.post("/settings")
     def save_settings():
+        return_job = device_return_job(request.form.get("build"))
         port = request.form.get("port", "").strip()
         key_file = request.form.get("key_file", "").strip()
         if not port:
             flash("Enter the serial device, such as /dev/ttyUSB0 or COM5.", "error")
-            return render_template("settings.html", settings={"port": port, "key_file": key_file, "saved_port": saved_port()}, devices=serial_devices()), 400
+            return render_template("settings.html", settings={"port": port, "key_file": key_file, "saved_port": saved_port()}, devices=serial_devices(), return_job=return_job), 400
         session["radio_port"] = port
         session["radio_key_file"] = key_file
         if request.form.get("remember_port") == "yes":
@@ -534,7 +545,7 @@ def create_app(store: ModuleStore | None = None):
             except OSError:
                 flash("Could not clear the remembered port.", "error")
         flash("Radio port selected. Confirm the cable is still connected before writing.", "success")
-        return redirect(url_for("settings_page"))
+        return redirect(url_for("build_status", job_id=return_job)) if return_job else redirect(url_for("settings_page"))
 
     @app.get("/")
     def index():
@@ -688,7 +699,7 @@ def create_app(store: ModuleStore | None = None):
         except KeyError:
             abort(404)
         token = session.setdefault('pack_radio_token', secrets.token_urlsafe(32))
-        return render_template('build_status.html', job=job, radio_token=token, recoveries=pending_recovery(job,radio_settings()['port']))
+        return render_template('build_status.html', job=job, radio_token=token, recoveries=pending_recovery(job,radio_settings()['port']), devices=serial_devices())
 
     @app.get("/profiles/build/<job_id>/download")
     def download_build(job_id):
@@ -756,7 +767,7 @@ def create_app(store: ModuleStore | None = None):
         settings = radio_settings()
         if not settings['port']:
             flash('Set the USB serial port in Device settings first.', 'error')
-            return redirect(url_for('settings_page'))
+            return redirect(url_for('settings_page', build=job_id))
         try:
             recovery=None
             if request.form.get('recovery'):

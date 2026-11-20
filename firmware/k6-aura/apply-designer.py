@@ -11,12 +11,15 @@ slot = int(slot) if slot else 255
 (src/'ui/theme_reader.rs').write_text((here/'theme-reader.rs').read_text())
 (src/'ui/designer.rs').write_text((here/'designer-render.rs').read_text().replace('TEST_SLOT', str(slot)))
 p = src/'ui/mod.rs'
-s = p.read_text().replace("\nmod theme_reader;","\npub(crate) mod theme_reader;")
+# Normalize declarations, including generated trees from older patches.
+import re
+s = p.read_text()
+s = re.sub(r'\n#\[cfg\(k6_designer\)\]\n(?:pub\(crate\) )?mod (?:designer|theme_reader);', '', s)
+s = re.sub(r'\n#\[cfg\(k6_designer\)\]\npub\(crate\) use designer::boot_logo as designer_boot_logo;', '', s)
 anchor = 'mod standby;'
-extra = '\n#[cfg(k6_designer)]\npub(crate) mod theme_reader;\n#[cfg(k6_designer)]\nmod designer;'
-if extra not in s:
-    if s.count(anchor)!=1: raise SystemExit('UI module anchor changed')
-    s = s.replace(anchor,anchor+extra)
+extra = '\n#[cfg(k6_designer)]\npub(crate) mod theme_reader;\n#[cfg(k6_designer)]\npub(crate) mod designer;'
+if s.count(anchor)!=1: raise SystemExit('UI module anchor changed')
+s = s.replace(anchor,anchor+extra,1)
 old = '        #[cfg(feature = "blowfang-host")]\n        _ => draw_standby(display.as_draw_target(), &*app),'
 previous = '''        #[cfg(feature = "blowfang-host")]
         _ => {

@@ -66,7 +66,8 @@ def test_navbar_is_shared_across_all_pages():
         response = client.get(url)
         assert response.status_code == 200
         links = Navbar(response.get_data(as_text=True)).links
-        assert [(href, label) for href, _, label in links] == expected
+        expected_links = expected[:-1] + [("/settings?build=demo", "Device settings")] if url.startswith("/profiles/build/demo") else expected
+        assert [(href, label) for href, _, label in links] == expected_links
         assert [i for i, (_, active, _) in enumerate(links) if active] == [section]
         assert len(links) == 6
     assert b'action="/refresh"' in client.get("/").data

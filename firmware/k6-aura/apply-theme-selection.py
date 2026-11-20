@@ -54,37 +54,24 @@ patch('app/settings_ops.rs','        SettingItem::Contrast => clamp_step(cur, up
                 next=wrap_step(next,up,1,33);
                 if next==1 {break;}
                 let slot=(next-2) as u32;
-                if crate::ui::theme_reader::open(&mut |off,dst|{
-                    app.designer_read(0x110000+slot*0x4000+u32::from(off),dst)
-                }).is_some(){break;}
+                if crate::ui::designer::open_theme(app,slot).is_some(){break;}
             }
             next
         },''')
 patch('app/settings_ops.rs','        SettingItem::ActionBeep => app.settings.action_beep = v != 0,','        SettingItem::ActionBeep => app.settings.action_beep = v != 0,\n        #[cfg(k6_designer)] SettingItem::Theme => app.settings.theme_selection = v.clamp(0,33) as u8,')
-patch('app/settings_ops.rs','''        #[cfg(k6_designer)]
-        SettingItem::Theme => {
-            let v=app.settings.theme_selection;
-            if v<=1 {let _=write!(w,"FACTORY");}
-            else {let _=write!(w,"SLOT {}",v-2);}
-        }
-''','')
+# Normalize the old and new Theme value arm on repeated generated builds.
+p=root/'app/settings_ops.rs';s=p.read_text()
+s=re.sub(r'        #\[cfg\(k6_designer\)\]\n        SettingItem::Theme => \{\n            let v=app.settings.theme_selection;.*?\n        \}\n','',s,flags=re.S)
+# Normalize the new one-line body separately (the old body spans multiple lines).
+s=s.replace('        #[cfg(k6_designer)]\n        SettingItem::Theme => {\n            crate::ui::designer::theme_label(app,w);\n        }\n','')
+p.write_text(s)
 patch('app/settings_ops.rs','        SettingItem::ChipId => {','''        #[cfg(k6_designer)]
         SettingItem::Theme => {
-            let v=app.settings.theme_selection;
-            if v<=1 {let _=write!(w,"FACTORY");}
-            else {
-                let slot=u32::from(v-2);
-                let base=0x110000+slot*0x4000;
-                if let Some(theme)=crate::ui::theme_reader::open(&mut |off,dst|{
-                    app.designer_read(base+u32::from(off),dst)
-                }) {
-                    let mut name=[0u8;14];
-                    if theme.name_len>0 && app.designer_read(base+u32::from(theme.name_offset),&mut name[..usize::from(theme.name_len)]) {
-                        if let Ok(label)=core::str::from_utf8(&name[..usize::from(theme.name_len)]) {
-                            let _=w.write_str(label);
-                        } else {let _=write!(w,"SLOT {}",v-2);}
-                    } else {let _=write!(w,"SLOT {}",v-2);}
-                } else {let _=write!(w,"FACTORY");}
-            }
+            crate::ui::designer::theme_label(app,w);
         }
         SettingItem::ChipId => {''')
+# Cable sessions can modify the library through several routes. Invalidate even
+# on an interrupted write; no mutation path can leave stale validated metadata.
+patch('app/mod.rs','    pub fn cable_begin(&mut self) {','''    pub fn cable_begin(&mut self) {
+        #[cfg(k6_designer)]
+        crate::ui::designer::reset();''')

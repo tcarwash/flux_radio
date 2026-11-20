@@ -175,3 +175,32 @@ def test_saved_theme_is_available_in_builder_not_inline_editor(monkeypatch, tmp_
     assert client.post('/profiles/preview', data={'pack':'designer','theme': token}).json['plan']['theme'] == token
     assert client.delete('/themes/library', data={'name': 'Test design'}).status_code == 200
     assert b'Test design' not in client.get('/profiles').data
+
+
+def test_build_device_confirmation_retains_firmware(tmp_path):
+    class Jobs:
+        def get(self, job_id):
+            if job_id != "completed":
+                raise KeyError(job_id)
+            return dict(id=job_id, state="success", packs=["base"],
+                        exit_code=0, log="", lock=None)
+
+    app = k6_store.create_app(k6_store.ModuleStore(config=tmp_path / "config"))
+    app.config["build_jobs"] = Jobs()
+    client = app.test_client()
+    path = "/profiles/build/completed"
+    page = client.get(path)
+    assert page.status_code == 200
+    assert b'Confirm and return to firmware' in page.data
+    assert b'name="build" value="completed"' in page.data
+    assert b'/settings?build=completed' in page.data
+    settings = client.get("/settings?build=completed")
+    assert b'Back to firmware pack' in settings.data
+    assert path.encode() in settings.data
+    invalid = client.post("/settings", data={"build": "completed", "port": ""})
+    assert invalid.status_code == 400
+    assert b'name="build" value="completed"' in invalid.data
+    result = client.post("/settings", data={"build": "completed", "port": "/dev/ttyUSB9"})
+    assert result.location == path
+    assert b'/dev/ttyUSB9' in client.get(path).data
+    assert client.post("/settings", data={"build": "https://evil.invalid", "port": "COM5"}).location == "/settings"
