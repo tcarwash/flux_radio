@@ -16,6 +16,12 @@ const RAM_CHUNK:u8=0x72;
 const RAM_COMMIT:u8=0x73;
 #[cfg(all(feature="spilib",k6_ram0_stack))]
 const RAM_ABORT:u8=0x74;
+#[cfg(all(feature="spilib",k6_ram0_stack))]
+const RAM_STATUS:u8=0x75;
+// Only the main runtime/foreground dispatcher touches this boot-local cache.
+// Never use the 8-bit wire sequence as a durable execution identifier.
+#[cfg(all(feature="spilib",k6_ram0_stack))]
+static mut RAM_LAST: Option<(u32,i32,bool,Option<i32>)> = None;
 
 pub const REQUEST_LEN: usize = 14;
 pub const STATUS: u8 = 0x60;
@@ -224,7 +230,11 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8])->Option<(u8,i32)> {
             RAM_ABORT if r.arg==0 && p.is_empty()=>{reply(&r,&[OK]);break;}
             RAM_COMMIT if r.arg as usize==n && offset==n && p.is_empty()=>{
                 unsafe extern "C" {fn km_live_verify(a:*const u8,n:u32)->i32;}
+                // The verifier moves code over the envelope; read its serial first.
+                let serial=unsafe{u32::from_le_bytes(core::ptr::read_unaligned(
+                    arena::base().add(8).cast::<[u8;4]>()))};
                 let checked=unsafe{km_live_verify(arena::base(),n as u32)};
+                if checked>0 {unsafe{RAM_LAST=Some((serial,checked,false,None));}}
                 let mut d=[0u8;5];d[1..].copy_from_slice(&checked.to_le_bytes());
                 reply(&r,&d);
                 if checked>0 {job=Some((r.seq,checked));}
@@ -275,6 +285,14 @@ pub fn module_text(seq: u8, text: &[u8]) {
 }
 
 pub fn module_finish(seq: u8, slot: u8, load: i32, result: Option<i32>) {
+    #[cfg(all(feature="spilib",k6_ram0_stack))]
+    if slot==255 {
+        unsafe {
+            if let Some((id,_,false,_))=RAM_LAST {
+                RAM_LAST=Some((id,load,true,result));
+            }
+        }
+    }
     let mut d = [0u8; 11];
     d[0] = 1;
     d[1] = slot;
@@ -354,7 +372,7 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(feature="spilib") {8} else {0}
                 | if cfg!(k6_health_telemetry) {64} else {0}
                 | if cfg!(k6_serial_transport) {128} else {0}
-                | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024} else {0};
+                | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;
@@ -378,6 +396,21 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             unsafe extern "C" {fn km_serial_highwater()->u32;}
             let mut d=[0u8;5];
             d[1..].copy_from_slice(&unsafe{km_serial_highwater()}.to_le_bytes());
+            reply(req,&d);
+        }
+        #[cfg(all(feature="spilib",k6_ram0_stack))]
+        RAM_STATUS if req.arg!=0 => {
+            let mut d=[0u8;11];
+            if let Some((id,load,done,result))=unsafe{RAM_LAST} {
+                if id==req.arg {
+                    d[1]=if done {2} else {1};
+                    d[2..6].copy_from_slice(&load.to_le_bytes());
+                    if let Some(ret)=result {
+                        d[6]=1;
+                        d[7..11].copy_from_slice(&ret.to_le_bytes());
+                    }
+                }
+            }
             reply(req,&d);
         }
         INFO if req.arg==0 => {

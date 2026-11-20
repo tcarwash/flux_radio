@@ -262,7 +262,24 @@ idle/power check. It is discarded after the run. RUN_EVENT 0x67 reports
 use the COMMIT sequence and completion slot 255 to identify RAM. Do not
 retry a commit if its response is lost; host timeout is not cancellation.
 Long-running modules retain synchronous behavior and require cooperative
-stop handling. Job status/reconnect/cancellation are still forthcoming.
+stop handling. Job status is now available for the most recent verified RAM
+module; installed-module tracking and cancellation are still forthcoming.
+
+Capability bit 11 (ram_status) advertises V1 command 0x75, arg = nonzero
+signed-envelope serial (job ID). The CLI prints the ID before upload:
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 ram-status JOB_ID
+
+After the result byte, return state:u8 (0 unknown, 1 accepted, 2 completed),
+load:LEi32, returned:u8, result:LEi32. Unknown has all remaining fields
+zero. An accepted job has verified positive code length, no result yet.
+Completed means the runner has finished, not necessarily that the module
+returned (returned=0 means it did not). The single most recent verified
+job is cached before emitting the completion event, independent of the
+8-bit request sequence. Rejected uploads do not replace it. A newer
+verified job replaces it; reboot clears it. Unknown is not permission to
+retry; neither reports nor persistent history are cached. The synchronous
+runner cannot service status mid-execution; a timeout is not cancellation.
 
 V2 requests currently remain at 115200. The bounded downlink speed
 negotiation is separate. Next: negotiated/validated sustained uploads,
@@ -276,3 +293,9 @@ tag, partial upload timeout, and replay in target, preserves SPI bytes
 and VFO state. Independent host C builds verify signed, unkeyed and
 CRC-only modes, exact envelope bounds and replay handling. No radio
 flash, physical speed or RF validation in this checkpoint.
+
+RAM status checkpoint: packed cable-only build 112548 bytes, 11776-byte
+arena, 6304-byte stack, 280 bytes free in RAM0. All six compiled-image
+emulator tests passed, including fresh host sequence recovery, unknown
+IDs, rejection/replay preserving cached completion, and cache replacement.
+No physical validation or firmware flashing was performed.

@@ -17,9 +17,10 @@ RUN, RUN_EVENT = 0x66, 0x67
 CAPS, MODE, VFO = 0x68, 0x69, 0x6a
 BURST, BURST_DATA, BURST_END, INFO = 0x6b, 0x6c, 0x6d, 0x6e
 WATERMARK = 0x6f
+RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -142,6 +143,23 @@ class LiveLink(CpsLink):
             raise InstallError("Bad live replay watermark")
         return struct.unpack("<I",d)[0]
 
+    def ram_status(self, job_id):
+        """Read latest verified RAM job by signed serial; never launch a job."""
+        if isinstance(job_id, bool) or not isinstance(job_id, int) or not 0 < job_id <= 0xffffffff:
+            raise ValueError("Job ID must be a nonzero uint32")
+        d = self.request(RAM_STATUS, job_id)
+        if len(d) != 10:
+            raise InstallError("Invalid RAM job status length")
+        state, load, returned, ret = struct.unpack("<BiBi", d)
+        if (state not in (0, 1, 2) or returned not in (0, 1)
+                or (state == 0 and (load or returned or ret))
+                or (state != 0 and load <= 0)
+                or (state != 2 and returned) or (not returned and ret)):
+            raise InstallError("Invalid RAM job status")
+        return dict(job_id=job_id, state=("unknown", "accepted", "completed")[state],
+                    load=load if state else None, returned=bool(returned) if state == 2 else None,
+                    result=ret if returned else None)
+
     def run_ram(self, image, *, timeout=30.0, on_report=None):
         """Upload a complete typed standalone envelope and commit once.
         The host never retries or sends an abort after an uncertain commit.
@@ -167,13 +185,17 @@ class LiveLink(CpsLink):
         try:
             d=self.request_v2(RAM_COMMIT,len(image))
         except LiveUnavailable as exc:
-            raise LiveUnavailable("RAM commit acknowledgment lost; execution unknown. Do not retry blindly.") from exc
+            raise LiveUnavailable(f"RAM commit acknowledgment lost; job {serial}, execution unknown. Do not retry blindly; query ram-status.") from exc
         if len(d)!=4:
-            raise InstallError("Malformed RAM commit acknowledgment; execution unknown")
+            raise InstallError(f"Malformed RAM commit acknowledgment; job {serial}, execution unknown")
         result=struct.unpack("<i",d)[0]
         if result!=code:
             raise InstallError(f"RAM image verification refused ({result})" if result<=0 else "RAM commit length mismatch; execution unknown")
-        result=self._collect_module(255,timeout,on_report)
+        try:
+            result=self._collect_module(255,timeout,on_report)
+        except LiveUnavailable as exc:
+            raise LiveUnavailable(f"RAM job {serial}: {exc} Query ram-status.") from exc
+        result["job_id"]=serial
         result["slot"]=None
         result["ram"]=True
         return result
@@ -373,6 +395,8 @@ def main():
     auth.add_argument("--key-file", help="keyed firmware: sign with this existing key")
     auth.add_argument("--cable-only", action="store_true", help="physical-cable-only firmware uses CRC, not authentication")
     ram.add_argument("--timeout",type=float,default=30)
+    job = sub.add_parser("ram-status", help="query latest boot-local RAM job by signed serial")
+    job.add_argument("job_id", type=int)
     watch = sub.add_parser("watch")
     watch.add_argument("--interval", type=float, default=0.5)
     a = p.parse_args()
@@ -396,6 +420,8 @@ def main():
                 print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
             elif a.cmd == "vfo":
                 print(json.dumps(link.select_vfo(a.index), indent=2))
+            elif a.cmd == "ram-status":
+                print(json.dumps(link.ram_status(a.job_id), indent=2))
             elif a.cmd == "run-ram":
                 from k6_install import k6mod, Serials
                 level=k6mod.source_level(a.source)
@@ -411,6 +437,7 @@ def main():
                 if serial>0xffffffff:
                     raise ValueError("Module replay watermark exhausted")
                 image=k6mod.image(code,entry,serial,key,level=level)
+                print(f"RAM job ID: {serial}",file=sys.stderr,flush=True)
                 result=link.run_ram(image,timeout=a.timeout,
                                     on_report=lambda line:print(line,file=sys.stderr,flush=True))
                 print(json.dumps(result,indent=2))

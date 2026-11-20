@@ -186,6 +186,9 @@ def test_compiled_live_ram_module(simulated_radio, monkeypatch):
     status=link.status()
     code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/"c/k6/mod/hello.c"))
     floor=link.serial_watermark()
+    has_cache="ram_status" in link.capabilities()["features"]
+    if has_cache:
+        assert link.ram_status(floor+1)["state"]=="unknown"
     env=k6mod.image(code,entry,floor+1,None,level=1)
     bad=env[:-1]+bytes([env[-1]^1])
     with pytest.raises(InstallError,match="verification refused"):
@@ -205,6 +208,13 @@ def test_compiled_live_ram_module(simulated_radio, monkeypatch):
     assert result["result"]==0x6b and result["load"]==len(code),result
     assert len(result["reports"])==2 and result["reports"][0].startswith("hello world from RAM"),result
     assert link.serial_watermark()==floor+1
+    assert result["job_id"]==floor+1
+    if has_cache:
+        # New host sequence simulates reconnect; no execution request needed.
+        reopened=LiveLink(port,timeout=3,initial_seq=200)
+        assert reopened.ram_status(floor+1)==dict(job_id=floor+1,
+            state="completed",load=len(code),returned=True,result=0x6b)
+        assert reopened.ram_status(floor+2)["state"]=="unknown"
     with pytest.raises(InstallError,match="watermark"):
         link.run_ram(env)
     # Bypass the host-side replay check; target independently rejects replay.
@@ -212,6 +222,13 @@ def test_compiled_live_ram_module(simulated_radio, monkeypatch):
     for i in range(0,len(env),128):
         assert link.request_v2(RAM_CHUNK,i,env[i:i+128])==b""
     assert int.from_bytes(link.request_v2(RAM_COMMIT,len(env)),"little",signed=True)==-6
+    if has_cache:
+        assert link.ram_status(floor+1)["result"]==0x6b
+        # A newer accepted job replaces the one-entry cache.
+        newer=k6mod.image(code,entry,floor+2,None,level=1)
+        assert link.run_ram(newer,timeout=5)["job_id"]==floor+2
+        assert link.ram_status(floor+1)["state"]=="unknown"
+        assert link.ram_status(floor+2)["result"]==0x6b
     after=link.status()
     assert after["standby_idle"] and after["vfos"]==status["vfos"] and not after["transmitting"]
     assert bytes(port.board.flash_data)==before

@@ -80,3 +80,12 @@ Cable-only firmware retains its existing CRC-only physical-trust model.
 Remaining: physical validation, negotiated sustained uplink, cooperative
 cancel/job IDs and reconnect, larger module streaming/arena sizing,
 live persistent mutations and full CAT/remote TX safety.
+
+### RAM job recovery
+
+The signed-envelope serial identifies the most recent verified RAM job.
+A new read-only V1 status request (0x75, capability bit 11) recovers its
+completion and return code after a dropped completion frame/reconnect.
+History is one entry, boot-local; unknown does not prove non-execution.
+Still needed: installed-job IDs, bounded multi-job history, cooperative
+status/cancel during execution and binary/report replay.

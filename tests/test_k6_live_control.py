@@ -269,3 +269,29 @@ def test_ram_commit_is_not_retried():
     frames=[decode_request(x) for x in p.writes if x.startswith(b"FLXLV2")]
     assert [x[0] for x in frames]==[RAM_BEGIN,RAM_CHUNK,RAM_COMMIT]
     assert frames[1][3]==env
+
+@pytest.mark.parametrize("state,load,returned,ret,expected", [
+    (0,0,0,0,("unknown",None,None,None)),
+    (1,123,0,0,("accepted",123,None,None)),
+    (2,123,1,-7,("completed",123,True,-7)),
+    (2,123,0,0,("completed",123,False,None)),
+])
+def test_ram_job_status_is_read_only(state,load,returned,ret,expected):
+    from k6_live import RAM_STATUS
+    p=Port(lambda d:cps_frame(d[6],d[7],b"\0"+struct.pack("<BiBi",state,load,returned,ret)))
+    link=LiveLink(p,initial_seq=0)
+    r=link.ram_status(42)
+    assert r["job_id"]==42
+    assert tuple(r[k] for k in ("state","load","returned","result"))==expected
+    assert p.writes==[request_bytes(RAM_STATUS,1,42)]
+    for invalid in (0,-1,2**32,True):
+        with pytest.raises(ValueError):link.ram_status(invalid)
+    assert len(p.writes)==1
+
+@pytest.mark.parametrize("data",[b"",struct.pack("<BiBi",3,10,0,0),
+    struct.pack("<BiBi",0,10,0,0),struct.pack("<BiBi",1,10,1,0),
+    struct.pack("<BiBi",2,10,0,1)])
+def test_ram_job_status_rejects_bad_reply(data):
+    p=Port(lambda d:cps_frame(d[6],d[7],b"\0"+data))
+    with pytest.raises(InstallError,match="Invalid RAM job status"):
+        LiveLink(p).ram_status(42)
