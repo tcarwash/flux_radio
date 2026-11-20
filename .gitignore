@@ -101,3 +101,5 @@ c/common/fsk_rx_host
 
 # Required source artwork (not firmware).
 !/flux-art-kit/flux-arrays/splash.bin
+
+/serial-test-output/

@@ -53,7 +53,9 @@ extern "C" {
 #define KM_HDR 16
 #define KM_TAG 8
 #define KM_ABI 1
+#ifndef KM_LEVEL
 #define KM_LEVEL 23
+#endif
 
 struct km_explore_frame;
 typedef struct k6_api {
@@ -228,6 +230,10 @@ typedef struct k6_api {
      changed position per module invocation; no TX or arbitrary writes.
      Returns 1 changed/saved, 0 unchanged, -1 refused. */
   int (*aprs_position_set)(int32_t lat, int32_t lon);
+  /* Level 24: raw 2FSK. op 0 configure RX, 1 receive, 2 send while keyed.
+     n=1..128 FIFO words; config=baud | (gain<<16), baud 1200/2400.
+     Buffer must be in module scratch/arena. Caller supplies CRC/framing. */
+  int (*fsk_configured)(uint32_t op, uint16_t *words, uint32_t n, uint32_t config);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

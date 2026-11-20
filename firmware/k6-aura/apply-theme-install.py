@@ -67,10 +67,10 @@ fn cable_remove_theme(app:&mut App,slot:u8)->i32 {
 }
 
 """
-if remove_helper not in s:
+if 'fn cable_remove_theme(' not in s:
     if s.count(anchor)!=1:raise SystemExit('theme removal helper anchor missing')
     s=s.replace(anchor,remove_helper+anchor,1)
-if helper not in s:
+if 'fn cable_install_theme(' not in s:
     if s.count(anchor)!=1:raise SystemExit('cable install helper anchor missing')
     s=s.replace(anchor,helper+anchor,1)
 a='        if flags & KM_F_REMOVE != 0 {'
@@ -94,7 +94,7 @@ a='                d[4] = 2;'
 b='                d[4] = if cfg!(k6_designer) {4} else {2};'
 if '                d[4] = if cfg!(k6_designer) {3} else {2};' in s:
     s=s.replace('                d[4] = if cfg!(k6_designer) {3} else {2};',b,1)
-if b not in s:
+if b not in s and "d[4] = if cfg!(k6_user_store)" not in s:
     if s.count(a)!=1:raise SystemExit('protocol anchor missing')
     s=s.replace(a,b,1)
 p.write_text(s)

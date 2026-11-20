@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from k6_feature_packs import DEFAULT, resolve, THEMES, DEFAULT_THEME, validate_theme, TX_PROFILES, DEFAULT_TX_PROFILE, validate_tx_profile
 import k6_install
 from k6_flash_policy import assess, flash_bytes
-from k6_pack_policy import POLICY, validate, gate_environment
+from k6_pack_policy import POLICY, validate, gate_environment, storage_environment, iq_supported
 from k6_build_lock import exclusive_build
 from k6_capability_receipt import write as write_receipt
 from k6_build_identity import image_build_id
@@ -25,7 +25,7 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name=''):
+def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=False, theme_name='', system_page=None, packed=False, system_pages=()):
     """Stage a deterministic lockfile and module bundles from a prebuilt firmware image."""
     output = Path(output)
     firmware = Path(firmware)
@@ -49,7 +49,7 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
                 id=f'org.blowfang.k6.{name}', level=None, output=str(folder)), log=lambda *_: None)
         manifest = json.loads((folder / 'manifest.json').read_text())
         module_file = folder / manifest['library'][0]['file']
-        if manifest['library'][0]['level'] > 23:
+        if manifest['library'][0]['level'] > 24:
             raise ValueError(f'module {name} requires unsupported API level {manifest["library"][0]["level"]}')
         modules.append({'name': name, 'id': manifest['library'][0]['id'],
                         'api_level': manifest['library'][0]['level'],
@@ -62,6 +62,16 @@ def assemble(plan, output, firmware, *, module_builder=None, verified_firmware=F
                          'capabilities_verified': verified_firmware},
             'modules': modules, 'install': {'automatic': False,
                 'note': 'The guided flash-and-install action installs bundled modules, the named theme, and startup artwork after reboot when included. OTA packs require a key; cable-only packs use CRC32 integrity.'}}
+    pages=([system_page] if system_page is not None else [])+list(system_pages)
+    if packed or pages:
+        lock['storage']={'format':2,'system_pages':[]}
+    if pages:
+        from k6_system_install import pack as pack_system
+        pack_system(dest.read_bytes(),[Path(p).read_bytes() for p in pages],8192)
+        for page in pages:
+            page=Path(page);target=output/page.name
+            if page.resolve()!=target.resolve():shutil.copyfile(page,target)
+            lock['storage']['system_pages'].append({'path':target.name,'sha256':digest(target),'bytes':target.stat().st_size})
     if 'designer' in plan['packs']:
         from k6_theme_package import pack, display_name
         theme_path = output / 'theme.fluxtheme'
@@ -92,6 +102,7 @@ def main():
     p.add_argument('--allow-unverified-firmware', action='store_true',
                    help='explicitly allow staging a prebuilt image without verifying capabilities')
     p.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
+    p.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='serial IQ (default on for compatible Base profiles)')
     p.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     p.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
     args = p.parse_args()
@@ -100,7 +111,9 @@ def main():
         policy = json.loads(POLICY.read_text())
         validate(spec, policy)
         plan = resolve(spec, args.packs, args.theme, args.tx_profile)
+        if args.iq is None: args.iq = not args.skip_firmware_build and iq_supported(plan)
         if args.skip_firmware_build:
+            if args.iq:p.error('IQ requires a fresh build')
             if args.theme != DEFAULT_THEME:
                 p.error('non-default themes require a fresh firmware build')
             if args.firmware is None:
@@ -117,6 +130,10 @@ def main():
             env.pop('K6_DESIGNER_TEST_SLOT', None)
             env['K6_IMAGE_NAME'] = 'flux-fd6818b-pack'
             env.update(gate_environment(plan, policy))
+            env.update(storage_environment(plan,iq=args.iq))
+            if "data" in plan["packs"]:
+                env.update(K6_CONFIG_FSK="1", K6_LEAN_TXDOG="1", K6_NATIVE_FM="0",
+                           K6_FONT_SUBSET="1", K6_RASTER_BOOT="1")
             with exclusive_build():
                 subprocess.run(['sh', str(ROOT / 'firmware/k6-aura/build-fd6818b.sh')],
                                cwd=ROOT, env=env, check=True)
@@ -126,10 +143,11 @@ def main():
                 if not budget['pass']:
                     raise ValueError(f'firmware exceeds {budget["policy"]}: {budget["used"]} > {budget["limit"]}')
                 image_build_id(image.read_bytes())  # new linked builds must carry an ID
-                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name)
+                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1',system_pages=[image.parent/n for n,gate in [('iq-system.bin','K6_IQ_PAGE'),('settings-system.bin','K6_SETTINGS_PAGE')] if env.get(gate)=='1'])
+                if args.iq:lock['optional_services']=['serial-iq']
                 lock['flash_budget'] = budget
                 (args.output / 'pack.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
-                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, gate_environment(plan, policy))
+                write_receipt(args.output / 'firmware.receipt.json', args.output / 'firmware.bin', plan, {**gate_environment(plan, policy),**storage_environment(plan,iq=args.iq)})
             image = None
         if args.skip_firmware_build:
             (args.output / 'firmware.receipt.json').unlink(missing_ok=True)

@@ -91,3 +91,5 @@ For a full spectrum scan, sweep the receiver frequency in separate acquisitions
 without changing the radio's transmit frequency. The SDR is not a calibrated
 spectrum analyzer; absolute power, spur levels and emission compliance need
 a known/calibrated chain with enough dynamic range.
+
+See [Extra-low-power laboratory findings](k6-extra-low-power-lab.md) for the separate, hardware-tested opt-in serial TX experiment. The module descriptions above retain their original constraints.

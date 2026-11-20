@@ -56,13 +56,13 @@ def test_policy_covers_legacy_tx_and_current_compact_game():
 def test_confirmed_modules_keep_preflight_without_experimental_ack():
     root = Path(__file__).resolve().parents[1]
     policy = json.loads((root/'config/flux-catalog.json').read_text())['local_metadata']
-    for slug in ('aprs', 'aprs-gps-sync', 'cardlink', 'midi', 'aprs-beacon', 'gw'):
+    for slug in ('aprs', 'aprs-gps-sync', 'midi', 'aprs-beacon', 'gw'):
         info = store.local_compatibility(policy[slug], None)
         assert info['status'] == 'tested'
         assert info['status_label'] == 'Hardware tested'
         assert not info['install_blocked']
         assert '--require-capability' in store.catalog_install_flags(info)
-    assert 'fsk_rx' in store.catalog_install_flags(store.local_compatibility(policy['cardlink'], None))
+    assert 'fsk_rx' in store.catalog_install_flags(store.local_compatibility(policy['cardlink'], None), True)
     assert policy['aprs-gps-sync']['expected_api'] == 23
 
 
@@ -70,7 +70,7 @@ def test_native_flux_origin_is_independent_of_hardware_status():
     root = Path(__file__).resolve().parents[1]
     policy = json.loads((root/'config/flux-catalog.json').read_text())['local_metadata']
     assert {slug for slug, meta in policy.items() if meta.get('native_flux')} == {'aprs','aprs-gps-sync','cardlink','aprs-beacon'}
-    for slug in ('aprs','aprs-gps-sync','cardlink','aprs-beacon'):
+    for slug in ('aprs','aprs-gps-sync','aprs-beacon'):
         info = store.local_compatibility(policy[slug], None)
         assert info['native_flux'] and info['status'] == 'tested'
     for slug in ('midi','gw'):

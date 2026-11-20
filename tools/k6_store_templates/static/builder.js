@@ -83,8 +83,8 @@
         var allowed = estimate.allowed !== false;
         status.textContent = allowed ? 'Selection is valid. Choose Build to start a build.' :
           (estimate.unknown_packs && estimate.unknown_packs.length ?
-            'Build is blocked because one or more selected feature sets have no measured size.' :
-            'Estimated image exceeds the 120 KiB hard limit. Remove feature sets before building.');
+            'Some selected feature sets have no measured size. Build to check the actual size.' :
+            'Estimated image may exceed the 120 KiB limit. You can build to check the actual size.');
         outTheme.textContent = (sel.packs.includes('designer') && nameField.value) || (data.plan && data.plan.theme) || sel.theme;
         outTxProfile.textContent = (data.plan && data.plan.tx_profile) || 'ce';
         outPacks.textContent = (data.plan.packs || []).join(' + ') || 'base';
@@ -108,7 +108,7 @@
             ' bytes above the 96 KiB Base design goal.';
         }
         flashNote.textContent = details;
-        buildButton.disabled = !allowed;
+        buildButton.disabled = false;
       } else {
         renderError((data && data.error) || ('Preview failed (HTTP ' + res.status + ').'));
       }

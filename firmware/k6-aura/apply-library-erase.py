@@ -103,7 +103,7 @@ if 'pub fn cable_remove_module(&mut self, slot: u8)' not in app:
 # Removal changes the cable capability, so older hosts can refuse before sending any bytes.
 cps = root / "cps/mod.rs"
 cps_text = cps.read_text()
-if "d[4] = 2;" not in cps_text and "d[4] = if cfg!(k6_designer) {3} else {2};" not in cps_text and "d[4] = if cfg!(k6_designer) {4} else {2};" not in cps_text:
+if "d[4] = if cfg!(k6_user_store)" not in cps_text and "d[4] = 2;" not in cps_text and "d[4] = if cfg!(k6_designer) {3} else {2};" not in cps_text and "d[4] = if cfg!(k6_designer) {4} else {2};" not in cps_text:
     if cps_text.count("d[4] = 1;") != 1:
         raise SystemExit("could not find cable protocol version in info reply")
     cps.write_text(cps_text.replace("d[4] = 1;", "d[4] = 2;", 1))

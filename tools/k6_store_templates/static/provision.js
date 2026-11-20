@@ -8,7 +8,7 @@
     flash: 'This will re-flash your radio. On an existing Flux radio, settings and installed modules and themes will be preserved.',
     install: 'This will install or update the included modules. Settings and unrelated installed modules and themes will be preserved.',
     theme: 'This will install the named theme into an empty slot. Existing modules and themes will be preserved.',
-    splash: 'This will back up and replace the existing full-screen startup artwork.'
+    splash: 'This will back up and replace the stored full-screen startup artwork. Raster-boot firmware requires Designer and the LOGO boot mode to display custom artwork.'
   };
   const submit = () => {
     dialog.close();

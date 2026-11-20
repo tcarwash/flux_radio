@@ -560,7 +560,7 @@ def test_pack_report_matches_radio_and_never_self_attests(tmp_path):
     assert not report["capabilities_match"] and "authenticated-ota" in report["missing_capabilities"]
     assert report["unsupported_modules"] == []  # the staged module fits the old ceiling
     narrow = {"module_loader": True, "module_api_max": 5, "ota": True}
-    assert compatibility_report(lock, narrow)["unsupported_modules"] == ["vfo"]
+    assert compatibility_report(lock, narrow)["unsupported_modules"] == []
 
 
 # ---- gates match linked builds (including Designer); API/RX/TX preserved -----

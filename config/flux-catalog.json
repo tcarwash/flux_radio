@@ -21,11 +21,14 @@
     "aprsfskcap1200",
     "aprsfskformat2-format2",
     "aprsfskstreamcap",
+    "explore-scan-fit",
     "if-carrier",
     "if-survey",
     "if-survey-fm",
+    "libls",
     "refcal-dry",
-    "explore-scan-fit"
+    "vfo",
+    "vfo-module-bundle"
   ],
   "local_metadata": {
     "aprs": {
@@ -65,13 +68,13 @@
     },
     "cardlink": {
       "title": "Card Link",
-      "summary": "PixelQSO card transfers working on FD6818B hardware. Requires the Data feature set.",
-      "status": "tested",
+      "summary": "PixelQSO card transfers: original fixed-frame version hardware tested; API 24 native FSK migration awaits RF validation. Requires Data.",
+      "status": "experimental",
       "required_packs": [
         "data"
       ],
       "source_module": "cardlink",
-      "expected_api": 12,
+      "expected_api": 24,
       "native_flux": true
     },
     "explore_scan": {
@@ -83,14 +86,6 @@
       ],
       "source_module": "explore_scan",
       "expected_api": 21
-    },
-    "vfo": {
-      "title": "VFO Radio",
-      "summary": "Receive VFO and memory utility; no voice PTT inside module.",
-      "status": "targeted",
-      "required_packs": [],
-      "source_module": "vfo",
-      "expected_api": 6
     },
     "surf": {
       "title": "SURF",

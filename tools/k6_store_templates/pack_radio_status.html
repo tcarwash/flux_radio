@@ -21,7 +21,7 @@
     <p>The firmware flashed and its included modules were verified on the radio.</p>
     {% endif %}
     {% if operation.state == 'failed' and operation.action == 'flash-install' and 'flashed; the radio restarts' in operation.log %}
-    <p>The firmware flash completed, but the module update did not. Check the message below and use Install modules on this build after the radio is ready.</p>
+    <p>The firmware flash completed but provisioning did not. Return to the firmware pack and resume the saved recovery if offered; do not format the radio.</p>
     {% endif %}
     {% if operation.state == 'success' and operation.action == 'theme' %}
     <p>The package was read back successfully. On the radio, select DISP → THEME and choose the installed slot.</p>

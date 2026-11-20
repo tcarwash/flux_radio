@@ -34,21 +34,22 @@
         </g>
       </svg></div></div>
       <div class="editor-tabs" role="group" aria-label="Preview active VFO"><button type="button" data-editor-vfo="0" aria-pressed="true">VFO A</button><button type="button" data-editor-vfo="1" aria-pressed="false">VFO B</button></div>
+      <div class="editor-layout-controls"><label>Preview A <select data-preview-side-mode="a"><option value="vfo">VFO</option><option value="memory">Memory</option></select></label><label>Preview B <select data-preview-side-mode="b"><option value="vfo">VFO</option><option value="memory">Memory</option></select></label><label>Memory display <select data-preview-memory-display><option value="frequency">Frequency</option><option value="name">Name</option><option value="namefreq" selected>Name + frequency</option></select></label></div>
       <p class="radio-note" data-studio-help>Drag widgets. Pink guides indicate aligned edges or centers. Shift-drag moves their parent; Alt bypasses snapping.</p>
       <p class="radio-note" data-studio-status role="status"></p>
     </div>
     <div class="studio-inspector">
-      <section data-layout-controls data-studio-panel="layout" class="editor-layer-controls"><h3>Widget properties</h3>
+      <details data-layout-controls class="editor-layer-controls"><summary>Widget properties</summary>
     <div class="editor-layout-controls">
-      <label>Widget hierarchy <select data-layout-tree></select></label>
+      <label>Widget hierarchy <select data-layout-tree></select></label><label><input type="checkbox" data-layout-channel-names> Separate memory name widgets (Designer firmware update required)</label>
       <label>Snap grid <select data-layout-snap><option value="1" selected>1 pixel</option><option value="2">2 pixels</option><option value="4">4 pixels</option><option value="8">8 pixels</option></select></label>
       <label><input type="checkbox" data-layout-align checked> Snap to edges and centers (all widgets)</label><label>X (relative) <input data-layout-x type="number"></label><label>Y (relative) <input data-layout-y type="number"></label>
       <label>Width <input data-layout-w readonly></label><label>Height <input data-layout-h readonly></label>
       <label><input type="checkbox" data-layout-opaque> Opaque background</label><button type="button" data-layout-front>Bring to front</button><button type="button" data-layout-back>Send to back</button><label>Font preview <select data-layout-font><option value="factory">Factory</option><option value="compact">Compact</option><option value="custom">Custom bitmap</option></select></label>
     </div>
-    <details><summary>Custom frequency bitmap font · 8 × 12</summary><p>Click pixels to edit the selected digit. Choose Custom bitmap on a frequency widget to use it.</p><label>Glyph <select data-font-char></select></label><div data-font-grid class="font-pixel-grid"></div><button type="button" data-font-reset>Reset to seven-segment</button><button type="button" data-font-invert>Invert glyph</button><button type="button" data-font-clear>Clear glyph</button><label>Import 132-byte raw font <input type="file" data-font-import accept=".bin,.raw"></label><button type="button" data-font-export>Export raw font</button><p data-font-message role="status" class="radio-note"></p></details>
+    <details><summary>Custom frequency bitmap font · 8 × 12</summary><p>Click pixels to edit the selected digit. Choose Custom bitmap on a frequency widget to use it. The reduced factory font preserves printable ASCII glyphs; custom frequency fonts are unchanged and stored in the theme asset.</p><label>Glyph <select data-font-char></select></label><div data-font-grid class="font-pixel-grid"></div><button type="button" data-font-reset>Reset to seven-segment</button><button type="button" data-font-invert>Invert glyph</button><button type="button" data-font-clear>Clear glyph</button><label>Import 132-byte raw font <input type="file" data-font-import accept=".bin,.raw"></label><button type="button" data-font-export>Export raw font</button><p data-font-message role="status" class="radio-note"></p></details>
     <div class="editor-tabs"><button type="button" data-layout-undo hidden disabled>Undo</button><button type="button" data-layout-redo hidden disabled>Redo</button><button type="button" data-layout-reset>Reset layout</button><button type="button" data-layout-save>Export layout JSON</button><button type="button" data-layout-import-trigger>Import layout JSON</button><input type="file" data-layout-import accept=".json,application/json" hidden><button type="button" data-layout-package>Export runtime layout</button></div><p class="radio-note" data-layout-message role="status"></p>
-      </section>
+      </details>
       <div class="editor-layer-controls" data-layer-controls data-studio-panel="graphics" hidden>
         <p class="eyebrow">FULL SCREEN GRAPHICS</p>
         <div class="editor-options"><input type="checkbox" data-layer-draw hidden><label><input type="checkbox" data-layer-guide> Alignment grid</label></div>
@@ -72,13 +73,12 @@
         <label><input type="checkbox" data-preview-dual checked> Dual watch</label>
         <label><input type="checkbox" data-preview-save> Power save</label><label><input type="checkbox" data-preview-vox> VOX</label><label><input type="checkbox" data-preview-lock> Key lock</label>
         {% for side,freq in [('a','146.52000'),('b','440.85000')] %}
-        <label>Memory name {{side|upper}} <input data-preview-channel-name="{{side}}" maxlength="12" placeholder="VFO mode"></label>
+        <label>Memory name {{side|upper}} <input data-preview-channel-name="{{side}}" maxlength="12" value="{{ 'LOCAL RPT' if side == 'a' else 'UHF RPT' }}"></label><label>Memory slot {{side|upper}} <input data-preview-channel-slot="{{side}}" type="number" min="0" max="999" value="{{ 1 if side == 'a' else 2 }}"></label>
         <label>VFO {{side|upper}} · MHz <input data-preview-frequency="{{side}}" value="{{freq}}" inputmode="decimal"></label>
         <label>Modulation {{side|upper}} <select data-preview-mode="{{side}}"><option>FM</option><option>AM</option><option>USB</option><option>LSB</option><option>CW</option></select></label>
         <label>Power {{side|upper}} <select data-preview-power="{{side}}"><option>LOW</option><option>MID</option><option>HIGH</option></select></label>
         <label>Bandwidth {{side|upper}} <select data-preview-bandwidth="{{side}}"><option>NAR</option><option>WIDE</option></select></label>
         {% endfor %}
-        <label><input type="checkbox" data-layout-channel-names> Separate memory name widgets (Designer firmware update required)</label>
         <label><input type="checkbox" data-preview-guides checked> Widget outlines</label>
       </div><p class="radio-note">Preview values are local to the editor; they are not exported to the radio.</p>
     </section>
@@ -111,15 +111,9 @@
           <p class="radio-note">Draw each of the five real battery states. Each must contain visible pixels.</p>
         </div>
       </details>
-      <details class="editor-layer-controls"><summary>Startup screens</summary>
-        <p class="eyebrow">FULL SCREEN ARTWORK</p>
+      <details class="editor-layer-controls"><summary>Startup artwork (read-only)</summary>
         <svg class="theme-preview" viewBox="0 0 128 64" role="img" aria-label="Full screen Flux startup artwork"><rect width="128" height="64" fill="#b7c8a1"/><g data-theme-full-splash fill="#172211" shape-rendering="crispEdges"></g></svg>
-        <p class="radio-note">Loaded from the repo art kit’s 128 × 64 splash.bin. It appears when the bitmap is installed in the radio’s boot-logo storage. Boot text, if set on the radio, covers the bottom 22 rows.</p>
-        <p class="eyebrow">ICON STARTUP SCREEN</p><div class="editor-layout-controls"><label>Icon <select data-theme-splash><option value="0">Flux</option><option value="1">String loop</option><option value="2">Antenna</option><option value="3">Custom sprite</option></select></label></div>
-        <svg class="theme-preview" viewBox="0 0 128 64" role="img" aria-label="Icon startup screen preview"><rect width="128" height="64" fill="#b7c8a1"/><g fill="#172211" font-family="monospace"><g data-theme-boot-logo shape-rendering="crispEdges"></g><rect x="44.5" y="5.5" width="69" height="22" fill="none" stroke="#172211"/><text x="64" y="22" text-anchor="middle" font-size="16">FLUX</text><text x="64" y="42" text-anchor="middle" font-size="6">AG7SU / K6</text><text x="64" y="58" text-anchor="middle" font-size="6">Firmware version</text></g></svg>
-        <p class="radio-note">This screen appears when the radio has no full-screen boot bitmap. Its three starting icons come from the same art kit; editing one makes a custom 16 × 16 sprite in the theme package.</p>
-        <div class="editor-tabs"><button type="button" data-theme-icon-edit>Edit selected icon as sprite</button><button type="button" data-theme-icon-clear>Clear sprite</button></div>
-        <div class="pixel-grid icon-grid" data-theme-icon-grid role="group" aria-label="16 by 16 startup icon sprite"></div>
+        <p class="radio-note">Current raster builds use the standard Flux startup artwork. Startup icon and splash selection are not theme-editor options. Existing imported legacy icon data is preserved for compatibility.</p>
       </details>
       </details>
     </div>

@@ -40,22 +40,19 @@ function grid(root,w,h,read,toggle){
 }
 function create(editor,changed,preview){
   const q=s=>editor.querySelector(s);
-  const font=q('[data-theme-font]'),inset=q('[data-theme-inset]'),style=q('[data-theme-meter-style]'),splash=q('[data-theme-splash]');
+  const font=q('[data-theme-font]'),inset=q('[data-theme-inset]'),style=q('[data-theme-meter-style]');
   const meterPanel=q('[data-theme-custom-meter]'),batteryPanel=q('[data-theme-custom-battery]'),batteryOn=q('[data-theme-battery-on]');
   const signal=q('[data-preview-signal]'),charge=q('[data-preview-battery]'),batteryLevel=q('[data-theme-battery-edit]');
   const logos=window.FluxSplashLogos||[];
   const iconFromRows=rows=>Uint8Array.from((rows||Array(16).fill(0)).flatMap(row=>[(row>>8)&255,row&255]));
 
-  let m=bytes(meterDefault()),b=batteryDefault(),icon=iconFromRows(logos[0]),lastSplash='0';
+  let m=bytes(meterDefault()),b=batteryDefault(),icon=iconFromRows(logos[0]),legacySplash='0';
   const drawMeter=[0,1].map(i=>grid(q('[data-theme-meter-grid="'+i+'"]'),5,7,
     (x,y)=>get(m.subarray(i*7),x,y,1),
     (x,y)=>{const p=m.subarray(i*7);set(p,x,y,1,!get(p,x,y,1));changed();}));
   const drawBattery=grid(q('[data-theme-battery-grid]'),17,8,
     (x,y)=>get(b.subarray(Number(batteryLevel.value)*24),x,y,3),
     (x,y)=>{const p=b.subarray(Number(batteryLevel.value)*24);set(p,x,y,3,!get(p,x,y,3));changed();});
-  const drawIcon=grid(q('[data-theme-icon-grid]'),16,16,
-    (x,y)=>get(icon,x,y,2),
-    (x,y)=>{set(icon,x,y,2,!get(icon,x,y,2));splash.value='3';lastSplash='3';changed();});
   const meterText=q('[data-theme-meter-level]'),batteryText=q('[data-theme-battery-level]');
   function drawWidget(group,id,rx){
     if(id==='battery'){glyph(group,(batteryOn.checked?b:batteryDefault()).subarray(Number(charge.value)*24),17,8,3,0,0);return;}
@@ -75,12 +72,9 @@ function create(editor,changed,preview){
   }
   function render(){
     meterPanel.hidden=style.value!=='3';batteryPanel.hidden=!batteryOn.checked;
-    drawMeter.forEach(f=>f());drawBattery();drawIcon();
+    drawMeter.forEach(f=>f());drawBattery();
     const n=Number(signal.value),bars=Number(charge.value);
     meterText.textContent=n+' / 13';batteryText.textContent=bars+' / 4';
-    const logo=q('[data-theme-boot-logo]');logo.replaceChildren();
-    const selected=splash.value==='3'?icon:iconFromRows(logos[Number(splash.value)]);
-    for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(get(selected,x,y,2))rect(logo,x+20,y+8,1,1);
     const full=q('[data-theme-full-splash]');
     if(!full.childElementCount&&Array.isArray(window.FluxBootSplash)&&window.FluxBootSplash.length===1024){
       let path='';const art=window.FluxBootSplash;
@@ -90,7 +84,6 @@ function create(editor,changed,preview){
     }
   }
   for(const el of [font,inset,style,batteryOn])el.addEventListener('change',changed);
-  splash.addEventListener('change',()=>{if(splash.value==='3'&&lastSplash!=='3')icon=iconFromRows(logos[Number(lastSplash)]);lastSplash=splash.value;changed();});
   for(const el of [batteryLevel])el.addEventListener('input',()=>{if(el===batteryLevel)charge.value=el.value;preview();});
   for(const el of editor.querySelectorAll('[data-theme-meter-preset]'))el.addEventListener('click',()=>{
     const [i,kind]=el.dataset.themeMeterPreset.split(':');const v=kind==='continuous'?Array(7).fill(0xf8):kind==='solid'?normal():kind==='hollow'?over():kind==='clear'?Array(7).fill(0):Number(i)?over():normal();
@@ -98,19 +91,16 @@ function create(editor,changed,preview){
   });
   q('[data-theme-battery-reset]').addEventListener('click',()=>{b=batteryDefault();changed();});
   q('[data-theme-battery-copy]').addEventListener('click',()=>{const n=Number(batteryLevel.value);if(n<4){b.copyWithin((n+1)*24,n*24,n*24+24);batteryLevel.value=String(n+1);charge.value=String(n+1);changed();}});
-  q('[data-theme-icon-edit]').addEventListener('click',()=>{if(splash.value!=='3')icon=iconFromRows(logos[Number(splash.value)]);splash.value='3';lastSplash='3';changed();});
-  q('[data-theme-icon-clear]').addEventListener('click',()=>{icon.fill(0);splash.value='3';lastSplash='3';changed();});
   return {
     render,drawWidget,
-    suffix(){const digits=font.value+inset.value+style.value+splash.value;
-      return (digits==='0000'?'':'-'+digits)+(style.value==='3'?'-m'+hex(m):'')+(batteryOn.checked?'-b'+hex(b):'')+(splash.value==='3'?'-g'+hex(icon):'');},
+    suffix(){const digits=font.value+inset.value+style.value+legacySplash;
+      return (digits==='0000'?'':'-'+digits)+(style.value==='3'?'-m'+hex(m):'')+(batteryOn.checked?'-b'+hex(b):'')+(legacySplash==='3'?'-g'+hex(icon):'');},
     load(parts){
       const d=parts.find(x=>/^[01][0-3][0-3][0-3]$/.test(x))||'0000';
-      [font.value,inset.value,style.value,splash.value]=d.split('');
+      [font.value,inset.value,style.value,legacySplash]=d.split('');
       const bm=parts.find(x=>x.startsWith('m')),bt=parts.find(x=>x.startsWith('b')),gi=parts.find(x=>x.startsWith('g'));
       m=bm?bytes(bm.slice(1)):bytes(meterDefault());b=bt?bytes(bt.slice(1)):batteryDefault();batteryOn.checked=!!bt;
-      icon=gi?bytes(gi.slice(1)):iconFromRows(logos[Number(splash.value)]||logos[0]);
-      lastSplash=splash.value;
+      icon=gi?bytes(gi.slice(1)):iconFromRows(logos[Number(legacySplash)]||logos[0]);
     }
   };
 }

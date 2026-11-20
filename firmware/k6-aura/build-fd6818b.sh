@@ -33,6 +33,12 @@ case ",$FEATURES," in
   *) echo "FD6818B builds require the blowfang-host feature." >&2; exit 1 ;;
 esac
 
+# Fail before cloning or applying overlays; propagate one executable to all helpers.
+K6_CARGO=$(python3 "$ROOT/tools/k6_toolchain.py" "$WORK")
+CARGO="$K6_CARGO"
+PATH="$(dirname "$K6_CARGO"):${PATH:-}"
+export K6_CARGO CARGO PATH
+
 if [ ! -d "$WORK/.git" ]; then
   git clone -q "$REPO" "$WORK"
   git -C "$WORK" checkout -q --detach "$REV"
@@ -61,6 +67,8 @@ python3 "$HERE/ensure-host-feature.py" "$WORK/Cargo.toml"
 if ! grep -q 'PXK6 card data uses explicit commands' "$WORK/src/cps/mod.rs"; then
   git -C "$WORK" apply "$HERE/aura-card-cable.patch"
 fi
+# Normalize the generated API level before reapplying older overlay scripts.
+python3 "$HERE/apply-configurable-fsk.py" --reset-level
 python3 "$HERE/apply-fd6818b-fsk-tx-api.py"
 python3 "$HERE/apply-fd6818b-afsk-module-api.py"
 python3 "$HERE/apply-fd6818b-kiss-api.py"
@@ -104,6 +112,7 @@ case ",$FEATURES," in
     ;;
 esac
 python3 "$HERE/apply-host-feature-trim.py"
+python3 "$HERE/apply-small-arrows.py"
 python3 "$HERE/apply-tx-profile.py"
 python3 "$HERE/apply-module-key-actions.py"
 python3 "$HERE/apply-module-loader-init.py"
@@ -116,6 +125,24 @@ python3 "$HERE/apply-theme-install.py"
 K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-flux-art.py"
 K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" python3 "$HERE/apply-flux-branding.py"
 python3 "$HERE/apply-theme-splash.py"
+K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
+python3 "$HERE/apply-serial-lab.py"
+python3 "$HERE/apply-compact-edit.py"
+python3 "$HERE/apply-compact-format.py"
+python3 "$HERE/apply-compact-settings.py"
+
+python3 "$HERE/apply-lean-txdog.py"
+python3 "$HERE/apply-el-power.py"
+python3 "$HERE/apply-ram0.py"
+python3 "$HERE/apply-system-partition.py"
+python3 "$HERE/apply-system-demo.py"
+python3 "$HERE/apply-system-install.py"
+python3 "$HERE/apply-channel-page.py"
+python3 "$HERE/apply-settings-page.py"
+python3 "$HERE/apply-compact-channel-list.py"
+python3 "$HERE/apply-configurable-fsk.py"
+python3 "$HERE/apply-fm-budget-gate.py"
+if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
 grep -q 'FD6818B FSK TBD' "$WORK/src/ui/pager.rs" || {
   echo "FD6818B overlay is missing from $WORK; inspect that checkout before building" >&2
   exit 1
@@ -134,6 +161,62 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_USER_STORE:-0}" = 1 ]; then
+  python3 "$HERE/apply-user-store.py"
+  python3 "$HERE/apply-user-restore.py"
+  PACK_CFG="$PACK_CFG --cfg k6_user_store"
+fi
+if [ "${K6_MEMORY_BANK:-0}" = 1 ]; then
+  python3 "$HERE/apply-memory-bank.py"
+  PACK_CFG="$PACK_CFG --cfg k6_memory_bank"
+fi
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] && [ "${K6_SYSTEM_DEMO:-0}" = 0 ] && [ "${K6_VFO_PROBE:-0}" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "Channel page requires expanded cable-only arena and installer (no resident probe/demo)" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_channel_page"
+fi
+if [ "${K6_SYSTEM_DEMO:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "System demo requires cable-only non-voice host" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_system_demo"
+fi
+if [ "${K6_SYSTEM_INSTALL:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || exit 1
+  PACK_CFG="$PACK_CFG --cfg k6_system_install"
+fi
+case "${K6_RAM0:-0}" in
+  0) ;;
+  1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
+  small) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_small" ;;
+  *) echo "invalid K6_RAM0" >&2; exit 1 ;;
+esac
+if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
+  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || { echo "Config FSK requires Data and watchdog" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
+fi
+if [ "${K6_EL_POWER:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_el_power"; fi
+if [ "${K6_LEAN_TXDOG:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_lean_txdog"; fi
+if [ "${K6_HEALTH_TELEMETRY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_health_telemetry"; fi
+if [ "${K6_NATIVE_FM:-1}" = 0 ]; then PACK_CFG="$PACK_CFG --cfg k6_no_native_fm"; fi
+if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_font_subset"; fi
+if [ "${K6_RASTER_BOOT:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_raster_boot"; fi
+if [ "${K6_SERIAL_TRANSPORT:-0}" = 1 ]; then
+  PACK_CFG="$PACK_CFG --cfg k6_serial_transport"
+fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  [ "${K6_CHANNEL_PAGE:-0}" = 1 ] || { echo "Settings page requires channel page loader" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_settings_page"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  [ "${K6_SERIAL_IQ:-0}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] || { echo "IQ page requires expanded arena and system installer" >&2; exit 1; }
+  python3 "$HERE/apply-iq-page.py"
+  PACK_CFG="$PACK_CFG --cfg k6_iq_page"
+fi
+if [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
+  [ "$K6_EXPLORE_HOST" = 1 ] || { echo "Serial IQ requires Base host" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_serial_iq"
+fi
+if [ "${K6_SERIAL_LAB:-0}" = 1 ]; then
+  PACK_CFG="$PACK_CFG --cfg k6_serial_lab"
+fi
 if [ "${K6_VFO_PROBE:-0}" = 1 ] || [ "${K6_VFO_SPI_PROBE:-0}" = 1 ]; then
   [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "VFO probe requires Data" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_vfo_probe"
@@ -165,9 +248,9 @@ if [ "$K6_SOTTO_SERVICE" = 0 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_no_sotto"
 fi
 if [ -n "$PACK_CFG" ]; then
-  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" cargo build --release --features "$FEATURES")
+  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" "$K6_CARGO" build --release --features "$FEATURES")
 else
-  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" cargo build --release --features "$FEATURES")
+  (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" "$K6_CARGO" build --release --features "$FEATURES")
 fi
 ELF="${CARGO_TARGET_DIR:-$WORK/target}/thumbv6m-none-eabi/release/aura"
 llvm-size -A "$ELF" > "$OUT/size.txt"
@@ -175,10 +258,11 @@ FLASH=$(awk '$1==".vector_table" || $1==".text" || $1==".rodata" || $1==".gnu.sg
 for pass in 1 2 3; do
   K6_FLASH_USED_BYTES="$FLASH" K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" python3 "$HERE/apply-flux-branding.py"
   python3 "$HERE/apply-theme-splash.py"
+K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
   if [ -n "$PACK_CFG" ]; then
-    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" cargo build --release --features "$FEATURES")
+    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Tlink.x$PACK_CFG" "$K6_CARGO" build --release --features "$FEATURES")
   else
-    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" cargo build --release --features "$FEATURES")
+    (cd "$WORK" && K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" "$K6_CARGO" build --release --features "$FEATURES")
   fi
   llvm-size -A "$ELF" > "$OUT/size.txt"
   NEXT_FLASH=$(awk '$1==".vector_table" || $1==".text" || $1==".rodata" || $1==".gnu.sgstubs" || $1==".k6_id" || $1==".data" {n += $2} END {print n+0}' "$OUT/size.txt")
@@ -196,7 +280,19 @@ if [ "$FLASH" -gt 122880 ]; then
   echo "image needs $FLASH bytes; KD32F328 application limit is 122880 bytes" >&2
   exit 1
 fi
+if [ "${K6_RAM0:-0}" != 0 ]; then
+  python3 "$ROOT/tools/k6_ram0_audit.py" "$ELF" --mode "$K6_RAM0" > "$OUT/ram0-layout.json"
+fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_channel_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/channel-system.bin"
+fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_settings_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/settings-system.bin"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_iq_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/iq-system.bin"
+fi
 python3 - "$OUT/$IMAGE.bin" <<'PY'
 import hashlib
 from pathlib import Path
@@ -206,9 +302,6 @@ checksum = f"{hashlib.sha256(image.read_bytes()).hexdigest()}  {image}\n"
 image.with_suffix(image.suffix + '.sha256').write_text(checksum)
 print(checksum, end='')
 PY
-case ",$FEATURES," in
-  *,blowfang-host,*) python3 "$HERE/build-vfo-module-bundle.py" --out "$OUT/vfo-module-bundle" ;;
-esac
 if [ "$K6_OTA_SERVICE" = 0 ]; then
   echo "Built cable-only FD6818B image with features: $FEATURES"
 elif [ -n "${K6_MOD_KEY_FILE:-}" ]; then

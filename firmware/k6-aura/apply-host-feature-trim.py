@@ -21,7 +21,7 @@ def replace(text, old, new):
 
 def guard(text, line, condition=None):
     """Replace earlier host exclusions, including duplicates in existing worktrees."""
-    pattern = r'(?m)^(?:[ \t]*#\[cfg\((?:not\(feature = "blowfang-host"\)|not\(feature = "lean"\)|not\(k6_no_scan\)|k6_no_scan)\)\]\n)*' + re.escape(line)
+    pattern = r'(?m)^(?:[ \t]*#\[cfg\((?:not\(feature = "blowfang-host"\)|not\(feature = "lean"\)|not\(k6_no_scan\)|k6_no_scan|not\(k6_no_native_fm\))\)\]\n)*' + re.escape(line)
     updated, count = re.subn(pattern, (f"{line[:len(line) - len(line.lstrip())]}#[cfg({condition})]\n" if condition else "") + line, text)
     if count != 1:
         raise SystemExit(f"Host feature trim: unexpected guarded line {line!r}")

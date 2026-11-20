@@ -1,6 +1,6 @@
-/* CARD LINK: send or receive lossless PixelQSO PXK6 records over FD6818B fixed-frame FSK.
+/* CARD LINK: send or receive lossless PixelQSO PXK6 records over FD6818B configurable native FSK.
    The module is half duplex and uses per-frame stop-and-wait acknowledgements. */
-#define K6_MODULE_LEVEL 12
+#define K6_MODULE_LEVEL 24
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 #include "../card_air.h"
@@ -15,9 +15,10 @@ uint32_t __aeabi_uidiv(uint32_t numerator, uint32_t denominator) {
 }
 
 #define STORE_BASE 0x190000u
-#define STORE_END 0x200000u
+#define STORE_END 0x19A000u
 #define STORE_SECTOR 4096u
 #define STORE_SLOTS ((STORE_END - STORE_BASE) / STORE_SECTOR)
+#define CARD_FSK_CONFIG (1200u | (78u << 16))
 #define AIR_TIMEOUT_MS 3500u
 #define FRAME_RETRIES 3u
 #define LCD_ROWS 30u
@@ -107,7 +108,7 @@ static int radio_send(const k6_api_t *api, const uint8_t raw[K6_CA_FRAME_BYTES])
   r = api->tx_on(1800);
   if (r < 0) return r;
   raw_to_words(raw, words);
-  r = api->fsk_tx_send(words);
+  r = api->fsk_configured(2, words, 8, CARD_FSK_CONFIG);
   api->tx_off();
   return r;
 }
@@ -116,13 +117,13 @@ static int radio_receive(const k6_api_t *api, ui_t *ui, uint8_t raw[K6_CA_FRAME_
                          uint32_t timeout_ms) {
   uint16_t words[8];
   uint32_t start = api->ms();
-  if (api->fsk_rx_start() < 0) return -2;
+  if (api->fsk_configured(0, 0, 8, CARD_FSK_CONFIG) < 0) return -2;
   while ((uint32_t)(api->ms() - start) < timeout_ms) {
     if (user_stop(api, ui)) {
       api->fsk_rx_stop();
       return -3;
     }
-    if (api->fsk_rx_ready() && api->fsk_rx_read(words) == 0) {
+    if (api->fsk_configured(1, words, 8, CARD_FSK_CONFIG) == 8) {
       if (words_to_raw(words, raw) == 0) return 0;
     }
     api->delay_us(2000);
@@ -441,9 +442,9 @@ int k6_main(const k6_api_t *api) {
   uint32_t scratch_bytes = 0;
   uint8_t *scratch;
   int key, result;
-  if (api->level < 12 ||
+  if (api->level < 24 ||
       api->card_store == 0 || api->scratch == 0) {
-    api->say("CARD LINK needs API 12");
+    api->say("CARD LINK needs API 24");
     return -1;
   }
   scratch = (uint8_t *)api->scratch(&scratch_bytes);

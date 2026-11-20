@@ -1,5 +1,9 @@
 # IF capture/streaming: lessons from WSPR IQ
 
+A newer [physical IF/IQ serial lab](k6-serial-iq-lab.md) now connects the portable
+mixer/CIC to GP0 DMA and binary UART output. See its measured continuity results;
+the sections below retain the earlier design and qualification notes.
+
 Reviewed `c/k6/mod/wspriq.c`, `c/k6/mod/gp0rx.h`,
 `docs/k6-ft8-wspr.md`, and `tools/k6_wspr.py`.
 

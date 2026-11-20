@@ -10,7 +10,7 @@ SPEC = json.loads((Path(__file__).resolve().parents[1] / 'config/k6-feature-pack
 def test_scan_data_deduplicates_base():
     plan = resolve(SPEC, ['scan', 'data'])
     assert plan['packs'] == ['base', 'scan', 'data']
-    assert plan['modules'] == ['vfo', 'surf', 'explore_scan', 'cardlink']
+    assert plan['modules'] == ['surf', 'explore_scan', 'cardlink']
     assert len(plan['cargo_features']) == len(set(plan['cargo_features']))
 
 def test_unknown_and_unavailable_rejected():
@@ -37,10 +37,10 @@ def test_aprs_is_catalog_only_and_raw_data_is_optional():
     from k6_pack_policy import POLICY,gate_environment
     policy=json.loads(POLICY.read_text())
     base=resolve(SPEC,['base'])
-    assert base['modules']==['vfo']
+    assert base['modules']==[]
     assert gate_environment(base,policy)['K6_FSK_RX_SERVICE']=='0'
     data=resolve(SPEC,['data'])
-    assert data['modules']==['vfo','cardlink']
+    assert data['modules']==['cardlink']
     assert gate_environment(data,policy)['K6_FSK_RX_SERVICE']=='1'
     with pytest.raises(ValueError,match='unknown'):
         resolve(SPEC,['aprs'])
@@ -52,3 +52,17 @@ def test_tx_profile_is_explicit_and_defaults_to_ce():
         assert resolve(SPEC, ['base'], tx_profile=name)['tx_profile'] == name
     with pytest.raises(ValueError, match='transmit profile'):
         resolve(SPEC, ['base'], tx_profile='outside-range')
+
+def test_storage_profile_defaults_are_explicit():
+    from k6_pack_policy import storage_environment
+    for packs in (['base'],['data'],['ota'],['sotto']):
+        gates=storage_environment(resolve(SPEC,packs))
+        assert gates['K6_USER_STORE']==gates['K6_MEMORY_BANK']=='1'
+        assert gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='0' # unqualified experimental overlay
+
+def test_iq_base_capability():
+    from k6_pack_policy import storage_environment
+    assert storage_environment(resolve(SPEC,['base']),iq=True)['K6_SETTINGS_PAGE']=='1'
+    with pytest.raises(ValueError):storage_environment(resolve(SPEC,['data','ota']),iq=True)
+    gates=storage_environment(resolve(SPEC,['data']),iq=True)
+    assert gates['K6_MEMORY_BANK']==gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='1'

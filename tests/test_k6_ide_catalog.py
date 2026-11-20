@@ -9,4 +9,4 @@ def test_catalog_curates_current_modules_and_keeps_experiments_accessible():
     assert {b['path'] for b in curated} <= {b['path'] for b in all_bundles}
     assert len({b['path'] for b in curated}) == len(curated)
     assert all(b['path'].split('/')[-1] in
-               {'surf', 'vfo', 'cardlink', 'explore_scan', 'aprs', 'aprs-beacon', 'aprs-gps-sync', 'aprs-kiss-rx'} for b in curated)
+               {'surf', 'cardlink', 'explore_scan', 'aprs', 'aprs-beacon', 'aprs-gps-sync', 'aprs-kiss-rx'} for b in curated)

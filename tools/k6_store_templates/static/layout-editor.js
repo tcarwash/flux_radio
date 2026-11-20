@@ -22,6 +22,10 @@ function sample(n,state){
  if(state && Object.hasOwn(state,n.id))return state[n.id];return n.id.endsWith('frequency')?(n.id.includes('-a-')?'146.52000':'440.85000'):(samples[n.id.replace(/^vfo-[ab]-/,'')]||'');}
 function visualExtent(n,state){
  const key=n.id.replace(/^vfo-[ab]-/,'');
+ if(n.id.endsWith('frequency')&&state?.[n.id+'-display']){
+   const mode=state[n.id+'-display'],name=state[n.id+'-name'];
+   return {w:(mode==='namefreq'?Math.max(name.length,sample(n,state).length):name.length)*5,h:mode==='namefreq'?16:8};
+ }
  if(n.id.endsWith('frequency'))return {w:n.font==='custom'?72:n.font==='compact'?54:82,h:n.font==='custom'?12:n.font==='compact'?10:17};
  if(['battery','meter','marker'].includes(key))return {w:n.w,h:n.h};
  return {w:Math.max(1,sample(n,state).length)*(n.h===6?4:5),h:n.h};
@@ -148,7 +152,12 @@ function create(editor,changed,hooks){
    for(const k of ['a','b']){
      const p='vfo-'+k+'-',get=f=>q('[data-preview-'+f+'="'+k+'"]').value;
      const hz=Number(get('frequency'));state[p+'frequency']=Number.isFinite(hz)&&hz>=0&&hz<1000?hz.toFixed(5).padStart(9,' '):sample({id:p+'frequency'});
-     state[p+'channel-name']=get('channel-name').slice(0,12);state[p+'channel']=state[p+'channel-name']?'M1':'VFO';
+     const memory=get('side-mode')==='memory',slot=Math.max(0,Math.min(999,Math.trunc(Number(get('channel-slot')))||0));
+     const name=memory?get('channel-name').slice(0,12):'';
+     state[p+'channel-name']=name;state[p+'channel']=memory?'M'+slot:'VFO';
+     const display=preview('memory-display').value;
+     state[p+'frequency-display']=!names&&name&&display!=='frequency'?display:'';
+     state[p+'frequency-name']=name;
      state[p+'state']=rx===k?'RX':'';state[p+'marker']=side===k?'>':'';
      for(const f of ['mode','power','bandwidth'])state[p+f]=get(f);
      state[p+'tone']='';state[p+'reverse']='';state[p+'offset']='';state[p+'break-in']='';state[p+'repeater']='';
@@ -159,7 +168,7 @@ function create(editor,changed,hooks){
  function historyButtons(){q('[data-layout-undo]').disabled=!history.length;q('[data-layout-redo]').disabled=!future.length;}
  function replay(from,to){if(!from.length)return;to.push(snapshot());const v=from.pop();nodes=v.nodes;glyphs=Uint8Array.from(v.glyphs);hasFont=v.hasFont;enabled=v.enabled;names=!!v.names;historyButtons();fontGrid();render();if(changed)changed();}
  q('[data-layout-undo]').onclick=()=>replay(history,future);q('[data-layout-redo]').onclick=()=>replay(future,history);
- for(const el of editor.querySelectorAll('[data-preview-active],[data-preview-rx],[data-preview-call],[data-preview-battery],[data-preview-signal],[data-preview-dual],[data-preview-save],[data-preview-vox],[data-preview-lock],[data-preview-frequency],[data-preview-channel-name],[data-preview-mode],[data-preview-power],[data-preview-bandwidth],[data-preview-guides]'))el.addEventListener('input',()=>{previewState();hooks.preview();});
+ for(const el of editor.querySelectorAll('[data-preview-active],[data-preview-rx],[data-preview-call],[data-preview-battery],[data-preview-signal],[data-preview-dual],[data-preview-save],[data-preview-vox],[data-preview-lock],[data-preview-frequency],[data-preview-channel-name],[data-preview-channel-slot],[data-preview-side-mode],[data-preview-memory-display],[data-preview-mode],[data-preview-power],[data-preview-bandwidth],[data-preview-guides]'))el.addEventListener('input',()=>{previewState();hooks.preview();});
  previewState();
  // Original seven-segment starter patterns, not a bundled third-party font.
  const segments=['ab cdef','bc','abdeg','abcdg','bcfg','acdfg','acdefg','abc','abcdefg','abcdfg'].map(s=>s.replaceAll(' ',''));
@@ -181,6 +190,7 @@ function create(editor,changed,hooks){
  const label=n=>n.id.replace(/-mode$/,'-modulation').replace(/^vfo-([ab])-/,(_,s)=>s.toUpperCase()+' · ').replaceAll('-',' ');
  function element(tag,props){const el=document.createElementNS(NS,tag);Object.entries(props).forEach(([k,v])=>el.setAttribute(k,v));return el;}
  function render(){
+  previewState();
   content.replaceChildren();guides.replaceChildren();
   const editing=hooks.editing(), showGuides=editing&&preview('guides').checked;
   svg.classList.toggle('layout-moving',editing);
@@ -208,11 +218,12 @@ function create(editor,changed,hooks){
     if(!isGroup){
       if(n.id==='battery'||n.id==='meter'||key==='marker'){
         hooks.drawWidget(group,n.id,value,preview('rx').value!=='off');
-      }else if(n.font==='custom'&&n.id.endsWith('frequency')){
+      }else if(n.font==='custom'&&n.id.endsWith('frequency')&&!state[n.id+'-display']){
         for(const [i,ch] of Array.from(value).entries()){const d=ch==='.'?10:Number(ch);if(ch===' '||!Number.isInteger(d))continue;for(let y=0;y<12;y++)for(let x=0;x<8;x++)if(glyphs[d*12+y]&(128>>x))group.append(element('rect',{x:i*8+x,y,width:1,height:1,fill:'#172211','pointer-events':'none'}));}
       }else{
       const draw=(text,key,ox=0,oy=0)=>{const f=root.FluxLCDFonts[key];let d='';for(const [i,ch] of Array.from(text).entries()){const rows=f.glyphs[ch]||f.glyphs['?']||[];for(let y=0;y<rows.length;y++)for(let x=0;x<f.w;x++)if(rows[y]&(1<<x))d+='M'+(ox+i*f.w+x)+' '+(oy+y)+'h1v1h-1z';}if(d)group.append(element('path',{d,fill:'#172211','shape-rendering':'crispEdges','pointer-events':'none'}));};
-      if(n.id.endsWith('frequency')&&n.font==='factory'){draw(value.slice(0,7),'large');draw(value.slice(7),'compact',70);}
+      if(n.id.endsWith('frequency')&&state[n.id+'-display']){draw(state[n.id+'-name'],'small');if(state[n.id+'-display']==='namefreq')draw(value,'small',0,8);}
+      else if(n.id.endsWith('frequency')&&n.font==='factory'){draw(value.slice(0,7),'large');draw(value.slice(7),'compact',70);}
       else draw(value,n.font==='compact'?'compact':n.h===6?'mode':'small');}
     }
     content.append(group);

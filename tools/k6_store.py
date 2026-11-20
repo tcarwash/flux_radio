@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import io
+import zipfile
 import json
 import os
 import re
@@ -385,7 +387,7 @@ class ModuleStore:
 
 def create_app(store: ModuleStore | None = None):
     try:
-        from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, session, url_for, jsonify
+        from flask import Flask, abort, flash, redirect, render_template, request, send_file, send_from_directory, session, url_for, jsonify
     except ImportError as exc:
         raise RuntimeError("Flask is required for the web UI; install tools/k6_store_requirements.txt") from exc
 
@@ -439,17 +441,106 @@ def create_app(store: ModuleStore | None = None):
     def inject_radio_settings():
         return {"radio_settings": radio_settings()}
 
+    @app.get("/memories")
+    def memories_page():
+        from k6_memories import builtins
+        return render_template("memories.html", packs=builtins(), memory_token=session.setdefault("memory_token",secrets.token_urlsafe(32)))
+
+    @app.post("/memories/radio")
+    def memories_radio():
+        from k6_memory_radio import operate
+        from k6_install import InstallError
+        data=request.get_json(silent=True)
+        if not isinstance(data,dict):return jsonify(error="Invalid request"),400
+        token=session.get("memory_token","")
+        if not token or not secrets.compare_digest(token,str(data.get("token",""))):abort(403)
+        action=data.get("action")
+        if action not in ("read","merge","replace","recover"):return jsonify(error="Unknown action"),400
+        if action!="read" and data.get("confirm")!=action: return jsonify(error="Confirm radio write first"),400
+        settings=radio_settings()
+        if not settings["port"]:return jsonify(error="Select serial port in Device settings first"),400
+        try:return jsonify(operate(settings["port"],settings["key_file"],action,data.get("channels")))
+        except (ValueError,OSError,InstallError) as e:return jsonify(error=str(e)),400
+
+    @app.post("/memories/radio/<what>")
+    def memories_read_radio(what):
+        from k6_radio_memories import read_radio
+        from k6_install import InstallError
+        if what not in ("location", "channels"):
+            return jsonify(error="Unknown radio read"), 404
+        port = radio_settings()["port"]
+        if not port:
+            return jsonify(error="Set the USB serial port in Device settings first."), 400
+        data = request.get_json(silent=True)
+        token = session.get("memory_token", "")
+        if not isinstance(data, dict) or not token or not secrets.compare_digest(token, str(data.get("token", ""))):
+            abort(403)
+        try:
+            return jsonify(read_radio(port, what))
+        except (InstallError, OSError, ValueError) as exc:
+            return jsonify(error=str(exc)), 502
+
+    @app.post("/memories/import")
+    def memories_import():
+        from k6_memories import read_csv, read_pack
+        try:
+            f = request.files["file"]
+            data = f.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                raise ValueError("Memory file exceeds 2 MB")
+            return jsonify(channels=(read_csv if f.filename.lower().endswith(".csv") else read_pack)(data.decode("utf-8-sig")))
+        except (ValueError, KeyError, UnicodeError) as exc:
+            return jsonify(error=str(exc)), 400
+
+    @app.post("/memories/export")
+    def memories_export():
+        from flask import Response
+        from k6_memories import pack, write_csv
+        try:
+            data = request.get_json()
+            rows = data["channels"]
+            if not isinstance(rows, list) or len(rows) > 10000 or not all(isinstance(r, dict) for r in rows):
+                raise ValueError("Invalid channel list")
+            csv_format = data.get("format") == "csv"
+            body = write_csv(rows) if csv_format else json.dumps(pack(data.get("name", "My memories"), rows), indent=2)
+            ext = "csv" if csv_format else "fluxmem"
+            return Response(body, mimetype="text/csv" if csv_format else "application/json", headers={"Content-Disposition": f'attachment; filename="memories.{ext}"'})
+        except (ValueError, KeyError, TypeError) as exc:
+            return jsonify(error=str(exc)), 400
+
+    @app.get("/memories/repeaters")
+    def memories_repeaters():
+        from k6_memories import repeaters
+        try:
+            rows = repeaters(float(request.args["lat"]), float(request.args["lon"]), float(request.args["radius"]), request.args.get("band", "all"), request.args.get("open", "1") == "1")
+            return jsonify(channels=rows)
+        except (ValueError, KeyError) as exc:
+            return jsonify(error=str(exc)), 400
+        except OSError:
+            return jsonify(error="HearHam is temporarily unavailable"), 502
+
+    def device_return_job(job_id):
+        # Accept only an existing build ID, never an arbitrary redirect URL.
+        if job_id:
+            try:
+                app.config['build_jobs'].get(job_id)
+                return job_id
+            except KeyError:
+                pass
+        return None
+
     @app.get("/settings")
     def settings_page():
-        return render_template("settings.html", settings=radio_settings(), devices=serial_devices())
+        return render_template("settings.html", settings=radio_settings(), devices=serial_devices(), return_job=device_return_job(request.args.get("build")))
 
     @app.post("/settings")
     def save_settings():
+        return_job = device_return_job(request.form.get("build"))
         port = request.form.get("port", "").strip()
         key_file = request.form.get("key_file", "").strip()
         if not port:
             flash("Enter the serial device, such as /dev/ttyUSB0 or COM5.", "error")
-            return render_template("settings.html", settings={"port": port, "key_file": key_file, "saved_port": saved_port()}, devices=serial_devices()), 400
+            return render_template("settings.html", settings={"port": port, "key_file": key_file, "saved_port": saved_port()}, devices=serial_devices(), return_job=return_job), 400
         session["radio_port"] = port
         session["radio_key_file"] = key_file
         if request.form.get("remember_port") == "yes":
@@ -472,7 +563,7 @@ def create_app(store: ModuleStore | None = None):
             except OSError:
                 flash("Could not clear the remembered port.", "error")
         flash("Radio port selected. Confirm the cable is still connected before writing.", "success")
-        return redirect(url_for("settings_page"))
+        return redirect(url_for("build_status", job_id=return_job)) if return_job else redirect(url_for("settings_page"))
 
     @app.get("/")
     def index():
@@ -483,21 +574,24 @@ def create_app(store: ModuleStore | None = None):
             flash(str(exc), "error")
         return render_template("index.html", repos=repos, catalog_themes=theme_library.list())
 
-    def profile_plan(selected, theme, tx_profile):
+    def profile_plan(selected, theme, tx_profile, iq=None):
         from k6_feature_packs import DEFAULT, resolve, DEFAULT_TX_PROFILE
         from k6_pack_policy import POLICY, validate, gate_environment
         spec = json.loads(DEFAULT.read_text())
         policy = json.loads(POLICY.read_text())
         choices = {name: dict(item) for name, item in spec['packs'].items() if name != 'base'}
         if 'sotto' in choices:
-            choices['sotto']['status'] = 'Temporarily tabled until a linked size is verified'
+            choices['sotto']['status'] = 'WIP — not ready for installation'
         try:
             if any(name not in choices or choices[name].get('status') for name in selected):
                 raise ValueError('unknown feature pack')
             validate(spec, policy)
             plan = resolve(spec, selected or ['base'], theme, tx_profile)
             from k6_flash_estimate import estimate
-            result = {'ok': True, 'plan': plan, 'gates': gate_environment(plan, policy), 'estimate': estimate(plan)}
+            from k6_pack_policy import storage_environment, iq_supported
+            if iq is None: iq=iq_supported(plan)
+            plan['iq']=iq
+            result = {'ok': True, 'plan': plan, 'gates': {**gate_environment(plan, policy),**storage_environment(plan,iq=iq)}, 'estimate': estimate(plan)}
         except (ValueError, KeyError) as exc:
             result = {'ok': False, 'error': str(exc)}
         return choices, result
@@ -510,14 +604,14 @@ def create_app(store: ModuleStore | None = None):
         theme = request.form.get('theme', DEFAULT_THEME)
         theme_name = request.form.get('theme_name', '')
         tx_profile = request.form.get('tx_profile', DEFAULT_TX_PROFILE)
-        choices, result = profile_plan(selected, theme, tx_profile)
+        choices, result = profile_plan(selected, theme, tx_profile, (request.form.get('iq')=='1' if 'iq' in request.form else None))
         saved_themes = theme_library.list()
         matching_theme_index = next((i for i, item in enumerate(saved_themes)
                                      if item['token'] == theme and (not theme_name or item['name'] == theme_name)), -1)
         return render_template('profiles.html', choices=choices, result=result,
                                selected=selected, themes=THEMES, selected_theme=theme, selected_theme_name=theme_name,
                                saved_themes=saved_themes, matching_theme_index=matching_theme_index,
-                               tx_profiles=TX_PROFILES, selected_tx_profile=tx_profile), (200 if result['ok'] else 400)
+                               tx_profiles=TX_PROFILES, selected_tx_profile=tx_profile, selected_iq=result.get('plan',{}).get('iq',False)), (200 if result['ok'] else 400)
 
     @app.get("/themes")
     def themes_page():
@@ -584,7 +678,7 @@ def create_app(store: ModuleStore | None = None):
     def preview_profile():
         from k6_feature_packs import DEFAULT_THEME, DEFAULT_TX_PROFILE
         _, result = profile_plan(request.form.getlist('pack'), request.form.get('theme', DEFAULT_THEME),
-                                 request.form.get('tx_profile', DEFAULT_TX_PROFILE))
+                                 request.form.get('tx_profile', DEFAULT_TX_PROFILE),(request.form.get('iq')=='1' if 'iq' in request.form else None))
         return jsonify(result), (200 if result['ok'] else 400)
 
     @app.post("/profiles/build")
@@ -597,18 +691,24 @@ def create_app(store: ModuleStore | None = None):
         theme = request.form.get('theme', DEFAULT_THEME)
         theme_name = request.form.get('theme_name', '').strip()
         tx_profile = request.form.get('tx_profile', DEFAULT_TX_PROFILE)
-        _, result = profile_plan(selected, theme, tx_profile)
+        _, result = profile_plan(selected, theme, tx_profile, (request.form.get('iq')=='1' if 'iq' in request.form else None))
         if not result['ok']:
             abort(400)
-        if not result['estimate']['allowed']:
-            flash('Estimated firmware size exceeds this profile’s flash budget. Remove feature sets before building.', 'error')
-            return redirect(url_for('profiles'))
         try:
-            job_id = app.config['build_jobs'].start(selected, theme, tx_profile, theme_name)
+            job_id = app.config['build_jobs'].start(selected, theme, tx_profile, theme_name, iq=result['plan']['iq'])
         except (ValueError, OSError) as exc:
             flash(str(exc), 'error')
             return redirect(url_for('profiles'))
         return redirect(url_for('build_status', job_id=job_id))
+
+    def pending_recovery(job, port):
+        if not port or not job.get('lock') or job['lock'].get('storage',{}).get('format')!=2:return []
+        from k6_user_store_restore import pending_for_pack,BACKUP_DIR
+        from k6_build_identity import image_build_id
+        try:
+            build=image_build_id((Path(job['output'])/job['lock']['firmware']['path']).read_bytes())
+            return pending_for_pack(BACKUP_DIR,build,port)
+        except (OSError,ValueError,KeyError):return []
 
     @app.get("/profiles/build/<job_id>")
     def build_status(job_id):
@@ -617,7 +717,59 @@ def create_app(store: ModuleStore | None = None):
         except KeyError:
             abort(404)
         token = session.setdefault('pack_radio_token', secrets.token_urlsafe(32))
-        return render_template('build_status.html', job=job, radio_token=token)
+        return render_template('build_status.html', job=job, radio_token=token, recoveries=pending_recovery(job,radio_settings()['port']), devices=serial_devices())
+
+    @app.get("/profiles/build/<job_id>/download")
+    def download_build(job_id):
+        try:
+            job = app.config['build_jobs'].get(job_id)
+        except KeyError:
+            abort(404)
+        if job['state'] != 'success':
+            abort(409, 'Build must finish successfully before downloading')
+        from k6_pack_install import verify_pack, checked_file, PackError
+        from k6_feature_packs import DEFAULT
+        from k6_capability_receipt import verify
+        from k6_pack_policy import POLICY, gate_environment, storage_environment
+        from k6_feature_packs import resolve
+        root = Path(job['output']).resolve()
+        spec = json.loads(DEFAULT.read_text())
+        try:
+            lock = verify_pack(root, spec, require_attested=False)
+            plan = resolve(spec, lock['packs'], lock['theme'], lock['tx_profile'])
+            receipt = root / 'firmware.receipt.json'
+            if not receipt.resolve().is_relative_to(root):
+                raise ValueError('unsafe receipt path')
+            firmware = checked_file(root, lock['firmware']['path'], lock['firmware']['sha256'])
+            gates = {**gate_environment(plan, json.loads(POLICY.read_text())),
+                     **(storage_environment(plan, iq=bool(lock.get('optional_services'))) if lock.get('storage') else {})}
+            verify(json.loads(receipt.read_text()), firmware, plan, gates)
+            names = {'pack.lock.json', 'firmware.receipt.json', lock['firmware']['path']}
+            for mod in lock['modules']:
+                names.update((mod['path'], (Path(mod['path']).parent / 'manifest.json').as_posix()))
+            for field in ('theme_package', 'boot_splash'):
+                if field in lock: names.add(lock[field]['path'])
+            names.update(page['path'] for page in lock.get('storage', {}).get('system_pages', []))
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+                for name in sorted(names):
+                    path = (root / name).resolve()
+                    if not path.is_relative_to(root) or not path.is_file():
+                        raise ValueError('unsafe build artifact')
+                    z.write(path, 'pack/' + Path(name).as_posix())
+                z.writestr('INSTALL.txt', 'Extract the entire ZIP. Use a matching Flux checkout and its Python dependencies.\n'
+                    'Inspect: python tools/k6.py inspect /path/to/pack\n'
+                    'Existing Flux radio: python tools/k6.py flash-install-pack /path/to/pack --port /dev/ttyUSB0 --yes\n'
+                    'First installation: follow docs/manual/install.md and use starter-install.\n'
+                    'On Windows replace the port with your COM port. OTA builds require your own module key.\n'
+                    'Keep all system pages with this exact firmware; do not flash only the raw binary.\n')
+                from k6_pack_readme import readme
+                z.writestr('README.md', readme(lock))
+            archive.seek(0)
+        except (OSError, ValueError, KeyError, PackError) as exc:
+            abort(409, f'Build package could not be verified: {exc}')
+        name = 'flux-' + '-'.join(lock['packs']) + '-' + lock['tx_profile'] + '-' + job_id[:8] + '.zip'
+        return send_file(archive, mimetype='application/zip', as_attachment=True, download_name=name)
 
     @app.post("/profiles/build/<job_id>/radio")
     def provision_profile(job_id):
@@ -633,12 +785,18 @@ def create_app(store: ModuleStore | None = None):
         settings = radio_settings()
         if not settings['port']:
             flash('Set the USB serial port in Device settings first.', 'error')
-            return redirect(url_for('settings_page'))
+            return redirect(url_for('settings_page', build=job_id))
         try:
+            recovery=None
+            if request.form.get('recovery'):
+                job=app.config['build_jobs'].get(job_id)
+                candidates=pending_recovery(job,settings['port'])
+                recovery=next((p for p in candidates if p.name==request.form['recovery']),None)
+                if recovery is None or action!='flash-install':raise ValueError('No matching pending recovery for this build and serial port.')
             radio_id = app.config['build_jobs'].start_radio(
                 job_id, action, settings['port'], settings['key_file'],
                 already_update=action in ('flash', 'flash-install') and request.form.get('mode') == 'update',
-                theme_slot=None)
+                theme_slot=None,recovery=recovery)
         except KeyError:
             abort(404)
         except (OSError, ValueError) as exc:

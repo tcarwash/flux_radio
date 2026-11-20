@@ -1,9 +1,10 @@
 {# Shared navigation. nav_section identifies the current top-level area. #}
+{% set device_build = job.id if job is defined else job_id if job_id is defined else return_job if return_job is defined else None %}
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">F</span> Flux <span>Catalog</span></a>
   <nav class="top-actions" aria-label="Main navigation">
-    {% for section, endpoint, label in [('catalog', 'index', 'Catalog'), ('profiles', 'profiles', 'Feature packs'), ('themes', 'themes_page', 'Theme editor'), ('radio', 'radio', 'My radio'), ('settings', 'settings_page', 'Device settings')] %}
-      <a href="{{ url_for(endpoint) }}{% if section == 'catalog' %}#catalog{% endif %}"{% if nav_section == section %} aria-current="{{ 'page' if request.endpoint == endpoint else 'location' }}"{% endif %}>{{ label }}</a>
+    {% for section, endpoint, label in [('catalog', 'index', 'Catalog'), ('profiles', 'profiles', 'Feature packs'), ('themes', 'themes_page', 'Theme editor'), ('memories', 'memories_page', 'Memories'), ('radio', 'radio', 'My radio'), ('settings', 'settings_page', 'Device settings')] %}
+      <a href="{{ url_for(endpoint, build=device_build) if section == 'settings' else url_for(endpoint) }}{% if section == 'catalog' %}#catalog{% endif %}"{% if nav_section == section %} aria-current="{{ 'page' if request.endpoint == endpoint else 'location' }}"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
 </header>
@@ -12,13 +13,13 @@
 <div class="connection-strip">
   {% if radio_settings.port %}
     <span>Serial device: <code>{{ radio_settings.port }}</code> · Check cable before installing.</span>
-    <a href="{{ url_for('settings_page') }}">Change device</a>
+    <a href="{{ url_for('settings_page', build=device_build) }}">Change device</a>
   {% elif radio_settings.saved_port %}
     <span>Last used: <code>{{ radio_settings.saved_port }}</code> · USB device names may change.</span>
-    <a href="{{ url_for('settings_page') }}">Confirm serial device</a>
+    <a href="{{ url_for('settings_page', build=device_build) }}">Confirm serial device</a>
   {% else %}
     <span>Getting started? Select your programming cable before using radio tools.</span>
-    <a href="{{ url_for('settings_page') }}">Set serial device</a>
+    <a href="{{ url_for('settings_page', build=device_build) }}">Set serial device</a>
   {% endif %}
 </div>
 {% endif %}

@@ -53,10 +53,11 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
     import k6_flash_estimate
     data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
     data["base_bytes"]=101184
+    data.get("linked_profiles",{}).get("plain",{}).pop("base",None)
     path=tmp_path/"estimates.json";path.write_text(json.dumps(data))
     monkeypatch.setattr(k6_flash_estimate,"ESTIMATES",path)
     client = k6_store.create_app().test_client()
-    response = client.post('/profiles/preview', data={'pack': []})
+    response = client.post('/profiles/preview', data={'pack': [], 'iq': '0'})
     assert response.status_code == 200
     estimate = response.get_json()['estimate']
     assert estimate['used'] == 101184
@@ -64,23 +65,44 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
     assert estimate['allowed'] is True
     assert estimate['base_target_over'] is True
     assert estimate['base_target_over_by'] == 2880
-    assert b'2,880 bytes above the 96 KiB Base design goal' in client.post('/profiles', data={'pack': []}).data
+    assert b'2,880 bytes above the 96 KiB Base design goal' in client.post('/profiles', data={'pack': [], 'iq': '0'}).data
 
 
-def test_flash_estimate_gates_known_overfull_profile(monkeypatch):
-    def forbid(*args, **kwargs):
-        raise AssertionError('estimate gate must run before starting a build')
-    monkeypatch.setattr(k6_store.subprocess, 'run', forbid)
-    client = k6_store.create_app().test_client()
+def test_flash_estimate_warns_but_does_not_block(monkeypatch, tmp_path):
+    import k6_flash_estimate
+    data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
+    data['deltas']['ota']['bytes']=40000
+    path=tmp_path/'estimates.json';path.write_text(json.dumps(data))
+    monkeypatch.setattr(k6_flash_estimate,'ESTIMATES',path)
+    from k6_build_jobs import BuildJobs
+    calls = []
+    class Process:
+        def poll(self): return None
+    def runner(command, **kwargs):
+        calls.append(command)
+        return Process()
+    app = k6_store.create_app()
+    app.config['build_jobs'] = BuildJobs(tmp_path, runner=runner)
+    client = app.test_client()
     packs = ['scan', 'data', 'ota', 'designer']
-    preview = client.post('/profiles/preview', data={'pack': packs})
+    preview = client.post('/profiles/preview', data={'pack': packs, 'iq': '0'})
     assert preview.status_code == 200
     estimate = preview.get_json()['estimate']
     assert estimate['used'] > estimate['limit']
     assert estimate['allowed'] is False
-    blocked = client.post('/profiles/build', data={'pack': packs})
-    assert blocked.status_code == 302
-    assert b'Estimated firmware size exceeds' in client.get(blocked.location).data
+    assert estimate['build_allowed'] is True
+    response = client.post('/profiles/build', data={'pack': packs, 'iq': '0'})
+    assert response.status_code == 302
+    assert len(calls) == 1
+    assert '--no-iq' in calls[0]
+
+
+def test_four_bundle_iq_reference_fits():
+    client = k6_store.create_app().test_client()
+    data = client.post('/profiles/preview', data={'pack': ['scan','designer','data'], 'iq':'1'}).get_json()
+    assert data['ok'] and data['estimate']['measured_profile']
+    assert data['estimate']['used'] <= 122880
+    assert data['estimate']['build_allowed']
 
 
 def test_custom_theme_is_buildable_and_rejects_invalid_markers():
@@ -126,6 +148,9 @@ def test_theme_splash_preview_uses_firmware_art_source():
     assert len(logos) == 3 and all(len(rows) == 16 for rows in logos)
     page = k6_store.create_app().test_client().get('/themes').data
     assert ('window.FluxSplashLogos=' + json.dumps(logos)).encode() in page
+    assert b'data-theme-full-splash' in page
+    assert b'data-theme-splash' not in page
+    assert b'data-theme-icon-grid' not in page
     source = (Path(k6_store.__file__).with_name('k6_store_templates') /
               'static' / 'theme-widgets.js').read_text()
     assert 'const logos=window.FluxSplashLogos' in source
@@ -150,3 +175,42 @@ def test_saved_theme_is_available_in_builder_not_inline_editor(monkeypatch, tmp_
     assert client.post('/profiles/preview', data={'pack':'designer','theme': token}).json['plan']['theme'] == token
     assert client.delete('/themes/library', data={'name': 'Test design'}).status_code == 200
     assert b'Test design' not in client.get('/profiles').data
+
+
+def test_build_device_confirmation_retains_firmware(tmp_path):
+    class Jobs:
+        def get(self, job_id):
+            if job_id != "completed":
+                raise KeyError(job_id)
+            return dict(id=job_id, state="success", packs=["base"],
+                        exit_code=0, log="", lock=None)
+
+    app = k6_store.create_app(k6_store.ModuleStore(config=tmp_path / "config"))
+    app.config["build_jobs"] = Jobs()
+    client = app.test_client()
+    path = "/profiles/build/completed"
+    page = client.get(path)
+    assert page.status_code == 200
+    assert b'Confirm and return to firmware' in page.data
+    assert b'name="build" value="completed"' in page.data
+    assert b'/settings?build=completed' in page.data
+    settings = client.get("/settings?build=completed")
+    assert b'Back to firmware pack' in settings.data
+    assert path.encode() in settings.data
+    invalid = client.post("/settings", data={"build": "completed", "port": ""})
+    assert invalid.status_code == 400
+    assert b'name="build" value="completed"' in invalid.data
+    result = client.post("/settings", data={"build": "completed", "port": "/dev/ttyUSB9"})
+    assert result.location == path
+    assert b'/dev/ttyUSB9' in client.get(path).data
+    assert client.post("/settings", data={"build": "https://evil.invalid", "port": "COM5"}).location == "/settings"
+
+
+def test_theme_memory_controls_present():
+    import k6_store
+    client=k6_store.create_app().test_client()
+    html=client.get("/themes").get_data(as_text=True)
+    assert "<details data-layout-controls" in html
+    assert html.count("data-preview-side-mode=")==2
+    assert html.count("data-preview-channel-slot=")==2
+    assert html.count("data-layout-channel-names")==1
