@@ -562,3 +562,81 @@ def test_bench_preflight_readonly_and_identity_mismatch(tmp_path):
     validate(link,tmp_path,report,expected_build=b"12345678".hex())
     assert [s["name"] for s in report["steps"]]==["identity","download","upload_probe","calibration","final"]
     assert (tmp_path/"report.json").is_file()
+
+
+@pytest.mark.parametrize("fault", [None, "midstream", "probe_bad"])
+def test_extended_read_stream_negotiates_and_fails_closed(fault, monkeypatch):
+    """No newer image: the old 4 KiB protocol must remain fully functional."""
+    import k6_live as live
+    from k6_live import CAPS, BURST, BURST_LONG, BURST_DATA, BURST_END
+    class StreamPort(Port):
+        baudrate = 115200
+        def reset_input_buffer(self): self.buf = b""
+    port = StreamPort()
+    pattern = bytes((i*37 + i//256) & 255 for i in range(98304))
+    requests = []
+    failed = [False]
+    def responder(d):
+        op,seq,arg = struct.unpack_from("<BBI",d,6)
+        assert port.baudrate == 115200
+        if op == CAPS:
+            return cps_frame(op,seq,b"\x00FLCP\x01"+struct.pack("<I",(1<<7)|(1<<16)))
+        if op == STATUS:
+            return cps_frame(op,seq,b"\0"+status_data())
+        assert op in (BURST, BURST_LONG)
+        extended = op == BURST_LONG
+        start = (arg & 0x7fff)*64
+        count = ((arg>>15)&255) if extended else ((arg>>15)&31)
+        rate = live.BAUDS[((arg>>23)&3) if extended else (arg>>20)]
+        requests.append((op,start,count,rate))
+        ack = cps_frame(op,seq,b"\0"+struct.pack("<I",96000000//round(96000000/rate)))
+        frames = [cps_frame(BURST_DATA,seq,struct.pack("<I",start+256*i)+
+                   pattern[start+256*i:start+256*(i+1)]) for i in range(count)]
+        if extended and not failed[0] and (
+            (fault=="probe_bad" and count==32) or
+            (fault=="midstream" and count==128)):
+            failed[0] = True
+            frames[1] = frames[1][:-3] + b"\x00" + frames[1][-2:]
+        completion = struct.pack("<BH4I" if extended else "<BB4I",0,count,0,0,0,0)
+        return ack+b"".join(frames)+cps_frame(BURST_END,seq,completion)
+    port.reply = responder
+    monkeypatch.setattr(live.time,"sleep",lambda _:None)
+    link = LiveLink(port,timeout=.01)
+    assert link.read(0,98304)==pattern
+    assert link._download_rate==500000
+    assert link._stream_enabled==(fault is None)
+    assert any(op==BURST_LONG and count==32 for op,_,count,_ in requests)
+    if fault=="midstream":
+        assert any(op==BURST_LONG and count==128 for op,_,count,_ in requests)
+        assert any(op==BURST and start>=0 for op,start,_,_ in requests[-30:])
+    elif fault is None:
+        assert sum(op==BURST_LONG and count==128 for op,_,count,_ in requests)==3
+    assert port.baudrate==115200
+    assert all(data.startswith(live.MAGIC) for data in port.writes)
+
+def test_bench_compare_download_mode_and_data(tmp_path):
+    from k6_live_bench import validate
+    class FakeLive:
+        _stream_enabled=True
+        def __init__(self, corrupt=False): self.corrupt=corrupt;self.modes=[]
+        def status(self):
+            return {"standby_idle":True,"transmitting":False,"sleeping":False,"vfos":[{}],"master":0}
+        def capabilities(self):return {"features":["bulk_read","fast_upload","bulk_stream"]}
+        def info(self):return {"protocol":5,"build_id":b"12345678"}
+        def negotiate_download(self):return 500000
+        def negotiate_upload(self,features):return 192000
+        def read(self,addr,n):
+            if n==262144:
+                self.modes.append(self._stream_enabled)
+                if self.corrupt and self._stream_enabled:return b"X"*n
+            return bytes(n)
+    link=FakeLive()
+    report={"steps":[]}
+    validate(link,tmp_path,report,compare_download=True)
+    assert link.modes==[False,True]
+    assert link._stream_enabled
+    assert "download_comparison" in [x["name"] for x in report["steps"]]
+    bad=FakeLive(corrupt=True)
+    with pytest.raises(InstallError,match="Extended read differs"):
+        validate(bad,tmp_path,{"steps":[]},compare_download=True)
+    assert bad._stream_enabled

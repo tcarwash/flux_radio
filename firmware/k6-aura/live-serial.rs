@@ -48,6 +48,9 @@ pub const CAPS: u8 = 0x68;
 pub const MODE: u8 = 0x69;
 pub const VFO: u8 = 0x6a;
 pub const BURST: u8 = 0x6b;
+// Read-only stream: up to 128 x 256 B (32 KiB) at 500kbaud.
+#[cfg(k6_serial_transport)]
+const BURST_LONG: u8 = 0x7d;
 pub const INFO: u8 = 0x6e;
 pub const WATERMARK:u8=0x6f;
 #[cfg(k6_serial_transport)]
@@ -82,12 +85,22 @@ fn reply(req: &Request, data: &[u8]) {
 fn spi_burst(app: &mut App, req: &Request) {
     use crate::hal::{clock::SYSCLK_HZ, uptime};
     let start = (req.arg & 0x7fff) * 64;
-    let count = (req.arg >> 15) & 31;
-    let rate = match req.arg >> 20 {
-        0 => 115200, 1 => 192000, 2 => 500000,
-        _ => {reply(req,&[INVALID]);return;}
+    let long = req.cmd == BURST_LONG;
+    let count = if long {(req.arg >> 15) & 255} else {(req.arg >> 15) & 31};
+    let rate = if long {
+        // 32 KiB at 500kbaud is a bounded ~700 ms foreground pause.
+        if req.arg >> 25 != 0 || ((req.arg >> 23) & 3) != 2 {
+            reply(req,&[INVALID]);return;
+        }
+        500000
+    } else {
+        match req.arg >> 20 {
+            0 => 115200, 1 => 192000, 2 => 500000,
+            _ => {reply(req,&[INVALID]);return;}
+        }
     };
-    if count == 0 || count > 16 || (rate==115200 && count>4)
+    if count == 0 || count > (if long {128} else {16})
+        || (rate==115200 && count>4)
         || start + count*256 > 0x200000 {reply(req,&[INVALID]);return;}
     if !app.live_bulk_idle() || uart::binary_mode() {reply(req,&[BUSY]);return;}
     let prior = uart::cable_stats();
@@ -103,10 +116,12 @@ fn spi_burst(app: &mut App, req: &Request) {
         uart::cable_baud(rate);
     }
     let mut result=OK;
-    let mut sent=0u8;
+    let mut sent=0u16;
     for i in 0..count {
         // Only RX is permitted. Incoming bytes during a burst are not commands.
-        if app.radio_mut().ptt_asserted() || uart::take_byte().is_some() {
+        if app.radio_mut().ptt_asserted()
+            || crate::board::power_switch_off(unsafe{&*kd32f328_pac::Gpioa::ptr()})
+            || uart::take_byte().is_some() {
             result=BUSY;break;
         }
         let offset=start+i*256;
@@ -125,12 +140,23 @@ fn spi_burst(app: &mut App, req: &Request) {
         if uart::take_byte().is_some() {result=BUSY;} else {break;}
     }
     let after=uart::cable_stats();
-    let mut end=[0u8;18];
-    end[0]=result;end[1]=sent;
-    for i in 0..4 {
-        end[2+i*4..6+i*4].copy_from_slice(&after[i].wrapping_sub(prior[i]).to_le_bytes());
+    // V1 legacy completion unchanged; extended stream count uses u16.
+    if long {
+        let mut end=[0u8;19];
+        end[0]=result;
+        end[1..3].copy_from_slice(&sent.to_le_bytes());
+        for i in 0..4 {
+            end[3+i*4..7+i*4].copy_from_slice(&after[i].wrapping_sub(prior[i]).to_le_bytes());
+        }
+        reply(&Request{cmd:BURST_END,seq:req.seq,arg:0},&end);
+    } else {
+        let mut end=[0u8;18];
+        end[0]=result;end[1]=sent as u8;
+        for i in 0..4 {
+            end[2+i*4..6+i*4].copy_from_slice(&after[i].wrapping_sub(prior[i]).to_le_bytes());
+        }
+        reply(&Request{cmd:BURST_END,seq:req.seq,arg:0},&end);
     }
-    reply(&Request{cmd:BURST_END,seq:req.seq,arg:0},&end);
     // cable_baud waits for TC even in a lean build. Also use it at the
     // baseline to ensure the last byte has left before reenabling logs.
     uart::cable_baud(115200);
@@ -508,7 +534,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192 | 32768} else {0}
-                | if cfg!(feature="spilib") {16384} else {0};
+                | if cfg!(feature="spilib") {16384} else {0}
+                | if cfg!(k6_serial_transport) {65536} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;
@@ -526,7 +553,7 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             reply(req,&d);
         }
         #[cfg(k6_serial_transport)]
-        BURST => spi_burst(app,req),
+        BURST | BURST_LONG => spi_burst(app,req),
         #[cfg(all(feature="spilib",k6_ram0_stack))]
         WATERMARK if req.arg==0 => {
             unsafe extern "C" {fn km_serial_highwater()->u32;}

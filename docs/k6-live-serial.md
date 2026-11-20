@@ -565,3 +565,95 @@ signed envelopes). No raw dumps or keys committed. Radio left running
 corrected live candidate, not the experimental CW sidetone firmware.
 Physical display/button observations, independent PTT/power-off holds,
 keyed firmware bench and Windows/other cable validation remain open.
+
+## 32 KiB live downlink window (extended read capability)
+
+For long read-only dumps, capability bit 16 (`bulk_stream`) introduces
+V1 opcode `0x7d`. It has a different wire encoding from the original
+`0x6b`, which remains bit-for-bit compatible with earlier firmware:
+
+- LE32 argument bits 0–14: physical SPI address / 64; bits 15–22:
+  count of 256-byte frames, 1–128; bits 23–24: rate ID, **2 only**
+  (500000 baud); bits 25–31 must be zero.
+- ACK at 115200: status byte + actual hardware baud LE32. Target
+  guards for 30 ms before switching to 500000, then sends up to
+  128 CPS frames with `0x6c`, matching 8-bit sequence, absolute
+  physical address LE32 and 256 data bytes. Each carries independent
+  CRC16/XMODEM and gets no host response.
+- Completion: `0x6d` with status byte, number of frames sent LE16,
+  then four LE32 deltas for UART overrun/framing/noise/ring overflow.
+  The old `0x6b` completion retains its original 8-bit count.
+- The firmware checks physical PTT, power-off and spurious incoming
+  bytes between frames and aborts without writing NOR on refusal.
+  A single 32 KiB window is a bounded foreground pause of roughly
+  700 ms at 500000; the host must not transmit until the radio has
+  restored 115200.
+
+The host first negotiates 500000 with the original 4 KiB data check,
+then probes the new protocol by comparing an **8 KiB long burst** with
+two independently verified 4 KiB reads. Only exact agreement enables
+32 KiB windows. If a long frame is missing, corrupt, out of sequence
+or accompanied by nonzero UART errors, the host waits at least
+1.2 seconds without transmitting, restores 115200 and confirms STATUS.
+It then retries **only the read** through validated short bursts. It
+never retries module execution or SPI mutations or silently enters the
+legacy loader. Requests near the chip end adjust the probe location so
+the 8 KiB comparison remains in bounds.
+
+Test status at this checkpoint: 77 host regressions passed, 27
+optional tests skipped; all 8 compiled-firmware emulator regressions
+passed, including exact 32 KiB read, terminal-chip boundary, invalid
+count/rate/bounds, unchanged SPI and UART baseline recovery.
+
+Physical bench, same radio and saved flash content as the 2026-11-20
+initial acceptance: the first 256 KiB verified byte-for-byte in
+14.441 s through 4 KiB bursts versus 7.560 s using 32 KiB streams,
+a 1.91x improvement (17.7 versus 33.9 KiB/s). These are full host
+read times, not theoretical baud throughput.
+
+The full physical 2 MiB scan took **60.704 seconds** (33.74 KiB/s),
+compared with 102.004 seconds for the previous live 4 KiB implementation
+and 53 seconds using the rebooting legacy cable transport. This is
+1.68x faster than previous live, with no reboot during download.
+
+A SHA256 comparison to the November 20 pre-module-test backup initially
+reported a mismatch. This was expected physical KUL2 copy-on-write
+history: tests installed, replaced and logically removed slot 26 *after*
+that backup, updating two directory sectors and free allocation sectors.
+An independently completed full 2 MiB long-stream read located every
+difference inside exactly five library sectors:
+
+    0x110000  0x111000  0x156000  0x15c000  0x15d000
+
+Every byte outside 0x110000–0x190000 matches the original backup,
+and all 26 existing logical library objects match the original image
+byte-for-byte. The current physical flash capture has SHA256
+6430e693ab31c46714a9dae5141d95778087f65b99e2326813505bcbbbe0bc99.
+The changed KUL2 directory was additionally read through the old 4 KiB
+transport and agreed exactly with the 32 KiB read; a repeated 32 KiB
+window also matched. The radio reported 500 kbaud and stayed in
+RX standby with the previous VFOs and calibration.
+
+Candidate firmware build ID 807d1b7f53286cbc, 114252 bytes,
+physical image read-only test passed with no flash writes after
+the firmware replacement. The previous live build
+ffd8ca7e1b5f0db7 and the private pre-flash backup are preserved
+under ~/flux-bench/live-stream-20261120 and earlier benchmark folders.
+
+To repeat a controlled, read-only physical throughput comparison from
+the bench utility (does not flash, format, run modules or transmit):
+
+    python3 tools/k6_live_bench.py --port /dev/ttyUSB0 --output-dir ~/flux-bench/next-read-comparison --expect-build-id 807d1b7f53286cbc --compare-download
+
+The option stages two 256 KiB reads on the same live link, first with
+short 4 KiB windows and then with capability-verified long 32 KiB
+windows. It requires exact byte agreement, retains the live serial
+lock, and writes only a local JSON report. A failed stream probe,
+data mismatch or fallback is not reported as a speedup. Another full
+physical read-only run on 2026-11-20 reproduced **14.406 s vs
+7.583 s (1.90x)** with successful final RX status and unchanged VFOs.
+
+A post-update actual Hamlib 4.6.5 rigctl NET smoke test also passed
+`f/m/v/t/l STRENGTH` on the streaming build: 147790000 Hz,
+FM 15000, VFOA, RX/PTT 0 and S-meter +6 dB relative to nominal S9,
+with unchanged radio status before/after. No TX command was sent.

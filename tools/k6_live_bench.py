@@ -25,7 +25,7 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def validate(link, folder, report, *, expected_build=None, key_file=None, take_backup=False, slot=None):
+def validate(link, folder, report, *, expected_build=None, key_file=None, take_backup=False, slot=None, compare_download=False):
     def step(name, **fields):
         report["steps"].append(dict(name=name, **fields))
         persist(folder/"report.json",json.dumps(report,indent=2).encode())
@@ -54,6 +54,29 @@ def validate(link, folder, report, *, expected_build=None, key_file=None, take_b
     if link.read(0xf000,4096)!=cal:
         raise InstallError("Calibration read differs")
     step("calibration",sha256=sha(cal))
+    if compare_download:
+        if link.negotiate_download()!=500000 or not link._stream_enabled:
+            raise InstallError("Radio has not verified the 32 KiB live download capability")
+        # Compare the exact same 256 KiB from the same boot-local SPI image.
+        # Only reads may be reattempted, and the rate returns to baseline
+        # after each bounded window. Leave the caller's chosen mode intact.
+        link._stream_enabled=False
+        try:
+            started=time.monotonic()
+            short=link.read(0,262144)
+            old_seconds=time.monotonic()-started
+        finally:
+            link._stream_enabled=True
+        started=time.monotonic()
+        streamed=link.read(0,262144)
+        new_seconds=time.monotonic()-started
+        if streamed!=short or not link._stream_enabled:
+            raise InstallError("Extended read differs from 4 KiB reference or fell back")
+        step("download_comparison",bytes=262144,
+             short_seconds=round(old_seconds,3),
+             stream_seconds=round(new_seconds,3),
+             speedup=round(old_seconds/new_seconds,2),
+             sha256=sha(streamed))
     if take_backup:
         started=time.monotonic()
         raw=backup(link,folder/"spi-before.bin")
@@ -115,6 +138,8 @@ def main(argv=None):
     p.add_argument("--expect-build-id",help="exact build ID (required for exercise)")
     p.add_argument("--key-file")
     p.add_argument("--backup",action="store_true")
+    p.add_argument("--compare-download",action="store_true",
+                   help="read-only compare of 256 KiB with 4 KiB and 32 KiB windows")
     p.add_argument("--exercise-slot",type=int,choices=AUTO_SLOTS,help="explicitly authorize a temporary install/run/remove in an empty slot")
     a=p.parse_args(argv)
     if a.exercise_slot is not None and not (a.backup and a.expect_build_id):
@@ -124,7 +149,8 @@ def main(argv=None):
     try:
         with serial_lock(a.port),open_port(SimpleNamespace(port=a.port)) as port:
             validate(LiveLink(port),a.output_dir,report,expected_build=a.expect_build_id,
-                     key_file=a.key_file,take_backup=a.backup,slot=a.exercise_slot)
+                     key_file=a.key_file,take_backup=a.backup,slot=a.exercise_slot,
+                     compare_download=a.compare_download)
         report["ok"]=True
     except (InstallError,OSError,ValueError) as exc:
         report["error"]=str(exc)

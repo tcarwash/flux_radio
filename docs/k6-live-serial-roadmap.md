@@ -135,3 +135,30 @@ abort at staged command prefix (10 ms sustained low). Live backup
 102 s vs legacy 53 s; sustained bounded download windows are next.
 No intentional TX. Physical held-PTT/power interruption, keypad
 responsiveness, keyed firmware, and broader cable coverage remain.
+
+### 32 KiB downlink streaming
+
+New capability bit 16 and V1 0x7d allow 128 x 256-byte framed
+physical SPI reads per bounded 500kbaud excursion, preserving old
+0x6b as a fallback. Host verifies an 8 KiB long-window probe against
+two short windows and uses 1.2 s silent recovery; only reads can retry.
+Simulated full suite: 8/8, host suite 76 passed. First physical 256 KiB
+read: 14.441 s old 4 KiB versus 7.560 s long 32 KiB, identical bytes,
+a 1.91x improvement. Full physical 2 MiB read completed in 60.704 s at 33.74 KiB/s,
+versus previous live 102.004 s and legacy 53 s. The old pre-lifecycle
+flash hash differed only inside five KUL2 sectors changed by earlier
+install/replace/delete transactions. All 26 original logical objects
+and every byte outside KUL2 are unchanged; both short and long read
+methods agree on the updated physical directory. Firmware remains
+RX-only with no remote PTT.
+
+The optional `k6_live_bench.py --compare-download` command now
+automates identical-range 256 KiB throughput checks without writes.
+Second physical run: 14.406 s old vs 7.583 s extended (1.90x),
+both exactly equal, no resets and unchanged RX/VFO status.
+Cooperative module stop remains separate: ordinary native code runs
+synchronously, so serial commands cannot preempt it safely. A future
+stop protocol must involve an explicit module yield/check API, an
+authenticated per-job cancellation token and an independently verified
+hardware watchdog for physical PTT and power-off; timeout by itself
+must never be described as cancellation.

@@ -112,7 +112,7 @@ def test_compiled_live_bulk_reads(simulated_radio, monkeypatch):
     image=os.environ.get("K6_SIM_LIVE_IMAGE")
     if not image:
         pytest.skip("set K6_SIM_LIVE_IMAGE to a K6_LIVE_SERIAL=1 image")
-    from k6_live import BURST
+    from k6_live import BURST, BURST_LONG
     from k6_install import InstallError
     port=simulated_radio(Path(image).read_bytes(),cable_only=True)
     monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
@@ -121,19 +121,33 @@ def test_compiled_live_bulk_reads(simulated_radio, monkeypatch):
     link=LiveLink(port,timeout=3)
     if "bulk_read" not in link.capabilities()["features"]:
         pytest.skip("requires K6_SERIAL_TRANSPORT=1")
+    # Invalid long count/rate/bounds must not change baud or read outside flash.
+    for arg in (0, (129<<15)|(2<<23), (1<<15)|(1<<23),
+                (1<<15)|(2<<23)|(1<<25), 0x7fff|(128<<15)|(2<<23)):
+        with pytest.raises(InstallError,match="Unsupported"):
+            link.request(BURST_LONG,arg)
     assert link.status()["standby_idle"]
     assert link.info()["protocol"] in (2,4,5)
-    addr=0x1fe000
-    pattern=bytes((i*73+i//256)&255 for i in range(8192))
+    addr=0x1f8000
+    pattern=bytes((i*73+i//256)&255 for i in range(32768))
     port.board.flash_data[addr:addr+len(pattern)]=pattern
     before=bytes(port.board.flash_data)
-    assert link.read(addr,8192)==pattern
+    assert link.read(addr,32768)==pattern
+    assert link._stream_enabled and "bulk_stream" in link.capabilities()["features"]
+    assert any(req[6]==BURST_LONG for req in port.requests if req.startswith(k6_live.MAGIC))
+    # The long protocol can send the entire 32KiB in one bounded window.
+    assert link._burst(addr,128,500000,stream=True)==pattern
     assert link._download_rate==500000
     assert port.baudrate==115200
     assert link.read(0x1fffc0,64)==pattern[-64:]
     for arg in (0, 17<<15, 5<<15, 3<<20|1<<15, 0x7fff|1<<15):
         with pytest.raises(InstallError,match="Unsupported"):
             link.request(BURST,arg)
+    # Invalid long count/rate/bounds must not change baud or read outside flash.
+    for arg in (0, (129<<15)|(2<<23), (1<<15)|(1<<23),
+                (1<<15)|(2<<23)|(1<<25), 0x7fff|(128<<15)|(2<<23)):
+        with pytest.raises(InstallError,match="Unsupported"):
+            link.request(BURST_LONG,arg)
     assert link.status()["standby_idle"]
     assert bytes(port.board.flash_data)==before
     assert all(x.startswith(k6_live.MAGIC) for x in port.requests)

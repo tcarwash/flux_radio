@@ -17,11 +17,12 @@ STATUS, READ, TUNE = 0x60, 0x61, 0x62
 RUN, RUN_EVENT = 0x66, 0x67
 CAPS, MODE, VFO = 0x68, 0x69, 0x6a
 BURST, BURST_DATA, BURST_END, INFO = 0x6b, 0x6c, 0x6d, 0x6e
+BURST_LONG = 0x7d
 WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -64,6 +65,8 @@ class LiveLink(CpsLink):
         self._bulk_cap = None
         self._download_rate = None
         self._upload_rate = None
+        self._stream_advertised = False
+        self._stream_enabled = False
 
     def request(self, cmd, arg=0):
         return self._exchange(cmd, lambda seq: request_bytes(cmd,seq,arg))
@@ -446,21 +449,27 @@ class LiveLink(CpsLink):
     def _bulk_supported(self):
         if self._bulk_cap is None:
             try:
-                self._bulk_cap = "bulk_read" in self.capabilities()["features"]
+                features = self.capabilities()["features"]
+                self._bulk_cap = "bulk_read" in features
+                self._stream_advertised = "bulk_stream" in features
             except InstallError as exc:
                 if str(exc) != ERRORS[2]:
                     raise
                 self._bulk_cap = False
         return self._bulk_cap
 
-    def _burst(self, start, count, rate):
-        if start % 64 or not 0 <= start < CHIP_BYTES or not 1 <= count <= (4 if rate == 115200 else 16) or start+count*256 > CHIP_BYTES:
+    def _burst(self, start, count, rate, *, stream=False):
+        maximum = 128 if stream and rate == 500000 else (4 if rate == 115200 else 16)
+        if (start % 64 or not 0 <= start < CHIP_BYTES or not 1 <= count <= maximum
+                or (stream and rate != 500000) or start+count*256 > CHIP_BYTES):
             raise ValueError("Invalid bulk read bounds")
         seq = (self.seq + 1) % 256
-        arg = start//64 | (count << 15) | (BAUDS.index(rate) << 20)
+        arg = (start//64 | (count << 15) |
+               (BAUDS.index(rate) << (23 if stream else 20)))
+        cmd = BURST_LONG if stream else BURST
         bad = self.bad_response_crcs
         try:
-            ack = self.request(BURST, arg)
+            ack = self.request(cmd, arg)
         except LiveUnavailable as exc:
             raise LiveBulkError("Bulk acknowledgment lost") from exc
         actual = 96000000 // round(96000000/rate)
@@ -475,9 +484,10 @@ class LiveLink(CpsLink):
                 if f is None or f[1] != seq:
                     raise LiveBulkError("Missing or mismatched bulk frame")
                 if f[0] == BURST_END:
-                    if len(f[2]) != 18:
+                    if len(f[2]) != (19 if stream else 18):
                         raise LiveBulkError("Malformed bulk completion")
-                    result, sent, *errors = struct.unpack("<BB4I", f[2])
+                    result, sent, *errors = struct.unpack(
+                        "<BH4I" if stream else "<BB4I", f[2])
                     if result:
                         raise InstallError(ERRORS.get(result,"Bulk read refused"))
                     if sent != count or len(data) != count*256 or any(errors) or self.bad_response_crcs != bad:
@@ -499,9 +509,9 @@ class LiveLink(CpsLink):
     def _recover_download(self):
         if hasattr(self.port, "baudrate"):
             self.port.baudrate = 115200
-        # Radio sends at most 4096 bytes and returns without host input.
-        # No reset or legacy handshake, including on a lost acknowledgment.
-        time.sleep(1.0)
+        # An ACK-less 32 KiB burst can finish in ~700 ms at 500kbaud.
+        # Do not transmit until the radio has restored the baseline rate.
+        time.sleep(1.2)
         self.buf = self.text = b""
         if hasattr(self.port, "reset_input_buffer"):
             self.port.reset_input_buffer()
@@ -516,7 +526,7 @@ class LiveLink(CpsLink):
         if getattr(self.port, "baudrate", None) != 115200:
             return self._download_rate
         # A reference read at the base rate, compared byte-for-byte.
-        start = min(addr & ~255, CHIP_BYTES-4096)
+        start = min(addr & ~255, CHIP_BYTES-(8192 if self._stream_advertised else 4096))
         ref = b"".join(self._burst(start+i*1024,4,115200) for i in range(4))
         for rate in reversed(BAUDS[1:]):
             try:
@@ -528,6 +538,19 @@ class LiveLink(CpsLink):
             else:
                 self._download_rate = rate
                 break
+        # Compare the first long 8 KiB read with two already verified
+        # 4 KiB bursts. Only use this optimization after exact agreement.
+        if self._download_rate == 500000 and self._stream_advertised:
+            try:
+                baseline = (self._burst(start, 16, 500000)
+                            + self._burst(start + 4096, 16, 500000))
+                if self._burst(start, 32, 500000, stream=True) != baseline:
+                    raise LiveBulkError("Stream probe differs from short bursts")
+                self.status()
+            except (LiveBulkError, LiveUnavailable, OSError):
+                self._recover_download()
+            else:
+                self._stream_enabled = True
         return self._download_rate
 
     def read(self, addr, n, window=1, progress=None):
@@ -543,14 +566,19 @@ class LiveLink(CpsLink):
             out = bytearray()
             while start+len(out) < end:
                 offset = start+len(out)
-                count = min(4 if rate==115200 else 16, (end-offset)//256)
+                stream = self._stream_enabled and rate == 500000
+                count = min(128 if stream else (4 if rate == 115200 else 16),
+                            (end-offset)//256)
                 try:
-                    out.extend(self._burst(offset,count,rate))
+                    out.extend(self._burst(offset,count,rate,stream=stream))
                 except (LiveBulkError, OSError):
                     self._recover_download()
-                    if rate == 115200:
+                    if stream:
+                        self._stream_enabled = False
+                    elif rate == 115200:
                         raise
-                    self._download_rate = rate = 115200
+                    else:
+                        self._download_rate = rate = 115200
                     continue  # retry only the read, never a mutation or launch
                 if progress:
                     progress(min(n,max(0,start+len(out)-addr)),n)
