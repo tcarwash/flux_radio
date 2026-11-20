@@ -462,6 +462,24 @@ def create_app(store: ModuleStore | None = None):
         try:return jsonify(operate(settings["port"],settings["key_file"],action,data.get("channels")))
         except (ValueError,OSError,InstallError) as e:return jsonify(error=str(e)),400
 
+    @app.post("/memories/radio/<what>")
+    def memories_read_radio(what):
+        from k6_radio_memories import read_radio
+        from k6_install import InstallError
+        if what not in ("location", "channels"):
+            return jsonify(error="Unknown radio read"), 404
+        port = radio_settings()["port"]
+        if not port:
+            return jsonify(error="Set the USB serial port in Device settings first."), 400
+        data = request.get_json(silent=True)
+        token = session.get("memory_token", "")
+        if not isinstance(data, dict) or not token or not secrets.compare_digest(token, str(data.get("token", ""))):
+            abort(403)
+        try:
+            return jsonify(read_radio(port, what))
+        except (InstallError, OSError, ValueError) as exc:
+            return jsonify(error=str(exc)), 502
+
     @app.post("/memories/import")
     def memories_import():
         from k6_memories import read_csv, read_pack
