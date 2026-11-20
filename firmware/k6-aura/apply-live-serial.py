@@ -339,12 +339,26 @@ insert(pager,api_field,
        '        pub cancel_poll: unsafe extern "C" fn() -> i32,')
 api_init = '    fsk_configured: mod_fsk_configured,'
 insert(pager,api_init,api_init+'\n    cancel_poll: mod_cancel_poll,')
-api_level = 'level: if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
-if 'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 }' not in pager.read_text():
-    insert(pager,api_level,
-           'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 } '
-           'else if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
-           'else if cfg!(feature = "fd6818b") { 23 } else { 9 },')
+# Generated non-live starter profiles can have no raw FSK support, so
+# apply-configurable-fsk.py leaves a level-23 initializer instead of the
+# level-24 variant used by our live FSK bench. Preserve both existing
+# ceilings and advertise level 25 only on live+spilib firmware.
+api_level = (
+    'level: if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
+    'else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
+)
+default_level = 'level: if cfg!(feature = "fd6818b") { 23 } else { 9 },'
+new_level = (
+    'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 } '
+    'else if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
+    'else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
+)
+if new_level not in pager.read_text():
+    matches = [anchor for anchor in (api_level, default_level)
+               if anchor in pager.read_text()]
+    if len(matches) != 1:
+        raise SystemExit("live serial: cannot identify one generated module API ceiling")
+    insert(pager, matches[0], new_level)
 insert(pager, '/// Enter Aura\'s sideloaded-module picker from the normal launcher.',
        '''// A synchronous module can sample the live UART only at checkpoints it
 // chooses. No interrupts, stack manipulation, or implicit TX controls.
