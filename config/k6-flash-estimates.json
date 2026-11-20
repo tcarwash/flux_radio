@@ -23,5 +23,18 @@
   "unknown_packs": [
     "sotto"
   ],
-  "note": "Matched ordinary Base 97756 B, Data 101644 B. Experimental SPI resident runtime adds 1360 B to Data (103004 B); with Designer 110540 B. Runtime is opt-in and not included in normal pack estimates. Other pack estimates retained pending matched production builds."
+  "note": "Linked firmware measurements are reference sizes for the indicated profile; TX profile, theme and toolchain can vary. Estimates are advisory. The actual build enforces the hard 122,880-byte application limit.",
+  "linked_profiles": {
+    "iq": {
+      "base": {
+        "bytes": 97372,
+        "source": "2026-11-19 physical all-lock build"
+      },
+      "base+data+designer+scan": {
+        "bytes": 120180,
+        "source": "2026-11-19 physical all-lock build"
+      }
+    },
+    "plain": {}
+  }
 }

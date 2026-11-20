@@ -663,9 +663,6 @@ def create_app(store: ModuleStore | None = None):
         _, result = profile_plan(selected, theme, tx_profile, (request.form.get('iq')=='1' if 'iq' in request.form else None))
         if not result['ok']:
             abort(400)
-        if not result['estimate']['allowed']:
-            flash('Estimated firmware size exceeds this profile’s flash budget. Remove feature sets before building.', 'error')
-            return redirect(url_for('profiles'))
         try:
             job_id = app.config['build_jobs'].start(selected, theme, tx_profile, theme_name, iq=result['plan']['iq'])
         except (ValueError, OSError) as exc:

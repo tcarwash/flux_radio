@@ -23,9 +23,14 @@ def estimate(plan):
             continue
         used += item['bytes']
         rows.append({'pack': pack, **item})
-    if plan.get('iq') and set(packs) in ({'base'}, {'base','scan','designer','data'}):
-        used=97372 if len(packs)==1 else 120180
-        rows=[{'pack': 'linked IQ profile', 'bytes': used, 'source': '2026-11-19 all-lock linked build; other TX profiles may vary'}]
+    key = '+'.join(sorted(packs))
+    profile = data.get('linked_profiles', {}).get('iq' if plan.get('iq') else 'plain', {}).get(key)
+    if profile is not None:
+        used = profile['bytes']
+        rows = [{'pack': 'linked profile', **profile}]
+    elif plan.get('iq'):
+        used += data.get('iq_delta_bytes', 0)
+        rows.append({'pack': 'IQ/system pages', 'bytes': data.get('iq_delta_bytes', 0), 'source': 'estimated resident-code delta'})
     base_only = set(packs) == {'base'}
     base_target_over = base_only and used > BASE_DESIGN_GOAL
     limit = TOTAL
@@ -36,7 +41,9 @@ def estimate(plan):
         'base_design_goal_bytes': BASE_DESIGN_GOAL,
         'remaining': limit - used,
         'percent': min(100, round(used * 100 / TOTAL)),
-        'allowed': used <= limit and not unknown,
+        'allowed': used <= limit and not unknown,  # estimate only, never a build gate
+        'build_allowed': True,
+        'measured_profile': profile is not None,
         'base_target_over': base_target_over,
         'base_target_over_by': max(0, used - BASE_DESIGN_GOAL) if base_only else 0,
         'components': rows,
