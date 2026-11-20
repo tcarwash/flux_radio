@@ -348,13 +348,20 @@ api_level = (
     'else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
 )
 default_level = 'level: if cfg!(feature = "fd6818b") { 23 } else { 9 },'
+# A pristine upstream checkout has no raw-FSK callback field yet.
+# apply-configurable-fsk.py first introduces this nested expression;
+# subsequent builds can normalize it to the flat else-if form above.
+nested_level = (
+    'level: if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
+    'else { if cfg!(feature = "fd6818b") { 23 } else { 9 } },'
+)
 new_level = (
     'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 } '
     'else if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
     'else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
 )
 if new_level not in pager.read_text():
-    matches = [anchor for anchor in (api_level, default_level)
+    matches = [anchor for anchor in (api_level, nested_level, default_level)
                if anchor in pager.read_text()]
     if len(matches) != 1:
         raise SystemExit("live serial: cannot identify one generated module API ceiling")
