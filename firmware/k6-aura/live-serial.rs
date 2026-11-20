@@ -236,10 +236,23 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool, library:bool
     // at most 100 ms for a frame body. No other request is dispatched here.
     'upload: loop {
         let frame_start=uptime::now();
+        // PA10 is both UART RX and PTT. Individual serial start/data
+        // bits pull it low. Never interpret an instantaneous low as PTT
+        // while waiting for the incoming prefix. A continuous low for
+        // 10 ms is a physical hold (or break), not valid 115200 UART.
+        let mut low_since=None;
         for &want in MAGIC_V2 {
             loop {
-                if !ram_allowed(app) || uptime::now().wrapping_sub(t)>=35000
-                    || uptime::now().wrapping_sub(frame_start)>=5000 {break 'upload;}
+                let now=uptime::now();
+                if crate::board::power_switch_off(unsafe{&*kd32f328_pac::Gpioa::ptr()})
+                    || now.wrapping_sub(t)>=35000
+                    || now.wrapping_sub(frame_start)>=5000 {break 'upload;}
+                if app.radio_mut().ptt_asserted() {
+                    let since=*low_since.get_or_insert(now);
+                    if now.wrapping_sub(since)>=100 {break 'upload;}
+                } else {
+                    low_since=None;
+                }
                 if let Some(b)=uart::take_byte() {
                     if b!=want {break 'upload;}
                     break;

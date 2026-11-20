@@ -123,3 +123,15 @@ System/pack provisioning still uses the legacy path. A guarded
 read-only bench tool and explicitly authorized empty-slot lifecycle
 test document the next physical acceptance pass. Coordinate access
 with all RF research agents before contacting or flashing hardware.
+
+### First physical acceptance
+
+Physical packed cable-only K6: live 500k downlink/192k uplink and
+exact 2 MiB backup, baseline and fast temporary RAM, job recovery,
+28- and 7168-byte persistent install/execute/replace/remove, all
+26 original library objects verified intact; actual Hamlib 4.6.5
+NET read/tune/mode restore. Fixed PA10 UART/PTT shared-pin false
+abort at staged command prefix (10 ms sustained low). Live backup
+102 s vs legacy 53 s; sustained bounded download windows are next.
+No intentional TX. Physical held-PTT/power interruption, keypad
+responsiveness, keyed firmware, and broader cable coverage remain.

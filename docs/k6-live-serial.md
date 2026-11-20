@@ -510,3 +510,58 @@ the exact 7168-byte persistent replacement and full readback. The
 bench script is tested with a mock for its read-only path. Firmware
 114012 bytes, arena 11776, stack reservation 6304, 280 bytes free RAM0.
 Candidate build ID 1c66cf6e9171a15f. Physical tests remain outstanding.
+
+### Physical bench result — 2026-11-20
+
+Device: K6, PL2303 cable (/dev/ttyUSB0), ~7.41 V, idle RX.
+Original CW sidetone build ed66a934196bcefc, packed KUL2, cable-only.
+Exact rollback image preserved locally, along with full SPI backup.
+Legacy negotiated 500 kbaud backup of 2097152 bytes: 53 s.
+Candidate 1c66cf6e9171a15f flashed with no format/migration. Live
+backup negotiated 500 kbaud and completed in 102.004 s; byte-for-byte
+identical to the legacy backup (SHA256
+6b895b94ab1218a8f47ae3074f5999b2f9db90b6e07af39b96d7ad6d0001cb5f).
+Synthetic 4096-byte uplink negotiated 192 kbaud in 0.469 s.
+Live downlink is currently ~20.1 KiB/s, legacy ~38.6 KiB/s:
+the bounded 4 KiB bursts, baud guards and turnaround add overhead.
+Larger bounded sustained read windows are a future optimization.
+
+First high-speed RAM upload failed at baseline READY; recovered
+115200 and status without COMMIT or serial consumption. A separate
+baseline BEGIN/CHUNK test reproduced the failure. Diagnosis: PA10
+is both RX and PTT; the waiting-for-prefix loop sampled instantaneous
+raw PTT during incoming UART start/data bits. Corrected prefix wait
+to abort only after 10 ms continuously low, retaining immediate
+power-off checks and raw PTT checks at frame/commit boundaries.
+This does not enable remote PTT. Independent held-PTT, power switch
+and deliberate fault-injection hardware testing remains outstanding.
+
+Corrected build ffd8ca7e1b5f0db7 (114076 bytes; 11776-byte arena,
+6304-byte main stack, 280 free RAM0) flashed after checking prior
+backup, identity, calibration and directory. Three targeted compiled
+emulator regressions passed. Subsequent physical live-only lifecycle:
+- 115200 and 192000 RAM return-42: ~0.273 and ~0.370 s respectively,
+  including job-status recovery. Small image baseline faster.
+- Empty slot 26: 28-byte signed envelope installed/read back in
+  ~1.300 s, executed with return 42.
+- Replaced with exactly 7168 bytes, installed/read back in ~2.406 s,
+  executed with return 42.
+- Authenticated removal verified; original logical directory and all
+  26 pre-existing packed objects byte-for-byte identical to backup.
+- Original VFO settings and calibration unchanged, idle RX, replay
+  watermark equals last removal serial; no intervening reboot.
+- Actual Hamlib rigctl 4.6.5 NET backend (rig model 2), local loopback:
+  f/m/v/t/l STRENGTH passed, DCD via bridge=0, frequency changed
+  147790000 -> 147800000 -> 147790000, FM 15000 -> 8000 -> 15000
+  restored. Final status idle RX; health ADC sums 29906/24047,
+  battery 741 cV. RSSI estimate not calibrated; bandwidth values
+  are nominal. No intentional TX commands or RF tests.
+
+Private local bench artifacts:
+~/flux-bench/live-preflash-20261120T200108Z (SPI backup, rollback)
+~/flux-bench/live-candidate-20261120 (equal SPI backup, failed READY)
+~/flux-bench/live-pttfix-20261120 (successful lifecycle and Hamlib JSON,
+signed envelopes). No raw dumps or keys committed. Radio left running
+corrected live candidate, not the experimental CW sidetone firmware.
+Physical display/button observations, independent PTT/power-off holds,
+keyed firmware bench and Windows/other cable validation remain open.
