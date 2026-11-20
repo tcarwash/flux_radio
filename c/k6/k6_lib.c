@@ -1,5 +1,18 @@
 /* k6_lib: the K6's SPI module library (see k6_lib.h). SPDX-License-Identifier: MIT */
 #include "k6_lib.h"
+#ifdef KM_USER_STORE
+#include "user_store.h"
+#endif
+
+int kl_locate(int slot,const kl_flash_t *fl,uint32_t *addr,unsigned *len){
+ if(slot<0||slot>=KL_SLOTS)return KL_SLOT;
+#ifdef KM_USER_STORE
+ ku_dir_t d;int r=ku_open(&d,fl);if(r)return r;return ku_lookup(&d,slot,addr,len);
+#else
+ (void)fl;*addr=KL_SLOT_ADDR(slot);*len=KL_SLOT_BYTES;return 0;
+#endif
+}
+
 
 static unsigned u16le(const uint8_t *p) { return (unsigned)p[0] | (unsigned)p[1] << 8; }
 
@@ -18,6 +31,11 @@ int kl_install(const uint8_t *img, const kl_flash_t *fl) {
   uint8_t back[64];
   if (!total || !(img[13] & KM_F_LIB) || (img[13] & (KM_F_REMOVE | KM_F_THEME))) return KL_BAD_HDR;
   if (slot >= KL_SLOTS) return KL_SLOT;
+#ifdef KM_USER_STORE
+  ku_dir_t d;int r=ku_open(&d,fl);if(r)return r;
+  r=ku_lookup(&d,slot,&base,&n);if(!r){if(fl->read(base,back,4))return KL_IO;if(back[0]=='K'&&back[1]=='6'&&back[2]=='T')return KL_NOT_MODULE;}else if(r!=KL_EMPTY)return r;
+  r=ku_put(&d,fl,slot,img,total);return r?r:(int)total;
+#else
   base = KL_SLOT_ADDR(slot);
   if (fl->read(base, back, 4)) return KL_IO;
   if (back[0]=='K' && back[1]=='6' && back[2]=='T') return KL_NOT_MODULE;
@@ -36,6 +54,7 @@ int kl_install(const uint8_t *img, const kl_flash_t *fl) {
       if (back[i] != img[off + i]) return KL_VERIFY;
   }
   return (int)total;
+#endif
 }
 
 int kl_remove(int slot, const kl_flash_t *fl) {
@@ -46,6 +65,9 @@ int kl_remove(int slot, const kl_flash_t *fl) {
   if (slot < 0 || slot >= KL_SLOTS) return KL_SLOT;
   if (kl_info(slot, fl, &info) != 0 || !(info.flags & KM_F_LIB) ||
       ((info.flags & (KM_F_PAGE | KM_F_CARDS)) && info.flags != KL_RESIDENT_FLAGS)) return KL_NOT_MODULE;
+#ifdef KM_USER_STORE
+  ku_dir_t d;int r=ku_open(&d,fl);return r?r:ku_remove(&d,fl,slot);
+#else
   base = KL_SLOT_ADDR(slot);
   /* Clear the full slot, including stale data beyond the previous image's final sector. */
   for (off = 0; off < KL_SLOT_BYTES; off += KL_SECTOR)
@@ -56,22 +78,28 @@ int kl_remove(int slot, const kl_flash_t *fl) {
       if (check[i] != 0xFF) return KL_VERIFY;
   }
   return 0;
+#endif
 }
 
 int kl_info(int slot, const kl_flash_t *fl, kl_info_t *out) {
   uint8_t h[KM_HDR + 4 + KL_NAME];
   unsigned i, blank = 1, named;
   if (slot < 0 || slot >= KL_SLOTS) return KL_SLOT;
-  if (fl->read(KL_SLOT_ADDR(slot), h, sizeof h)) return KL_IO;
+  uint32_t base;unsigned extent;int r=kl_locate(slot,fl,&base,&extent);if(r)return r;
+  if(extent<KM_HDR)return KL_BAD_HDR;
+  if (fl->read(base, h, KM_HDR)) return KL_IO;
   for (i = 0; i < KM_HDR; i++) blank &= h[i] == 0xFF;
   if (blank) return KL_EMPTY;
-  if (!hdr_len(h)) return KL_BAD_HDR;
+  if (!hdr_len(h) || hdr_len(h)>extent || h[15]!=slot) return KL_BAD_HDR;
   out->code_len = (uint16_t)u16le(h + 4), out->entry = (uint16_t)u16le(h + 6);
   out->serial = (uint32_t)h[8] | (uint32_t)h[9] << 8 | (uint32_t)h[10] << 16 | (uint32_t)h[11] << 24;
   out->level = h[12], out->flags = h[13];
   /* the name block: a module's (not a page's or a deck's), whole inside its code */
-  named = !(h[13] & (KM_F_PAGE | KM_F_CARDS)) && out->code_len >= 4 + KL_NAME && h[16] == 'K' &&
-          h[17] == '6' && h[18] == 'N' && h[19] == 'M';
+  named = !(h[13] & (KM_F_PAGE | KM_F_CARDS)) && out->code_len >= 4 + KL_NAME;
+  if (named) {
+    if (fl->read(base + KM_HDR, h + KM_HDR, 4 + KL_NAME)) return KL_IO;
+    named = h[16] == 'K' && h[17] == '6' && h[18] == 'N' && h[19] == 'M';
+  }
   for (i = 0; i < KL_NAME; i++) out->name[i] = named ? (char)h[KM_HDR + 4 + i] : 0;
   return 0;
 }
@@ -84,17 +112,23 @@ static int load(int slot, const kl_flash_t *fl, uint8_t *dst, unsigned cap, unsi
   /* Keep this path shallow: the Aura host calls kl_load from its keypad handler with little
      stack left. Calling kl_info here nested another C frame and a Rust SPI callback before the
      image was even read. Read the header into the destination, validate it, then load the image. */
-  if (fl->read(KL_SLOT_ADDR(slot), dst, KM_HDR)) return KL_IO;
+  uint32_t base;unsigned extent;int r=kl_locate(slot,fl,&base,&extent);if(r)return r;
+  if(extent<KM_HDR)return KL_BAD_HDR;
+  if (fl->read(base, dst, KM_HDR)) return KL_IO;
   total = hdr_len(dst);
-  if (!total) return KL_BAD_HDR;
+  if (!total) {
+    unsigned i;
+    for (i = 0; i < KM_HDR; ++i) if (dst[i] != 0xff) return KL_BAD_HDR;
+    return KL_EMPTY;
+  }
   code = u16le(dst + 4);
   flags = dst[13];
   if (page == 2) {
     if (flags != KL_RESIDENT_FLAGS) return KL_BAD_HDR;
   } else if (!!(flags & KM_F_PAGE) != !!page ||
              (flags & (KM_F_CARDS | KM_F_THEME | KM_F_RESIDENT))) return KL_BAD_HDR;
-  if (total > cap) return KL_BAD_HDR;
-  if (fl->read(KL_SLOT_ADDR(slot), dst, total)) return KL_IO;
+  if (total > cap || total > extent || dst[15] != slot) return KL_BAD_HDR;
+  if (fl->read(base, dst, total)) return KL_IO;
   if (hdr_len(dst) != total || u16le(dst + 4) != code || dst[13] != flags)
     return KL_BAD_HDR;       /* changed between the two reads */
   if (km_tag_check(dst, code)) return KL_BAD_TAG;
@@ -111,8 +145,10 @@ static int action_id(const uint8_t *a) {
 int kl_action(int slot, const kl_flash_t *fl) {
   uint8_t h[40];
   if (slot<0 || slot>=KL_SLOTS) return KL_SLOT;
-  if (fl->read(KL_SLOT_ADDR(slot),h,sizeof h)) return KL_IO;
-  if (!hdr_len(h)) return KL_BAD_HDR;
+  uint32_t base;unsigned extent;int r=kl_locate(slot,fl,&base,&extent);if(r)return r;
+  if(extent<sizeof h)return KL_BAD_HDR;
+  if (fl->read(base,h,sizeof h)) return KL_IO;
+  if (!hdr_len(h) || hdr_len(h)>extent || h[15]!=slot) return KL_BAD_HDR;
   return action_id(h);
 }
 int kl_load_action(int slot, const kl_flash_t *fl, uint8_t *dst, unsigned cap, unsigned action) {
@@ -157,8 +193,10 @@ static int resident_desc(const uint8_t *a, kl_resident_t *out) {
 int kl_resident_info(int slot, const kl_flash_t *fl, kl_resident_t *out) {
   uint8_t h[KM_HDR+KL_RESIDENT_DESC_BYTES];
   if (slot<0 || slot>=KL_SLOTS) return KL_SLOT;
-  if (fl->read(KL_SLOT_ADDR(slot),h,sizeof h)) return KL_IO;
-  if (!hdr_len(h)) return KL_BAD_HDR;
+  uint32_t base;unsigned extent;int r=kl_locate(slot,fl,&base,&extent);if(r)return r;
+  if(extent<sizeof h)return KL_BAD_HDR;
+  if (fl->read(base,h,sizeof h)) return KL_IO;
+  if (!hdr_len(h) || hdr_len(h)>extent || h[15]!=slot) return KL_BAD_HDR;
   return resident_desc(h,out);
 }
 

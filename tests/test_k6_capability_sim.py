@@ -89,7 +89,7 @@ def test_compiled_cable_dispatch(simulated_radio):
     assert cable.handshake(CABLE_HANDSHAKE, wait=3.0)
     assert cable.capabilities()['cable_only']
     info = cable.info()
-    assert info['protocol'] in (2, 4) and info['slots'] == 32
+    assert info['protocol'] in (2, 4, 5) and info['slots'] == 32
     assert info['arena'] > 0
     assert cable.serial_watermark() == 0
     with pytest.raises(InstallError, match='refused command 0x7e'):
@@ -105,6 +105,10 @@ def test_compiled_cable_only_install(simulated_radio, monkeypatch):
         pytest.skip('set K6_SIM_STARTER_PACK to a cable-only starter build directory')
     pack = Path(pack_path)
     port = simulated_radio((pack / 'firmware.bin').read_bytes(), cable_only=True)
+    lock=json.loads((pack/'pack.lock.json').read_text())
+    if lock.get('storage',{}).get('format')==2:
+        from k6_user_store_migrate import compact,BASE,END
+        port.board.flash_data[BASE:END]=compact({})[0]
     monkeypatch.setattr(k6_install, 'open_port', lambda _: port)
     spec = json.loads(k6_pack_install.DEFAULT.read_text())
     messages = []

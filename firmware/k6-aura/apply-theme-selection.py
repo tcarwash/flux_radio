@@ -40,6 +40,12 @@ patch('ui/settings.rs','        app.settings_title(),','        title,')
 patch('ui/settings.rs','        app.settings_index(),','        index,')
 patch('ui/settings.rs','        app.settings_show_arrows(),','        arrows,')
 patch('ui/mod.rs','app::Mode::Settings => draw_settings(display.as_draw_target(), &*app),','app::Mode::Settings => draw_settings(display.as_draw_target(), &mut *app),')
+# Normalize all previous versions of the generated Theme adjustment arm.
+# Later packed-store patches rewrite designer_read to designer_slot_read.
+import re
+p=root/'app/settings_ops.rs';s=p.read_text()
+s=re.sub(r'        #\[cfg\(k6_designer\)\]\n        SettingItem::Theme => \{\n            let mut next=cur;.*?\n        \},\n','',s,flags=re.S)
+p.write_text(s)
 patch('app/settings_ops.rs','        SettingItem::Contrast => clamp_step(cur, up, 0, 4),','''        SettingItem::Contrast => clamp_step(cur, up, 0, 4),
         #[cfg(k6_designer)]
         SettingItem::Theme => {
@@ -75,7 +81,7 @@ patch('app/settings_ops.rs','        SettingItem::ChipId => {','''        #[cfg(
                     let mut name=[0u8;14];
                     if theme.name_len>0 && app.designer_read(base+u32::from(theme.name_offset),&mut name[..usize::from(theme.name_len)]) {
                         if let Ok(label)=core::str::from_utf8(&name[..usize::from(theme.name_len)]) {
-                            let _=write!(w,"{}",label);
+                            let _=w.write_str(label);
                         } else {let _=write!(w,"SLOT {}",v-2);}
                     } else {let _=write!(w,"SLOT {}",v-2);}
                 } else {let _=write!(w,"FACTORY");}

@@ -123,8 +123,17 @@ K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-raster-boot.py"
 python3 "$HERE/apply-serial-lab.py"
 python3 "$HERE/apply-compact-edit.py"
 python3 "$HERE/apply-compact-format.py"
+python3 "$HERE/apply-compact-settings.py"
+
 python3 "$HERE/apply-lean-txdog.py"
 python3 "$HERE/apply-el-power.py"
+python3 "$HERE/apply-ram0.py"
+python3 "$HERE/apply-system-partition.py"
+python3 "$HERE/apply-system-demo.py"
+python3 "$HERE/apply-system-install.py"
+python3 "$HERE/apply-channel-page.py"
+python3 "$HERE/apply-settings-page.py"
+python3 "$HERE/apply-compact-channel-list.py"
 python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
@@ -146,6 +155,33 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_USER_STORE:-0}" = 1 ]; then
+  python3 "$HERE/apply-user-store.py"
+  python3 "$HERE/apply-user-restore.py"
+  PACK_CFG="$PACK_CFG --cfg k6_user_store"
+fi
+if [ "${K6_MEMORY_BANK:-0}" = 1 ]; then
+  python3 "$HERE/apply-memory-bank.py"
+  PACK_CFG="$PACK_CFG --cfg k6_memory_bank"
+fi
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] && [ "${K6_SYSTEM_DEMO:-0}" = 0 ] && [ "${K6_VFO_PROBE:-0}" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "Channel page requires expanded cable-only arena and installer (no resident probe/demo)" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_channel_page"
+fi
+if [ "${K6_SYSTEM_DEMO:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || { echo "System demo requires cable-only non-voice host" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_system_demo"
+fi
+if [ "${K6_SYSTEM_INSTALL:-0}" = 1 ]; then
+  [ "$K6_OTA_SERVICE" = 0 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || exit 1
+  PACK_CFG="$PACK_CFG --cfg k6_system_install"
+fi
+case "${K6_RAM0:-0}" in
+  0) ;;
+  1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
+  small) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_small" ;;
+  *) echo "invalid K6_RAM0" >&2; exit 1 ;;
+esac
 if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || { echo "Config FSK requires Data and watchdog" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
@@ -159,8 +195,17 @@ if [ "${K6_RASTER_BOOT:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_raster_boot
 if [ "${K6_SERIAL_TRANSPORT:-0}" = 1 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_serial_transport"
 fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  [ "${K6_CHANNEL_PAGE:-0}" = 1 ] || { echo "Settings page requires channel page loader" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_settings_page"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  [ "${K6_SERIAL_IQ:-0}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] || { echo "IQ page requires expanded arena and system installer" >&2; exit 1; }
+  python3 "$HERE/apply-iq-page.py"
+  PACK_CFG="$PACK_CFG --cfg k6_iq_page"
+fi
 if [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
-  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "Serial IQ requires Data" >&2; exit 1; }
+  [ "$K6_EXPLORE_HOST" = 1 ] || { echo "Serial IQ requires Base host" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_serial_iq"
 fi
 if [ "${K6_SERIAL_LAB:-0}" = 1 ]; then
@@ -229,7 +274,19 @@ if [ "$FLASH" -gt 122880 ]; then
   echo "image needs $FLASH bytes; KD32F328 application limit is 122880 bytes" >&2
   exit 1
 fi
+if [ "${K6_RAM0:-0}" != 0 ]; then
+  python3 "$ROOT/tools/k6_ram0_audit.py" "$ELF" --mode "$K6_RAM0" > "$OUT/ram0-layout.json"
+fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
+if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_channel_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/channel-system.bin"
+fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_settings_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/settings-system.bin"
+fi
+if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_iq_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/iq-system.bin"
+fi
 python3 - "$OUT/$IMAGE.bin" <<'PY'
 import hashlib
 from pathlib import Path
@@ -239,9 +296,6 @@ checksum = f"{hashlib.sha256(image.read_bytes()).hexdigest()}  {image}\n"
 image.with_suffix(image.suffix + '.sha256').write_text(checksum)
 print(checksum, end='')
 PY
-case ",$FEATURES," in
-  *,blowfang-host,*) python3 "$HERE/build-vfo-module-bundle.py" --out "$OUT/vfo-module-bundle" ;;
-esac
 if [ "$K6_OTA_SERVICE" = 0 ]; then
   echo "Built cable-only FD6818B image with features: $FEATURES"
 elif [ -n "${K6_MOD_KEY_FILE:-}" ]; then

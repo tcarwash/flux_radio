@@ -19,6 +19,9 @@ CMD_BAUD, CMD_ECHO, CMD_STREAM = 0x62, 0x54, 0x74
 
 
 class BenchCable(Cable):
+    # Benchmark explicit rates, never negotiate a second rate inside a read.
+    _fast_rate = 0
+
     def calls(self, reqs, window=1, retries=0):
         out = super().calls(reqs, window=window, retries=retries)
         if self.bad_response_crcs:
@@ -73,16 +76,7 @@ def burst(c, rate, blocks, reference=None):
     cmd = CMD_STREAM if reference is None else 0x64
     addr = 0 if reference is None else 0x100000 // 64
     start = time.monotonic()
-    c.port.write(cps_frame(CMD_BAUD, 0, struct.pack('<I', rate)) +
-                 cps_frame(cmd, addr, struct.pack('<H', blocks)) +
-                 cps_frame(CMD_BAUD, 0, struct.pack('<I', 115200)))
-    c.port.flush()
-    reply = c._frame(time.monotonic() + 1)
-    if reply is None or reply[:2] != (CMD_BAUD, 0) or len(reply[2]) != 4:
-        raise RuntimeError('no baud ACK before queued burst')
-    actual = struct.unpack('<I', reply[2])[0]
-    c.port.baudrate = rate
-    c.bad_response_crcs = 0
+    actual = c.start_downlink(cmd,addr,struct.pack('<H',blocks),rate)
     if reference is None:
         result = stream(c, blocks, send=False, started=start)
     else:
@@ -92,15 +86,7 @@ def burst(c, rate, blocks, reference=None):
             if f != (cmd, addr + seq * 4, want):
                 raise RuntimeError(f'SPI burst mismatch at block {seq}')
         result = metric(blocks * 256, time.monotonic() - start)
-    reply = c._frame(time.monotonic() + 1)
-    if reply is None or reply[:2] != (CMD_BAUD, 0) or len(reply[2]) != 4:
-        raise RuntimeError('no return-to-baseline ACK')
-    if struct.unpack('<I', reply[2])[0] != 96000000 // round(96000000 / 115200):
-        raise RuntimeError('invalid baseline baud reply')
-    c.port.baudrate = 115200
-    time.sleep(.08)
-    if c.bad_response_crcs:
-        raise RuntimeError('CRC loss during burst')
+    c.finish_downlink(rate)
     return actual, result
 
 

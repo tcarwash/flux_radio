@@ -21,11 +21,14 @@
     "aprsfskcap1200",
     "aprsfskformat2-format2",
     "aprsfskstreamcap",
+    "explore-scan-fit",
     "if-carrier",
     "if-survey",
     "if-survey-fm",
+    "libls",
     "refcal-dry",
-    "explore-scan-fit"
+    "vfo",
+    "vfo-module-bundle"
   ],
   "local_metadata": {
     "aprs": {
@@ -83,14 +86,6 @@
       ],
       "source_module": "explore_scan",
       "expected_api": 21
-    },
-    "vfo": {
-      "title": "VFO Radio",
-      "summary": "Receive VFO and memory utility; no voice PTT inside module.",
-      "status": "targeted",
-      "required_packs": [],
-      "source_module": "vfo",
-      "expected_api": 6
     },
     "surf": {
       "title": "SURF",

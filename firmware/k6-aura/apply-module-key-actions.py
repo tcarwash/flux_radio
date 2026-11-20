@@ -11,7 +11,7 @@ for file in ("app/settings_ops.rs","app/keyfn.rs","app/keys.rs"):
 def patch(path, old, new):
     p = root / path
     s = p.read_text()
-    if new in s:
+    if new in s or new.replace('write!(w, "{}", super::pager::key_module_label(idx).unwrap_or("UNAVAILABLE"))','w.write_str(super::pager::key_module_label(idx).unwrap_or("UNAVAILABLE"))').replace('write!(w, "{}", keyfn::from_u8(idx).label())','w.write_str(keyfn::from_u8(idx).label())') in s:
         return
     if s.count(old) != 1:
         raise SystemExit(f"{path}: missing or ambiguous module key anchor")

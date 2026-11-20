@@ -89,8 +89,8 @@ def _build(out, extra, env, c):
         return dest
 
     compile('k6/k6_mod.c', None, '-Oz', *keyflags)
-    for name in ('k6_lib', 'card_record', 'card_store', 'card_air'):
-        compile(f'k6/{name}.c', None, '-Oz')
+    for name in ('k6_lib', 'user_store', 'system_page', 'card_record', 'card_store', 'card_air'):
+        compile(f'k6/{name}.c', None, '-Oz', *(['-DKM_USER_STORE'] if env.get('K6_USER_STORE') == '1' else []))
     compile('k6/sotto_pager.c', None, env.get('K6_PAGER_OPT', '-Oz'))
     # Preserve the original archive order and all intermediate objects.
     compile('fixed/sotto_fx_dec.c', None, '-Dcalloc=sp_calloc', '-Dfree=sp_free')
@@ -121,7 +121,7 @@ def _build(out, extra, env, c):
         else:
             compile('k6/scan_host_unavailable.c', None, '-Oz')
             names.append('scan_host_unavailable')
-    names.extend(('k6_lib', 'card_record', 'card_store', 'card_air'))
+    names.extend(('k6_lib', 'user_store', 'system_page', 'card_record', 'card_store', 'card_air'))
     compile('k6/sp_novoice.c', None, '-Oz')
     for name in ('vfo_mode_probe', 'scheduled_dispatch'):
         compile(f'k6/{name}.c', None, '-Oz')

@@ -12,6 +12,7 @@
 #define UART 0x40013800u
 #define REG(a) (*(volatile uint32_t *)(a))
 #define CLOCK 96000000u
+#ifndef K6_IQ_IRQ_ONLY
 static uint32_t divu(uint32_t n,uint32_t d) {
   uint32_t q=0,b=1;
   if(!d) return 0;
@@ -26,18 +27,25 @@ static uint16_t crc(const uint8_t *p,unsigned n) {
   while(n--) { uint8_t b=*p++; c=(c<<4)^t[(c>>12)^(b>>4)];c=(c<<4)^t[(c>>12)^(b&15)]; }
   return c;
 }
-typedef struct { uint8_t *buf; volatile uint16_t len[2],pos; volatile unsigned head,n; } tx_t;
-static tx_t *volatile active_tx;
+#endif
+typedef struct { uint8_t *buf; volatile uint16_t len[8],pos; volatile unsigned head,n,slots; } tx_t;
+#ifdef K6_IQ_PAGE
+extern tx_t *volatile active_tx;
+#else
+tx_t *volatile active_tx;
+
 /* The UART ISR calls this after servicing RX; zero leaves normal debug TX alone. */
 int k6_serial_if_tx_irq(void) {
   tx_t *t=active_tx;
   if(!t) return 0;
   if(t->n) {
     REG(UART+0x28)=t->buf[t->head*264+t->pos++];
-    if(t->pos==t->len[t->head]) { t->pos=0;t->head^=1;t->n--; }
+    if(t->pos==t->len[t->head]) { t->pos=0;if(++t->head==t->slots)t->head=0;t->n--; }
   } else REG(UART)&=~(1u<<7);
   return 1;
 }
+#endif /* resident UART ISR */
+#ifndef K6_IQ_IRQ_ONLY
 static void pump(tx_t *t) { (void)t; /* TXE interrupt drains the queue. */ }
 static uint32_t irq_lock(void) {
   uint32_t mask;__asm__ volatile("mrs %0, primask\n cpsid i":"=r"(mask)::"memory");return mask;
@@ -45,8 +53,8 @@ static uint32_t irq_lock(void) {
 static void irq_unlock(uint32_t mask) { __asm__ volatile("msr primask, %0"::"r"(mask):"memory"); }
 static int enqueue(tx_t *t,uint16_t seq,const uint8_t *p,unsigned n) {
   uint32_t mask=irq_lock();
-  if(t->n==2) { irq_unlock(mask);return 0; }
-  unsigned at=(t->head+t->n)&1;
+  if(t->n==t->slots) { irq_unlock(mask);return 0; }
+  unsigned at=t->head+t->n;if(at>=t->slots)at-=t->slots;
   irq_unlock(mask);
   uint8_t *q=t->buf+at*264;
   q[0]=0xa6;q[1]=0x69;q[2]=(uint8_t)(seq>>8);q[3]=(uint8_t)seq;
@@ -77,13 +85,13 @@ int k6_serial_if_lab(uint8_t *mem,uint32_t bytes,uint32_t ms,uint32_t mode,
                      uint32_t ratio,uint32_t mix_step,uint32_t *s) {
   for(unsigned i=0;i<24;i++) s[i]=0;
   s[1]=mode;s[20]=ratio;s[16]=32;s[17]=(uint32_t)-32;
-  if(bytes<11000 || mode>1 || ms<10 || ms>10000 || (mode && (!ratio || ratio>32 || (ratio&(ratio-1))))) return -1;
+  if(bytes<11000 || mode>2 || ms<10 || ms>10000 || (mode && (!ratio || ratio>32 || (ratio&(ratio-1))))) return -1;
   uint32_t ahb=REG(0x40021014), apb=REG(0x40021018);
   if(REG(0x48000400)&12u) return -2;
   REG(0x40021014)=ahb|1;
   if((apb&(1u<<18)) || (REG(DMA+8)&1)) { REG(0x40021014)=ahb;return -3; }
   while(!(REG(UART+0x1c)&(1u<<6))) {}
-  tx_t tx={mem+RING,{0,0},0,0,0};
+  tx_t tx={mem+RING,{0},0,0,0,mode?8:2};
   active_tx=&tx;
   uint8_t *raw=mem+RING+528;
   k6_if_iq_t mixer;k6_if_cic_t cic;
@@ -128,13 +136,24 @@ int k6_serial_if_lab(uint8_t *mem,uint32_t bytes,uint32_t ms,uint32_t mode,
     /* Preserve five fractional bits through mixing/CIC before int8 quantization. */
     k6_if_iq_push(&mixer,(int16_t)(x*32),&i,&q);
     if(!k6_if_cic_push(&cic,i,q,&oi,&oq)) continue;
-    if(!filled) { le32(frame,consumed);frame[12]=1;frame[13]=(uint8_t)ratio;frame[14]=frame[15]=0; }
+    if(!filled) { le32(frame,consumed);frame[12]=(uint8_t)mode;frame[13]=(uint8_t)ratio;frame[14]=frame[15]=0; }
     int a=(oi+4)>>3,b=(oq+4)>>3;
     if(a>127 || a< -128 || b>127 || b< -128) s[13]++;
-    frame[16+filled*2]=(uint8_t)(int8_t)(a>127?127:a< -128?-128:a);
-    frame[17+filled*2]=(uint8_t)(int8_t)(b>127?127:b< -128?-128:b);
+    if(mode==2) {
+      /* Signed 6-bit components; quantize the legacy scale with rounding.
+       * Two complex pairs occupy three bytes, low bits first. */
+      int u=(a+2)>>2,v=(b+2)>>2;
+      unsigned pair=((unsigned)(u>31?31:u< -32?-32:u)&63u) |
+                    (((unsigned)(v>31?31:v< -32?-32:v)&63u)<<6);
+      unsigned at=16+(filled>>1)*3;
+      if(!(filled&1)) {frame[at]=(uint8_t)pair;frame[at+1]=(uint8_t)(pair>>8);}
+      else {frame[at+1]|=(uint8_t)(pair<<4);frame[at+2]=(uint8_t)(pair>>4);}
+    } else {
+      frame[16+filled*2]=(uint8_t)(int8_t)(a>127?127:a< -128?-128:a);
+      frame[17+filled*2]=(uint8_t)(int8_t)(b>127?127:b< -128?-128:b);
+    }
     s[9]++;
-    if(++filled==120) {
+    if(++filled==(mode==2?160u:120u)) {
       le32(frame+4,stamp);le32(frame+8,cpb);
       if(enqueue(&tx,(uint16_t)seq++,frame,256)) s[10]++;else s[11]++;
       filled=0;
@@ -145,14 +164,14 @@ int k6_serial_if_lab(uint8_t *mem,uint32_t bytes,uint32_t ms,uint32_t mode,
   REG(DMA+0xc)=0;REG(DMA+0x10)=0;REG(DMA+0x14)=0;
   REG(0x40021018)=apb;REG(0x40021014)=ahb;
   if(mode && filled) {
-    while(tx.n==2) pump(&tx);
+    while(tx.n==tx.slots) pump(&tx);
     le32(frame+4,stamp);le32(frame+8,cpb);
-    enqueue(&tx,(uint16_t)seq++,frame,16+filled*2);s[10]++;s[22]=filled;
+    enqueue(&tx,(uint16_t)seq++,frame,16+(mode==2?(filled*3+1)/2:filled*2));s[10]++;s[22]=filled;
   }
   if(!mode) {
     for(unsigned at=0;at<s[21];at+=240) {
       unsigned n=s[21]-at;if(n>240)n=240;
-      while(tx.n==2) pump(&tx);
+      while(tx.n==tx.slots) pump(&tx);
       le32(frame,at*64);le32(frame+4,divu((at+n)*64*cpb,256));le32(frame+8,cpb);
       frame[12]=0;frame[13]=1;frame[14]=frame[15]=0;
       for(unsigned j=0;j<n;j++) frame[16+j]=raw[at+j];
@@ -165,3 +184,9 @@ int k6_serial_if_lab(uint8_t *mem,uint32_t bytes,uint32_t ms,uint32_t mode,
   uint32_t mask=irq_lock();REG(UART)&=~(1u<<7);active_tx=0;irq_unlock(mask);
   return (int32_t)s[0];
 }
+
+#endif /* acquisition engine */
+
+#ifdef K6_IQ_PAGE
+__attribute__((section(".kp_tab"),used)) const uintptr_t kp_tab[]={0x0113504bu,(uintptr_t)kp_tab,(uintptr_t)k6_serial_if_lab};
+#endif

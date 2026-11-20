@@ -79,3 +79,19 @@ def test_cancel_before_opening_port(harness):
     state.answers=['NO']
     with pytest.raises(starter.PackError,match='cancelled'):run()
     assert not events
+
+def test_packed_stock_journal_precedes_format(harness,monkeypatch,tmp_path):
+    import k6_user_store_restore as restore
+    state,events,backup,lock,run=harness
+    lock['storage']={'format':2,'system_pages':[]}
+    monkeypatch.setattr(starter.radio,'flash',lambda *a,**kw:events.append('flash'))
+    monkeypatch.setattr(starter.radio,'CpsLink',lambda *a:SimpleNamespace(handshake=lambda *a,**kw:state.aura.pop(0),end=lambda:events.append('end'),read=lambda a,n:b'\xff'*n))
+    monkeypatch.setattr(restore,'BACKUP_DIR',tmp_path/'journals')
+    def provision(*a,**kw):
+        assert kw['first_install'].is_file();events.append('install')
+        assert kw['first_install'].with_suffix('.kul2').is_file()
+    monkeypatch.setattr(starter,'provision_pack',provision)
+    run()
+    assert events.index('flash')<events.index('backup')<events.index('format_prompt')<events.index('install')
+    from k6_user_store_migrate import locations
+    assert locations(next((tmp_path/'journals').glob('*.kul2')).read_bytes())=={}

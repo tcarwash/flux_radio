@@ -32,10 +32,11 @@ if designer not in ("0", "1"): raise SystemExit("invalid Designer gate")
 sotto = os.environ.get("K6_SOTTO_SERVICE", "0")
 if sotto not in ("0", "1"): raise SystemExit("invalid Sotto gate")
 mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if scan == '1' else 0) | (4 if fsk == '1' else 0) | (64 if sotto == "1" else 0)
+level = 24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23
 insert = f'''            // Read-only capability query: K6CP, format 2, flags, API ceiling, reserved.
             // Version 2 includes the embedded linker build ID (not a runtime measurement).
             CMD_CABLE_CAPS if f.addr == 0 && (f.len == 0 || f.len == 16) => {{
-                let mut d: [u8; 16] = [b'K', b'6', b'C', b'P', 2, {mask}, 23, 0,
+                let mut d: [u8; 16] = [b'K', b'6', b'C', b'P', 2, {mask}, {level}, 0,
                                    0, 0, 0, 0, 0, 0, 0, 0];
                 extern "C" {{
                     static k6_build_id: [u8; 8];
@@ -74,7 +75,7 @@ if text.count(constant) != 1:
     raise SystemExit('could not locate Blowfang cable command definitions')
 # Without this declaration Rust treats the match identifier as a catch-all binding.
 caps_constant = 'const CMD_CABLE_CAPS: u8 = 0x49; // read-only capabilities'
-if caps_constant not in text:
+if 'const CMD_CABLE_CAPS: u8 = 0x49;' not in text:
     text = text.replace(constant, caps_constant + "\n" + constant, 1)
 serial_constant = 'const CMD_CABLE_SERIAL: u8 = 0x4A; // read-only replay watermark'
 if serial_constant not in text:

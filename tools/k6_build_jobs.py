@@ -20,7 +20,7 @@ class BuildJobs:
         self._jobs = {}
         self._radio_jobs = {}
 
-    def start(self, packs, theme='flux', tx_profile='ce', theme_name=''):
+    def start(self, packs, theme='flux', tx_profile='ce', theme_name='', iq=None):
         from k6_feature_packs import DEFAULT, resolve
         from k6_pack_policy import POLICY, validate
         spec = json.loads(DEFAULT.read_text())
@@ -36,6 +36,7 @@ class BuildJobs:
             log = folder / 'build.log'
             output = folder / 'pack'
             command = [sys.executable, str(ROOT / 'tools/k6.py'), 'build', *plan['packs'], '--output', str(output), '--tx-profile', plan['tx_profile'], '--theme', plan['theme']]
+            if iq is not None:command.append('--iq' if iq else '--no-iq')
             if theme_name:
                 command += ['--theme-name', theme_name]
             with log.open('wb') as stream:
@@ -45,7 +46,7 @@ class BuildJobs:
                                   'command': command}
             return job_id
 
-    def start_radio(self, build_id, action, port, key_file, already_update=False, theme_slot=None):
+    def start_radio(self, build_id, action, port, key_file, already_update=False, theme_slot=None, recovery=None):
         with self._lock:
             if any(process.poll() is None for _, _, process, _ in self._radio_jobs.values()):
                 raise ValueError('another radio operation is already running')
@@ -83,6 +84,9 @@ class BuildJobs:
                     command += ['--key-file', key_file]
                 if already_update:
                     command.append('--already-update')
+                if recovery is not None:
+                    if action != 'flash-install':raise ValueError('recovery requires full installation')
+                    command += ['--recover',str(recovery)]
             log = self.directory / build_id / f'radio-{job_id}.log'
             with log.open('wb') as stream:
                 process = self.runner(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,

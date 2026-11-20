@@ -340,3 +340,5 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 .settings-form select, [data-provision] select { min-height:37px; max-width:100%; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--text); padding:7px 10px; font:inherit; }
 .settings-form { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
 .settings-form button { justify-self:start; }
+
+.top-actions a.button { display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border:1px solid var(--line); border-radius:7px; background:var(--acid); color:#16200e; font-weight:750; text-decoration:none; }

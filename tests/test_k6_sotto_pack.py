@@ -30,7 +30,7 @@ def test_sotto_resolves_and_gates_service():
     plan = resolve(SPEC, ['sotto'])
     assert plan['packs'] == ['base', 'sotto']
     assert 'sotto-decoder' in plan['capabilities']
-    assert plan['modules'] == ['vfo']
+    assert plan['modules'] == []
     assert gate_environment(plan, policy)['K6_SOTTO_SERVICE'] == '1'
     assert gate_environment(resolve(SPEC, ['base']), policy)['K6_SOTTO_SERVICE'] == '0'
 

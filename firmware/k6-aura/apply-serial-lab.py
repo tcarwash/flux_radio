@@ -86,7 +86,7 @@ if '// Flux serial lab commands' not in s:
                 let get = |n: usize| u32::from_le_bytes([f.data[n],f.data[n+1],f.data[n+2],f.data[n+3]]);
                 let hz=get(0); let ms=get(4); let mix=get(8);
                 let mode=f.data[12]; let ratio=f.data[13];
-                if !(50000000..=600000000).contains(&hz) || ms<10 || ms>10000 || mix>40000 || mode>1 || f.data[14]!=0 || f.data[15]!=0 || ratio==0 || ratio>32 || !ratio.is_power_of_two() {
+                if !(50000000..=600000000).contains(&hz) || ms<10 || ms>10000 || mix>40000 || mode>2 || f.data[14]!=0 || f.data[15]!=0 || ratio==0 || ratio>32 || !ratio.is_power_of_two() {
                     cable_send(frame::CMD_ERROR,f.addr,&[frame::ERR_BAD_LEN]);continue;
                 }
                 let mut saved=[0u16;3];
@@ -102,7 +102,10 @@ if '// Flux serial lab commands' not in s:
                 let route=app.radio.fd6818.reg_read(syst,0x34);
                 let mut stats=[0u32;24];
                 unsafe extern "C" { fn k6_serial_if_lab(mem:*mut u8,bytes:u32,ms:u32,mode:u32,ratio:u32,mix:u32,stats:*mut u32)->i32; }
+                #[cfg(not(k6_iq_page))]
                 let result=if route&15!=13 { -9 } else { unsafe { k6_serial_if_lab(crate::hal::arena::base(),crate::hal::arena::ARENA_BYTES as u32,ms,mode as u32,ratio as u32,(((mix as u64)<<32)/96000000) as u32,stats.as_mut_ptr()) } };
+                #[cfg(k6_iq_page)]
+                let result=if route&15!=13 {-9} else {iq_page_capture(app,ms,mode as u32,ratio as u32,(((mix as u64)<<32)/96000000) as u32,&mut stats)};
                 app.radio.rf_off(syst);
                 for (i,r) in [0x33,0x34,0x73].iter().enumerate() { app.radio.fd6818.reg_write(syst,*r,saved[i]); }
                 let mut data=[0u8;112];
@@ -118,7 +121,7 @@ if '// Flux serial lab commands' not in s:
                 syst.set_reload(SYSCLK_HZ/1000-1);syst.clear_current();syst.enable_counter();
             }
             // d: bounded read-only physical SPI burst, 256 bytes per response.
-            #[cfg(k6_serial_lab)]
+            #[cfg(any(k6_serial_lab, k6_serial_transport))]
             0x64 if f.len == 2 => {
                 let count = u16::from_le_bytes([f.data[0], f.data[1]]) as u32;
                 let start = f.addr as u32 * 64;
@@ -159,9 +162,9 @@ if '// Flux serial lab commands' not in s:
 # The production sender only needs 64 bytes; lab echo/stream frames need more.
 s = p.read_text()
 old = '    let mut out = [0u8; 8 + FLASH_RAW_CHUNK as usize];'
-new = '''    #[cfg(any(k6_serial_lab, k6_serial_iq))]
+new = '''    #[cfg(any(k6_serial_lab, k6_serial_iq, k6_serial_transport))]
     let mut out = [0u8; 264];
-    #[cfg(not(any(k6_serial_lab, k6_serial_iq)))]
+    #[cfg(not(any(k6_serial_lab, k6_serial_iq, k6_serial_transport)))]
     let mut out = [0u8; 8 + FLASH_RAW_CHUNK as usize];'''
 if new not in s:
     previous = new.replace('any(k6_serial_lab, k6_serial_iq)', 'k6_serial_lab')

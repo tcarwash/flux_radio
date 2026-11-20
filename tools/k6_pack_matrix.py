@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import os
 import shutil
-from k6_pack_policy import POLICY, validate, gate_environment
+from k6_pack_policy import POLICY, validate, gate_environment, storage_environment
 from k6_build_lock import exclusive_build
 from k6_capability_receipt import write as write_receipt
 from k6_build_identity import image_build_id
@@ -63,6 +63,7 @@ def main():
             env['K6_THEME'] = plan['theme']
             env['K6_IMAGE_NAME'] = f'flux-matrix-{label}'
             env.update(gate_environment(plan, policy))
+            env.update(storage_environment(plan))
             print(f'Building {label}: {gate_environment(plan, policy)}', file=sys.stderr, flush=True)
             with exclusive_build():
                 subprocess.run(['sh', str(ROOT / 'firmware/k6-aura/build-fd6818b.sh')],
@@ -74,7 +75,7 @@ def main():
                 shutil.copy2(source / f'flux-matrix-{label}.bin', dest / 'firmware.bin')
                 image_build_id((dest / 'firmware.bin').read_bytes())
             (dest / 'plan.json').write_text(json.dumps(plan, indent=2) + '\n')
-            write_receipt(dest / 'firmware.receipt.json', dest / 'firmware.bin', plan, gate_environment(plan, policy))
+            write_receipt(dest / 'firmware.receipt.json', dest / 'firmware.bin', plan, {**gate_environment(plan, policy),**storage_environment(plan)})
             size = dest / 'size.txt'
         elif args.size_dir:
             size = args.size_dir / label / 'size.txt'

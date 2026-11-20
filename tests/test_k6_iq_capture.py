@@ -40,3 +40,12 @@ def test_raw_population_counts_have_distinct_stride():
     _,_,check=decode_frames([packet(0,0,10000,mode=0,ratio=1),packet(1,256,20000,mode=0,ratio=1)],dict(mode=0,ratio=8,outputs=8,frames=2))
     assert check['index_gaps']==0
     assert check['missing_samples']==0
+
+
+def test_packed_iq_signed_values_and_odd_final_pair():
+    values=[-32,31,-1,0,7,-8]
+    bits=sum((v&63)<<(6*i) for i,v in enumerate(values))
+    payload=bits.to_bytes(5,'little')
+    samples,_,check=decode_frames([(0,struct.pack('<IIIBBH',256,10000,4155,2,4,0)+payload)],dict(mode=2,ratio=4,outputs=3,frames=1))
+    assert samples.tolist()==[v*4 for v in values]
+    assert check['missing_samples']==0

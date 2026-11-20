@@ -560,7 +560,7 @@ def test_pack_report_matches_radio_and_never_self_attests(tmp_path):
     assert not report["capabilities_match"] and "authenticated-ota" in report["missing_capabilities"]
     assert report["unsupported_modules"] == []  # the staged module fits the old ceiling
     narrow = {"module_loader": True, "module_api_max": 5, "ota": True}
-    assert compatibility_report(lock, narrow)["unsupported_modules"] == ["vfo"]
+    assert compatibility_report(lock, narrow)["unsupported_modules"] == []
 
 
 # ---- gates match linked builds (including Designer); API/RX/TX preserved -----
@@ -611,5 +611,5 @@ def test_api_rx_tx_protections_and_modules_preserved():
     for name in ("vfo", "surf", "explore_scan", "cardlink"):
         source = C6 / "mod" / f"{name}.c"
         assert source.is_file(), name
-        assert 1 <= k6mod.source_level(str(source)) <= 23
+        assert 1 <= k6mod.source_level(str(source)) <= (24 if name == "cardlink" else 23)
     assert k6mod.source_level(str(C6 / "mod" / "aprsgpssync.c")) == 23  # packs accept it now

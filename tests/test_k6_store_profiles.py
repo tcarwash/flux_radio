@@ -53,10 +53,11 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
     import k6_flash_estimate
     data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
     data["base_bytes"]=101184
+    data.get("linked_profiles",{}).get("plain",{}).pop("base",None)
     path=tmp_path/"estimates.json";path.write_text(json.dumps(data))
     monkeypatch.setattr(k6_flash_estimate,"ESTIMATES",path)
     client = k6_store.create_app().test_client()
-    response = client.post('/profiles/preview', data={'pack': []})
+    response = client.post('/profiles/preview', data={'pack': [], 'iq': '0'})
     assert response.status_code == 200
     estimate = response.get_json()['estimate']
     assert estimate['used'] == 101184
@@ -64,23 +65,44 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
     assert estimate['allowed'] is True
     assert estimate['base_target_over'] is True
     assert estimate['base_target_over_by'] == 2880
-    assert b'2,880 bytes above the 96 KiB Base design goal' in client.post('/profiles', data={'pack': []}).data
+    assert b'2,880 bytes above the 96 KiB Base design goal' in client.post('/profiles', data={'pack': [], 'iq': '0'}).data
 
 
-def test_flash_estimate_gates_known_overfull_profile(monkeypatch):
-    def forbid(*args, **kwargs):
-        raise AssertionError('estimate gate must run before starting a build')
-    monkeypatch.setattr(k6_store.subprocess, 'run', forbid)
-    client = k6_store.create_app().test_client()
+def test_flash_estimate_warns_but_does_not_block(monkeypatch, tmp_path):
+    import k6_flash_estimate
+    data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
+    data['deltas']['ota']['bytes']=40000
+    path=tmp_path/'estimates.json';path.write_text(json.dumps(data))
+    monkeypatch.setattr(k6_flash_estimate,'ESTIMATES',path)
+    from k6_build_jobs import BuildJobs
+    calls = []
+    class Process:
+        def poll(self): return None
+    def runner(command, **kwargs):
+        calls.append(command)
+        return Process()
+    app = k6_store.create_app()
+    app.config['build_jobs'] = BuildJobs(tmp_path, runner=runner)
+    client = app.test_client()
     packs = ['scan', 'data', 'ota', 'designer']
-    preview = client.post('/profiles/preview', data={'pack': packs})
+    preview = client.post('/profiles/preview', data={'pack': packs, 'iq': '0'})
     assert preview.status_code == 200
     estimate = preview.get_json()['estimate']
     assert estimate['used'] > estimate['limit']
     assert estimate['allowed'] is False
-    blocked = client.post('/profiles/build', data={'pack': packs})
-    assert blocked.status_code == 302
-    assert b'Estimated firmware size exceeds' in client.get(blocked.location).data
+    assert estimate['build_allowed'] is True
+    response = client.post('/profiles/build', data={'pack': packs, 'iq': '0'})
+    assert response.status_code == 302
+    assert len(calls) == 1
+    assert '--no-iq' in calls[0]
+
+
+def test_four_bundle_iq_reference_fits():
+    client = k6_store.create_app().test_client()
+    data = client.post('/profiles/preview', data={'pack': ['scan','designer','data'], 'iq':'1'}).get_json()
+    assert data['ok'] and data['estimate']['measured_profile']
+    assert data['estimate']['used'] <= 122880
+    assert data['estimate']['build_allowed']
 
 
 def test_custom_theme_is_buildable_and_rejects_invalid_markers():
@@ -126,6 +148,9 @@ def test_theme_splash_preview_uses_firmware_art_source():
     assert len(logos) == 3 and all(len(rows) == 16 for rows in logos)
     page = k6_store.create_app().test_client().get('/themes').data
     assert ('window.FluxSplashLogos=' + json.dumps(logos)).encode() in page
+    assert b'data-theme-full-splash' in page
+    assert b'data-theme-splash' not in page
+    assert b'data-theme-icon-grid' not in page
     source = (Path(k6_store.__file__).with_name('k6_store_templates') /
               'static' / 'theme-widgets.js').read_text()
     assert 'const logos=window.FluxSplashLogos' in source

@@ -226,9 +226,15 @@ where D: DrawTarget<Color = BinaryColor>, {
 
 '''
         text = replace_once(text, marker, fn + marker, "About renderer")
+    # Reused generated trees may contain repeated dispatch blocks from older
+    # versions of this patch and apply-theme-selection. Normalize them first.
+    dispatch = '    if app.settings_is_about() { draw_flux_about(lcd, app); return; }\n'
+    init = '    let title = app.settings_title();\n    let index = app.settings_index();\n    let arrows = app.settings_show_arrows();\n'
+    has_init = init in text
+    text = text.replace(dispatch, '').replace(init, '')
     return replace_once(text, '    let mut source = SettingsSource(app);\n',
-                        '    if app.settings_is_about() { draw_flux_about(lcd, app); return; }\n    let mut source = SettingsSource(app);\n',
-                        "About dispatch")
+                        dispatch + (init if has_init else '') + '    let mut source = SettingsSource(app);\n',
+                        'About dispatch')
 
 
 def settings_ops(text):

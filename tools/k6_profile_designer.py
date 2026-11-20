@@ -34,8 +34,13 @@ for name,blob in [('sparse',pack(plain)),('dense',pack(dense))]:
  board=K6Board(image,cpi=1.5,collect_mmio=False)
  board.flash_data[:]=seed
  if blob:
-  board.flash_data[base:base+0x4000]=b'\xff'*0x4000
-  board.flash_data[base:base+len(blob)]=blob
+  from k6_user_store_migrate import BASE,END,is_packed,objects,compact
+  raw=board.flash_data[BASE:END]
+  if is_packed(raw):
+   entries=objects(raw);entries[31]=blob;board.flash_data[BASE:END]=compact(entries)[0]
+  else:
+   board.flash_data[base:base+0x4000]=b'\xff'*0x4000
+   board.flash_data[base:base+len(blob)]=blob
  # Install hooks before boot so initial frame and cache population are observed.
  tick=0; stack=[]; results=[]; counts=collections.Counter(); current=None
  def hook(uc,addr,size,data):
