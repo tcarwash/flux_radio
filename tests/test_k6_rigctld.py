@@ -168,6 +168,7 @@ def test_capability_advertisement_is_consistent_with_setters():
             assert rig.execute(cmd)=="RPRT -11\n"
 
 
+@pytest.mark.skipif(not shutil.which("rigctl"), reason="Hamlib not installed")
 def test_discovery_on_real_hamlib_does_not_advertise_ptt(local_socket_access):
     link=CatLink()
     with Server(("127.0.0.1",0),Rig(link,["status","tune","mode","vfo"])) as server:
