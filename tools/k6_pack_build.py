@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from k6_feature_packs import DEFAULT, resolve, THEMES, DEFAULT_THEME, validate_theme, TX_PROFILES, DEFAULT_TX_PROFILE, validate_tx_profile
 import k6_install
 from k6_flash_policy import assess, flash_bytes
-from k6_pack_policy import POLICY, validate, gate_environment, storage_environment
+from k6_pack_policy import POLICY, validate, gate_environment, storage_environment, iq_supported
 from k6_build_lock import exclusive_build
 from k6_capability_receipt import write as write_receipt
 from k6_build_identity import image_build_id
@@ -102,7 +102,7 @@ def main():
     p.add_argument('--allow-unverified-firmware', action='store_true',
                    help='explicitly allow staging a prebuilt image without verifying capabilities')
     p.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
-    p.add_argument('--iq', action='store_true', help='experimental serial IQ (Data only)')
+    p.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='serial IQ (default on for compatible Base profiles)')
     p.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     p.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
     args = p.parse_args()
@@ -111,6 +111,7 @@ def main():
         policy = json.loads(POLICY.read_text())
         validate(spec, policy)
         plan = resolve(spec, args.packs, args.theme, args.tx_profile)
+        if args.iq is None: args.iq = not args.skip_firmware_build and iq_supported(plan)
         if args.skip_firmware_build:
             if args.iq:p.error('IQ requires a fresh build')
             if args.theme != DEFAULT_THEME:
@@ -142,7 +143,7 @@ def main():
                 if not budget['pass']:
                     raise ValueError(f'firmware exceeds {budget["policy"]}: {budget["used"]} > {budget["limit"]}')
                 image_build_id(image.read_bytes())  # new linked builds must carry an ID
-                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1',system_pages=[image.parent/'iq-system.bin'] if args.iq else [])
+                lock = assemble(plan, args.output, image, verified_firmware=False, theme_name=args.theme_name, system_page=image.parent/'channel-system.bin' if env.get('K6_CHANNEL_PAGE')=='1' else None, packed=env.get('K6_USER_STORE')=='1',system_pages=[image.parent/n for n,gate in [('iq-system.bin','K6_IQ_PAGE'),('settings-system.bin','K6_SETTINGS_PAGE')] if env.get(gate)=='1'])
                 if args.iq:lock['optional_services']=['serial-iq']
                 lock['flash_budget'] = budget
                 (args.output / 'pack.lock.json').write_text(json.dumps(lock, indent=2) + '\n')

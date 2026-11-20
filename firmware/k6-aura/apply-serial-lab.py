@@ -86,7 +86,7 @@ if '// Flux serial lab commands' not in s:
                 let get = |n: usize| u32::from_le_bytes([f.data[n],f.data[n+1],f.data[n+2],f.data[n+3]]);
                 let hz=get(0); let ms=get(4); let mix=get(8);
                 let mode=f.data[12]; let ratio=f.data[13];
-                if !(50000000..=600000000).contains(&hz) || ms<10 || ms>10000 || mix>40000 || mode>1 || f.data[14]!=0 || f.data[15]!=0 || ratio==0 || ratio>32 || !ratio.is_power_of_two() {
+                if !(50000000..=600000000).contains(&hz) || ms<10 || ms>10000 || mix>40000 || mode>2 || f.data[14]!=0 || f.data[15]!=0 || ratio==0 || ratio>32 || !ratio.is_power_of_two() {
                     cable_send(frame::CMD_ERROR,f.addr,&[frame::ERR_BAD_LEN]);continue;
                 }
                 let mut saved=[0u16;3];
@@ -121,7 +121,7 @@ if '// Flux serial lab commands' not in s:
                 syst.set_reload(SYSCLK_HZ/1000-1);syst.clear_current();syst.enable_counter();
             }
             // d: bounded read-only physical SPI burst, 256 bytes per response.
-            #[cfg(k6_serial_lab)]
+            #[cfg(any(k6_serial_lab, k6_serial_transport))]
             0x64 if f.len == 2 => {
                 let count = u16::from_le_bytes([f.data[0], f.data[1]]) as u32;
                 let start = f.addr as u32 * 64;
@@ -162,9 +162,9 @@ if '// Flux serial lab commands' not in s:
 # The production sender only needs 64 bytes; lab echo/stream frames need more.
 s = p.read_text()
 old = '    let mut out = [0u8; 8 + FLASH_RAW_CHUNK as usize];'
-new = '''    #[cfg(any(k6_serial_lab, k6_serial_iq))]
+new = '''    #[cfg(any(k6_serial_lab, k6_serial_iq, k6_serial_transport))]
     let mut out = [0u8; 264];
-    #[cfg(not(any(k6_serial_lab, k6_serial_iq)))]
+    #[cfg(not(any(k6_serial_lab, k6_serial_iq, k6_serial_transport)))]
     let mut out = [0u8; 8 + FLASH_RAW_CHUNK as usize];'''
 if new not in s:
     previous = new.replace('any(k6_serial_lab, k6_serial_iq)', 'k6_serial_lab')

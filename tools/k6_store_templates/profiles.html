@@ -14,7 +14,7 @@
 <legend class="visually-hidden">Feature packs</legend>
 {% for name, pack in choices.items() %}<label class="pack-card"><input type="checkbox" name="pack" value="{{ name }}" {% if name in selected %}checked{% endif %} {% if pack.status is defined %}disabled{% endif %} data-pack-checkbox> <strong>{{ name|upper }}</strong> — {{ pack.description|default(pack.capabilities|join(', ')) }}{% if pack.status is defined %} ({{ pack.status }}){% endif %}</label>{% endfor %}
 </fieldset>
-<label class="pack-card"><input type="checkbox" name="iq" value="1" {% if selected_iq %}checked{% endif %}> <strong>Data: experimental serial IQ</strong> — optional receiver acquisition engine; not needed for KISS. Requires Data, excludes OTA and Sotto. Exact flash limit enforced at build time.</label>
+<label class="pack-card"><input type="checkbox" name="iq" value="1" {% if selected_iq %}checked{% endif %}> <strong>Base: serial IQ</strong> — receive-only raw/IQ acquisition, including packed 6-bit streaming. Available without Data; excludes OTA and Sotto. Exact flash limit enforced at build time.</label><input type="hidden" name="iq" value="0">
 <section class="tx-profile-select">
 <div class="section-heading"><div><p class="eyebrow">TRANSMIT INHIBIT</p><h2>Starting band profile</h2></div></div>
 <p class="radio-note">This sets the radio’s initial profile. You can change it on the device later; transmit is checked against the profile currently selected there. Unrestricted still observes the radio’s hardware tuning limits.</p>

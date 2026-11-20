@@ -60,9 +60,9 @@ def test_storage_profile_defaults_are_explicit():
         assert gates['K6_USER_STORE']==gates['K6_MEMORY_BANK']=='1'
         assert gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='0' # unqualified experimental overlay
 
-def test_iq_opt_in_data_only():
+def test_iq_base_capability():
     from k6_pack_policy import storage_environment
-    with pytest.raises(ValueError):storage_environment(resolve(SPEC,['base']),iq=True)
+    assert storage_environment(resolve(SPEC,['base']),iq=True)['K6_SETTINGS_PAGE']=='1'
     with pytest.raises(ValueError):storage_environment(resolve(SPEC,['data','ota']),iq=True)
     gates=storage_environment(resolve(SPEC,['data']),iq=True)
     assert gates['K6_MEMORY_BANK']==gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='1'

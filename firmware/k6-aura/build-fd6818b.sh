@@ -132,6 +132,7 @@ python3 "$HERE/apply-system-partition.py"
 python3 "$HERE/apply-system-demo.py"
 python3 "$HERE/apply-system-install.py"
 python3 "$HERE/apply-channel-page.py"
+python3 "$HERE/apply-settings-page.py"
 python3 "$HERE/apply-compact-channel-list.py"
 python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
@@ -194,13 +195,17 @@ if [ "${K6_RASTER_BOOT:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_raster_boot
 if [ "${K6_SERIAL_TRANSPORT:-0}" = 1 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_serial_transport"
 fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  [ "${K6_CHANNEL_PAGE:-0}" = 1 ] || { echo "Settings page requires channel page loader" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_settings_page"
+fi
 if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
   [ "${K6_SERIAL_IQ:-0}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && [ "${K6_SYSTEM_INSTALL:-0}" = 1 ] || { echo "IQ page requires expanded arena and system installer" >&2; exit 1; }
   python3 "$HERE/apply-iq-page.py"
   PACK_CFG="$PACK_CFG --cfg k6_iq_page"
 fi
 if [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
-  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "Serial IQ requires Data" >&2; exit 1; }
+  [ "$K6_EXPLORE_HOST" = 1 ] || { echo "Serial IQ requires Base host" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_serial_iq"
 fi
 if [ "${K6_SERIAL_LAB:-0}" = 1 ]; then
@@ -275,6 +280,9 @@ fi
 llvm-objcopy -O binary "$ELF" "$OUT/$IMAGE.bin"
 if [ "${K6_CHANNEL_PAGE:-0}" = 1 ]; then
   python3 "$ROOT/tools/k6_channel_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/channel-system.bin"
+fi
+if [ "${K6_SETTINGS_PAGE:-0}" = 1 ]; then
+  python3 "$ROOT/tools/k6_settings_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/settings-system.bin"
 fi
 if [ "${K6_IQ_PAGE:-0}" = 1 ]; then
   python3 "$ROOT/tools/k6_iq_page.py" "$OUT/$IMAGE.bin" "$ELF" "$OUT/iq-system.bin"

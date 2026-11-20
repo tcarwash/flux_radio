@@ -40,6 +40,12 @@ patch('ui/settings.rs','        app.settings_title(),','        title,')
 patch('ui/settings.rs','        app.settings_index(),','        index,')
 patch('ui/settings.rs','        app.settings_show_arrows(),','        arrows,')
 patch('ui/mod.rs','app::Mode::Settings => draw_settings(display.as_draw_target(), &*app),','app::Mode::Settings => draw_settings(display.as_draw_target(), &mut *app),')
+# Normalize all previous versions of the generated Theme adjustment arm.
+# Later packed-store patches rewrite designer_read to designer_slot_read.
+import re
+p=root/'app/settings_ops.rs';s=p.read_text()
+s=re.sub(r'        #\[cfg\(k6_designer\)\]\n        SettingItem::Theme => \{\n            let mut next=cur;.*?\n        \},\n','',s,flags=re.S)
+p.write_text(s)
 patch('app/settings_ops.rs','        SettingItem::Contrast => clamp_step(cur, up, 0, 4),','''        SettingItem::Contrast => clamp_step(cur, up, 0, 4),
         #[cfg(k6_designer)]
         SettingItem::Theme => {

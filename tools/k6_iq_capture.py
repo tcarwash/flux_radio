@@ -20,9 +20,17 @@ def decode_frames(frames, stats):
     for seq,data in frames:
         if len(data)<16: raise ValueError('short sample frame')
         index,stamp,cpb,mode,ratio,zero=struct.unpack('<IIIBBH',data[:16])
-        if mode not in (0,1) or not ratio or zero: raise ValueError('invalid sample header')
+        if mode not in (0,1,2) or not ratio or zero: raise ValueError('invalid sample header')
         if mode!=stats['mode'] or (mode and ratio!=stats['ratio']): raise ValueError('sample configuration differs from final statistics')
-        x=np.frombuffer(data[16:],dtype=np.int8).copy()
+        if mode==2:
+            packed=data[16:]
+            if len(packed)%3==1 or (len(packed)%3==2 and packed[-1]&0xf0):
+                raise ValueError('invalid packed IQ payload')
+            count=len(packed)*8//12
+            bits=int.from_bytes(packed,'little')
+            x=np.array([(((bits>>(6*i))&63)^32)-32 for i in range(count*2)],dtype=np.int8)*4
+        else:
+            x=np.frombuffer(data[16:],dtype=np.int8).copy()
         if mode and len(x)%2: raise ValueError('odd IQ payload')
         n=len(x)//2 if mode else len(x)
         if seq!=expected_seq: seq_gaps+=1
@@ -39,7 +47,7 @@ def decode_frames(frames, stats):
 
 def capture(a):
     frames=[];restore=False;result={}
-    mode=0 if a.raw else 1
+    mode=0 if a.raw else (2 if a.bits==6 else 1)
     request=struct.pack('<IIIBBBB',a.hz,a.ms,a.mix,mode,a.ratio,0,0)
     with serial_lock(a.port):
         with serial.Serial(a.port,115200,timeout=.002,write_timeout=2,exclusive=True) as port:
@@ -47,14 +55,7 @@ def capture(a):
             if not c.handshake(CABLE_HANDSHAKE,wait=4):raise RuntimeError('no Flux baseline handshake')
             try:
                 before=struct.unpack('<4I',once(c,0x71))
-                if a.baud!=115200:
-                    port.write(cps_frame(CMD_BAUD,0,struct.pack('<I',a.baud))+cps_frame(0x70,0,request)+cps_frame(CMD_BAUD,0,struct.pack('<I',115200)))
-                    port.flush()
-                    ack=c._frame(time.monotonic()+1)
-                    if ack is None or ack[:2]!=(CMD_BAUD,0) or len(ack[2])!=4:raise RuntimeError('baud ACK missing')
-                    result['actual_baud']=struct.unpack('<I',ack[2])[0]
-                    port.baudrate=a.baud
-                else:port.write(cps_frame(0x70,0,request))
+                result['actual_baud']=c.start_downlink(0x70,0,request,a.baud)
                 deadline=time.monotonic()+a.ms/1000+8
                 while time.monotonic()<deadline:
                     f=c._frame(min(deadline,time.monotonic()+3))
@@ -73,10 +74,7 @@ def capture(a):
                     elif cmd==0xee:raise RuntimeError(f'radio refused capture: {data.hex()}')
                     else:raise RuntimeError(f'unexpected frame {cmd:#x}')
                 if 'stats' not in result:raise RuntimeError('capture statistics missing')
-                if a.baud!=115200:
-                    ack=c._frame(time.monotonic()+2)
-                    if ack is None or ack[:2]!=(CMD_BAUD,0):raise RuntimeError('baseline restoration ACK missing')
-                    port.baudrate=115200;time.sleep(.08)
+                c.finish_downlink(a.baud)
                 restore=True
                 result['response_crc_errors']=c.bad_response_crcs
                 after=struct.unpack('<4I',once(c,0x71))
@@ -117,6 +115,7 @@ def main():
     p.add_argument('--port',required=True);p.add_argument('--hz',type=int,default=144390000)
     p.add_argument('--baud',type=int,default=500000);p.add_argument('--ms',type=int,default=2000)
     p.add_argument('--ratio',type=int,choices=(1,2,4,8,16,32),default=8)
+    p.add_argument('--bits',type=int,choices=(6,8),default=8)
     p.add_argument('--mix',type=int,default=16927);p.add_argument('--raw',action='store_true')
     p.add_argument('--output',type=Path,required=True);a=p.parse_args()
     if not 10<=a.ms<=10000 or not 115200<=a.baud<=3000000 or not 0<=a.mix<=40000 or not 50000000<=a.hz<=600000000:p.error('capture parameters out of bounds')

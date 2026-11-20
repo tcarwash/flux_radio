@@ -23,6 +23,9 @@ def estimate(plan):
             continue
         used += item['bytes']
         rows.append({'pack': pack, **item})
+    if plan.get('iq') and set(packs) in ({'base'}, {'base','scan','designer','data'}):
+        used=97372 if len(packs)==1 else 120180
+        rows=[{'pack': 'linked IQ profile', 'bytes': used, 'source': '2026-11-19 all-lock linked build; other TX profiles may vary'}]
     base_only = set(packs) == {'base'}
     base_target_over = base_only and used > BASE_DESIGN_GOAL
     limit = TOTAL

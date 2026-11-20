@@ -1,6 +1,6 @@
 # Live IF / IQ serial acquisition lab
 
-The opt-in serial lab now captures the FD6818B GP0 output on PB1 using DMA
+The Base serial acquisition service captures the FD6818B GP0 output on PB1 using DMA
 while the MCU downconverts it to signed 8-bit complex I/Q and sends binary frames.
 This is **software-derived receive I/Q**, not a native I/Q transceiver interface.
 The board's battery/microphone ADC channels are not repurposed or treated as RF ADCs.
@@ -32,14 +32,11 @@ packet decode or calibrated test-tone result is claimed.
 
 The earlier polling-only UART experiment dropped 25 frames at ratio 4 / 550000.
 Interrupt-driven UART service reduced that to nine, but did not make this rate
-lossless. Keep ratio 8 / 500000 as the validated continuous configuration.
+lossless. Ratio 8 / 500000 remains the validated 8-bit configuration. Packed 6-bit mode now sustains ratio 4 at 500000 with no sample loss.
 
 ## Build and run
 
-Build/install the experimental image using the process in
-[the serial throughput guide](k6-serial-throughput.md), with `K6_SERIAL_LAB=1`,
-Data and Scan enabled. The lab image remains within the 122880-byte application
-limit. Normal builds exclude its commands, acquisition code and UART IRQ hook.
+Build and install a compatible Base pack through the catalog or `tools/k6.py build base`. IQ is enabled by default for Base, Scan, Designer and Data combinations; `--no-iq` opts out. OTA/Sotto remain excluded. The build-bound system pages must be installed with the matching firmware.
 Backups and experimental outputs belong outside Git.
 
 Short raw capture, followed by a ten-second continuous I/Q capture:
@@ -49,7 +46,7 @@ python3 tools/k6_iq_capture.py --port /dev/ttyUSB0 --raw --ms 100 \
   --hz 162550000 --mix 8000 --output serial-test-output/raw
 
 python3 tools/k6_iq_capture.py --port /dev/ttyUSB0 --ms 10000 \
-  --ratio 8 --baud 500000 --hz 162550000 --mix 8000 \
+  --ratio 4 --bits 6 --baud 500000 --hz 162550000 --mix 8000 \
   --output serial-test-output/iq
 ```
 
@@ -86,7 +83,7 @@ CIC group delay; they are not a calibrated RF phase reference. The population
 count boxcar, CIC droop, mixer harmonics, source timing and alias rejection still
 need RF/DSP qualification before declaring a particular digital mode supported.
 
-UART TX uses two independently framed buffers, drained by the existing UART
+UART TX uses eight independently framed buffers in IQ mode (two in raw mode), drained by the existing UART
 interrupt. Queue publication uses short critical sections; acquisition does not
 wait for each UART byte. Sequence/source-index gaps and explicit queue-drop
 counts expose overload instead of filling holes silently. DMA loop lag and long
@@ -98,11 +95,11 @@ Commands use the existing A6 framing. Queue `baud FAST`, capture, and `baud 1152
 at baseline speed as described in the throughput guide.
 
 - Request `0x70`: 16 bytes, frequency u32 LE, maximum milliseconds u32 LE, mixer Hz
-  u32 LE, mode byte (0 raw / 1 IQ), ratio byte, two reserved zero bytes.
+  u32 LE, mode byte (0 raw / 1 8-bit IQ / 2 packed 6-bit IQ), ratio byte, two reserved zero bytes.
 - Samples `0x69`: sequence in the frame address. Payload begins with source index
   u32 LE, end timestamp in 96 MHz cycles u32 LE, measured cycles/observation Q8
   u32 LE, mode byte, ratio byte, two reserved zero bytes. Up to 240 data bytes
-  follow (120 complex samples). Raw mode uses stride 64; IQ uses stride 64*ratio.
+  follow (120 complex samples in mode 1, 160 in mode 2). Mode 2 packs signed six-bit I then Q, least-significant bits first, two pairs per three bytes; the final odd pair occupies two bytes with zero padding. The host expands each component by four to the legacy int8 scale. Raw mode uses stride 64; IQ uses stride 64*ratio.
 - Final `0x70`: 24 u32 LE statistics, followed by receive frequency, mixer frequency,
   RSSI register, IF selector, bandwidth register, and GP0 route readback. Field
   names are in `tools/k6_iq_capture.py`. Values representing signed status or raw
@@ -118,3 +115,7 @@ Twenty targeted tests pass across the capture parser, loss detection, existing
 portable C mixer/CIC, generic IQ framing/reference frontend, and serial benchmark.
 Both opt-in and normal firmware configurations build. The physical overload test
 confirms that actual output loss produces a failed report even with clean UART CRCs.
+
+### Packed IQ qualification (2026-11-19)
+
+Base-only (97,372 B) and all four bundles (120,180 B) were flashed and verified with system pages 18, 19 and 20. Calibration, channel memory and packed user objects were unchanged. Both builds passed 10-second 8-bit ratio-8 and three packed 6-bit ratio-4 captures at 500000 baud, with about 11 and 22 ksps respectively, zero sample drops, DMA overruns and response CRC errors in passing captures. One Base session-start command CRC error occurred before acquisition; subsequent captures with a three-second restart interval passed. RF fidelity and interactive settings/channel editing still require qualification.

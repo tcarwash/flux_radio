@@ -368,6 +368,102 @@ class Cable(CpsLink):
                                f"radio reports {have}/{count} chunks; reply bytes {d.hex(' ')}")
         return r, have, count, put
 
+    def start_downlink(self, cmd, addr, payload, rate):
+        """Start a bounded read-only response stream; all commands sent at baseline."""
+        if self.port.baudrate != 115200 or not 115200 <= rate <= 3000000:
+            raise InstallError('downlink must start at baseline with a valid baud rate')
+        if cmd not in (0x64, 0x70, 0x74):
+            raise InstallError('not a read-only streaming command')
+        self.bad_response_crcs = 0
+        request = cps_frame(cmd, addr, payload)
+        if rate == 115200:
+            self.port.write(request)
+            return 115200
+        self.port.write(cps_frame(0x62, 0, struct.pack('<I', rate)) + request +
+                        cps_frame(0x62, 0, struct.pack('<I', 115200)))
+        self.port.flush()
+        actual = self._downlink_ack(rate)
+        self.port.baudrate = rate
+        return actual
+
+    def _downlink_ack(self, rate):
+        f = self._frame(time.monotonic() + 2)
+        actual = 96000000 // round(96000000 / rate)
+        if f != (0x62, 0, struct.pack('<I', actual)):
+            raise InstallError('downlink baud acknowledgement mismatch')
+        return actual
+
+    def finish_downlink(self, rate):
+        if rate != 115200:
+            self._downlink_ack(115200)
+            self.port.baudrate = 115200
+            time.sleep(.08)
+        if self.bad_response_crcs:
+            raise InstallError('downlink CRC error')
+
+    def _fast_read(self, addr, blocks, rate):
+        if not 1 <= blocks <= 1024 or addr % 64 or addr < 0 or addr + blocks*256 > CHIP_BYTES:
+            raise ValueError('invalid SPI burst bounds')
+        start = addr // 64
+        self.start_downlink(0x64, start, struct.pack('<H', blocks), rate)
+        data = bytearray()
+        for i in range(blocks):
+            f = self._frame(time.monotonic() + 2)
+            if f is None or f[:2] != (0x64, start + 4*i) or len(f[2]) != 256:
+                raise InstallError('fast read frame missing or out of sequence')
+            data.extend(f[2])
+        self.finish_downlink(rate)
+        return bytes(data)
+
+    def _recover_fast_read(self):
+        # Never send commands at an uncertain rate. A bounded burst ends, then
+        # the cable idle watchdog resets UART to baseline.
+        self.port.baudrate = 115200
+        time.sleep(16)
+        if not self.handshake(CABLE_HANDSHAKE, wait=5):
+            raise InstallError('fast read recovery failed; reconnect radio')
+        self.__dict__.pop('_info', None)
+
+    def read(self, addr, n, window=8, progress=None):
+        if addr % 64 or n < 4096 or addr < 0 or addr+n > CHIP_BYTES or getattr(self, '_fast_rate', None) == 0:
+            return super().read(addr,n,window,progress)
+        if not hasattr(self, '_fast_rate'):
+            # q exists in the transport firmware. Do not queue baud commands
+            # on old firmware that has never advertised transport support.
+            try:
+                stats = self.calls([(0x71,0,b'')], retries=0)[0]
+                if len(stats) != 16: raise InstallError('no UART statistics')
+            except InstallError:
+                self._fast_rate=0
+                return super().read(addr,n,window,progress)
+            reference=super().read(addr,4096,window)
+            self._fast_rate=0
+            for rate in (500000,192000):
+                try:
+                    if self._fast_read(addr,16,rate)!=reference:
+                        raise InstallError('fast read probe differs from baseline')
+                except (InstallError,OSError,ValueError):
+                    self._recover_fast_read()
+                else:
+                    self._fast_rate=rate
+                    self.log(f'  negotiated SPI read speed: {rate} baud')
+                    break
+        if not self._fast_rate:
+            return super().read(addr,n,window,progress)
+        out=bytearray()
+        try:
+            while n-len(out)>=256:
+                blocks=min((1024 if n >= 512*1024 else 256) if self._fast_rate >= 500000 else 64,(n-len(out))//256)
+                out.extend(self._fast_read(addr+len(out),blocks,self._fast_rate))
+                if progress:progress(len(out),n)
+        except (InstallError,OSError,ValueError):
+            self._fast_rate=0
+            self._recover_fast_read()
+            self.log('  fast read failed; retrying at 115200 baud')
+        if len(out)<n:out.extend(super().read(addr+len(out),n-len(out),window))
+        if progress:progress(n,n)
+        return bytes(out)
+
     def library_directory(self):
         """Return packed logical locations, or None for legacy firmware."""
         if self.info()['protocol'] < 5:

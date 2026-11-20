@@ -66,7 +66,7 @@ def verify_pack(root, spec, *, require_attested=True):
             if len(data)!=page['bytes']:raise PackError('system page size mismatch')
             images.append(data)
         if images:pack_system(fw.read_bytes(),images,8192)
-        if optional and {p[18] for p in images}!={18,19}:raise PackError('missing IQ/channel system pages')
+        if optional and {p[18] for p in images}!={18,19,20}:raise PackError('missing IQ/channel/settings system pages')
     elif optional:raise PackError('IQ requires packed system pages')
     splash = lock.get('boot_splash')
     if splash is not None:
@@ -261,13 +261,25 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
             entries.append({'path': path, 'code': code, 'id': module['id'], 'name': module['name'],
                             'kind': 'module', 'level': module['api_level']})
 
+    retained_directory = None
+
     def prepare_upgrade(cable):
+        nonlocal retained_directory
         if recovery is not None:return load_recovery(recovery,cable,identity,port),Path(recovery)
         fingerprint=hashlib.sha256(cable.read(0xf000,4096)).hexdigest()
         for candidate in backup_dir.glob('flux-library-*.json'):
             rec=json.loads(candidate.read_text())
             if rec.get('status')=='pending' and rec.get('calibration_sha256')==fingerprint:
                 raise PackError(f'pending upgrade: resume with --recover {candidate}')
+        if cable.info()['protocol'] == 5:
+            try:
+                directory = cable.library_directory()
+            except radio.InstallError:
+                raise PackError('invalid packed directory; explicit recovery required')
+            if directory is not None:
+                retained_directory = directory
+                log('  compatible packed storage: retaining library in place (no erase or migration)')
+                return None, None
         return prepare(cable,backup_dir,identity,port,log)
 
     with pack_port(port):
@@ -337,14 +349,16 @@ def provision_pack(root, spec, port, key_file=None, *, action, mode='cable', log
             if first_install is not None:
                 journal=Path(first_install);prepared=load_recovery(journal,cable,identity,port)
             if packed and (is_flash or first_install is not None):
-                if prepared is None:raise PackError('missing pre-flash user library backup')
-                restore(cable,bytes.fromhex(identity),prepared,log,key=key)
+                if prepared is not None:
+                    restore(cable,bytes.fromhex(identity),prepared,log,key=key)
+                elif cable.info()['protocol'] != 5 or retained_directory is None or cable.library_directory() != retained_directory:
+                    raise PackError('packed upgrade did not preserve the original directory')
                 if pages:
                     install_system(cable,firmware,pages,log=log)
                     cable=radio.open_cable(connection,log,wait=30.0)
                     if cable is None:raise PackError('system pages installed but module session did not return')
                     if cable.capabilities().get('build_id')!=identity:raise PackError('firmware identity changed after system provisioning')
-                complete(journal)
+                if prepared is not None:complete(journal)
             if firmware_only:return
             serials = radio.Serials()
             if cable.info()['protocol'] >= 3:

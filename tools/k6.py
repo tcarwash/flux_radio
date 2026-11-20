@@ -33,7 +33,7 @@ def command(argv):
     for cmd_parser in (plan, build):
         cmd_parser.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
         cmd_parser.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
-    build.add_argument('--iq', action='store_true', help='experimental serial IQ for Data')
+    build.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='serial IQ (default on for compatible Base profiles)')
     build.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     starter = sub.add_parser('starter-install', help='guided first install with SPI backup and format confirmation')
     starter.add_argument('pack', type=lambda value: Path(value).expanduser().resolve())
@@ -97,7 +97,7 @@ def command(argv):
         if os.name == 'nt':
             p.error('firmware builds require Linux or WSL; use a prebuilt starter on Windows')
         cmd = ['k6_pack_build.py', *args.packs, '--tx-profile', args.tx_profile, '--theme', args.theme]
-        if args.iq: cmd += ['--iq']
+        if args.iq is not None: cmd += ['--iq' if args.iq else '--no-iq']
         if args.theme_name: cmd += ['--theme-name', args.theme_name]
         if args.output: cmd += ['--output', str(args.output.expanduser().resolve())]
         if args.spec: cmd += ['--spec', str(args.spec.expanduser().resolve())]
