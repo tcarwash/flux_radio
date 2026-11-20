@@ -1,23 +1,23 @@
 {
   "format": 1,
-  "base_bytes": 97756,
-  "base_source": "Matched audit/base/size.txt, out-vfo-spi-probe/audit, 2026-11-18",
+  "base_bytes": 95020,
+  "base_source": "2026-11-19 standard CE catalog build, Flux theme (IQ off)",
   "deltas": {
     "scan": {
-      "bytes": 14632,
-      "source": "matched linked Scan delta retained from the current source: Base+Scan 114684 B minus Base 100052 B before the PXK6 cable-storage gate; gate removes only Data-owned code from Base"
+      "bytes": 14640,
+      "source": "2026-11-19 CE linked single-pack delta (IQ off)"
     },
     "data": {
-      "bytes": 3888,
-      "source": "Matched ordinary Data 101644 minus Base 97756; out-vfo-spi-probe/audit/matrix.json"
+      "bytes": 3868,
+      "source": "2026-11-19 CE linked single-pack delta (IQ off)"
     },
     "ota": {
       "bytes": 844,
       "source": "docs/k6-feature-refactor-roadmap.md Base+OTA minus Base"
     },
     "designer": {
-      "bytes": 7688,
-      "source": "Measured Base 97380 B and optimized Designer 105068 B; theme-management-size-audit/opt4/size.txt"
+      "bytes": 7364,
+      "source": "2026-11-19 CE linked single-pack delta (IQ off)"
     }
   },
   "unknown_packs": [
@@ -27,14 +27,72 @@
   "linked_profiles": {
     "iq": {
       "base": {
-        "bytes": 97372,
-        "source": "2026-11-19 physical all-lock build"
+        "bytes": 98072,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+scan": {
+        "bytes": 112812,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+designer": {
+        "bytes": 104988,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data": {
+        "bytes": 101892,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+designer+scan": {
+        "bytes": 119740,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data+scan": {
+        "bytes": 113140,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data+designer": {
+        "bytes": 109024,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
       },
       "base+data+designer+scan": {
-        "bytes": 120180,
-        "source": "2026-11-19 physical all-lock build"
+        "bytes": 120260,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
       }
     },
-    "plain": {}
-  }
+    "plain": {
+      "base": {
+        "bytes": 95020,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+scan": {
+        "bytes": 109660,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+designer": {
+        "bytes": 102384,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data": {
+        "bytes": 98888,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+designer+scan": {
+        "bytes": 117228,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data+scan": {
+        "bytes": 110128,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data+designer": {
+        "bytes": 106500,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      },
+      "base+data+designer+scan": {
+        "bytes": 117736,
+        "source": "2026-11-19 standard CE catalog build, Flux theme"
+      }
+    }
+  },
+  "iq_delta_bytes": 3052
 }

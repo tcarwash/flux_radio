@@ -112,3 +112,37 @@ def test_build_compiler_log_is_collapsed(tmp_path):
     page = client.get(f'/profiles/build/{job_id}').data
     assert b'Build failed.' in page
     assert b'<details class="readme" id="compiler-output">' in page
+
+
+def test_download_completed_pack(tmp_path):
+    import io, zipfile
+    from k6_feature_packs import DEFAULT, resolve
+    from k6_pack_build import assemble
+    from k6_pack_policy import POLICY, gate_environment, storage_environment
+    from k6_capability_receipt import write
+    app = k6_store.create_app()
+    jobs = BuildJobs(tmp_path, runner=lambda *args, **kwargs: FakeProcess())
+    app.config['build_jobs'] = jobs
+    job_id = jobs.start(['base'], iq=False)
+    route = f'/profiles/build/{job_id}/download'
+    client = app.test_client()
+    assert client.get(route).status_code == 409
+    assert client.get('/profiles/build/unknown/download').status_code == 404
+    folder = jobs._jobs[job_id]['folder']
+    image = folder / 'input.bin'
+    image.write_bytes(b'firmware-fixture')
+    output = folder / 'pack'
+    plan = resolve(json.loads(DEFAULT.read_text()), ['base'])
+    assemble(plan, output, image, packed=True)
+    write(output/'firmware.receipt.json', output/'firmware.bin', plan, {**gate_environment(plan, json.loads(POLICY.read_text())), **storage_environment(plan)})
+    (output/'private.key').write_bytes(b'never export')
+    jobs._jobs[job_id]['process'].code = 0
+    assert b'Download firmware pack' in client.get(f'/profiles/build/{job_id}').data
+    result = client.get(route)
+    assert result.status_code == 200 and result.mimetype == 'application/zip'
+    assert 'attachment;' in result.headers['Content-Disposition']
+    with zipfile.ZipFile(io.BytesIO(result.data)) as z:
+        assert set(z.namelist()) == {'INSTALL.txt', 'pack/firmware.bin', 'pack/pack.lock.json', 'pack/firmware.receipt.json'}
+        assert z.read('pack/firmware.bin') == image.read_bytes()
+    (output/'firmware.bin').write_bytes(b'tampered')
+    assert client.get(route).status_code == 409

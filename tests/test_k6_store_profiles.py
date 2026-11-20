@@ -53,6 +53,7 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
     import k6_flash_estimate
     data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
     data["base_bytes"]=101184
+    data.get("linked_profiles",{}).get("plain",{}).pop("base",None)
     path=tmp_path/"estimates.json";path.write_text(json.dumps(data))
     monkeypatch.setattr(k6_flash_estimate,"ESTIMATES",path)
     client = k6_store.create_app().test_client()
@@ -68,6 +69,11 @@ def test_base_target_overrun_is_warning_under_hard_limit(monkeypatch,tmp_path):
 
 
 def test_flash_estimate_warns_but_does_not_block(monkeypatch, tmp_path):
+    import k6_flash_estimate
+    data=json.loads(k6_flash_estimate.ESTIMATES.read_text())
+    data['deltas']['ota']['bytes']=40000
+    path=tmp_path/'estimates.json';path.write_text(json.dumps(data))
+    monkeypatch.setattr(k6_flash_estimate,'ESTIMATES',path)
     from k6_build_jobs import BuildJobs
     calls = []
     class Process:
@@ -142,6 +148,9 @@ def test_theme_splash_preview_uses_firmware_art_source():
     assert len(logos) == 3 and all(len(rows) == 16 for rows in logos)
     page = k6_store.create_app().test_client().get('/themes').data
     assert ('window.FluxSplashLogos=' + json.dumps(logos)).encode() in page
+    assert b'data-theme-full-splash' in page
+    assert b'data-theme-splash' not in page
+    assert b'data-theme-icon-grid' not in page
     source = (Path(k6_store.__file__).with_name('k6_store_templates') /
               'static' / 'theme-widgets.js').read_text()
     assert 'const logos=window.FluxSplashLogos' in source

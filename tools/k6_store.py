@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import io
+import zipfile
 import json
 import os
 import re
@@ -385,7 +387,7 @@ class ModuleStore:
 
 def create_app(store: ModuleStore | None = None):
     try:
-        from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, session, url_for, jsonify
+        from flask import Flask, abort, flash, redirect, render_template, request, send_file, send_from_directory, session, url_for, jsonify
     except ImportError as exc:
         raise RuntimeError("Flask is required for the web UI; install tools/k6_store_requirements.txt") from exc
 
@@ -687,6 +689,56 @@ def create_app(store: ModuleStore | None = None):
             abort(404)
         token = session.setdefault('pack_radio_token', secrets.token_urlsafe(32))
         return render_template('build_status.html', job=job, radio_token=token, recoveries=pending_recovery(job,radio_settings()['port']))
+
+    @app.get("/profiles/build/<job_id>/download")
+    def download_build(job_id):
+        try:
+            job = app.config['build_jobs'].get(job_id)
+        except KeyError:
+            abort(404)
+        if job['state'] != 'success':
+            abort(409, 'Build must finish successfully before downloading')
+        from k6_pack_install import verify_pack, checked_file, PackError
+        from k6_feature_packs import DEFAULT
+        from k6_capability_receipt import verify
+        from k6_pack_policy import POLICY, gate_environment, storage_environment
+        from k6_feature_packs import resolve
+        root = Path(job['output']).resolve()
+        spec = json.loads(DEFAULT.read_text())
+        try:
+            lock = verify_pack(root, spec, require_attested=False)
+            plan = resolve(spec, lock['packs'], lock['theme'], lock['tx_profile'])
+            receipt = root / 'firmware.receipt.json'
+            if not receipt.resolve().is_relative_to(root):
+                raise ValueError('unsafe receipt path')
+            firmware = checked_file(root, lock['firmware']['path'], lock['firmware']['sha256'])
+            gates = {**gate_environment(plan, json.loads(POLICY.read_text())),
+                     **(storage_environment(plan, iq=bool(lock.get('optional_services'))) if lock.get('storage') else {})}
+            verify(json.loads(receipt.read_text()), firmware, plan, gates)
+            names = {'pack.lock.json', 'firmware.receipt.json', lock['firmware']['path']}
+            for mod in lock['modules']:
+                names.update((mod['path'], (Path(mod['path']).parent / 'manifest.json').as_posix()))
+            for field in ('theme_package', 'boot_splash'):
+                if field in lock: names.add(lock[field]['path'])
+            names.update(page['path'] for page in lock.get('storage', {}).get('system_pages', []))
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+                for name in sorted(names):
+                    path = (root / name).resolve()
+                    if not path.is_relative_to(root) or not path.is_file():
+                        raise ValueError('unsafe build artifact')
+                    z.write(path, 'pack/' + Path(name).as_posix())
+                z.writestr('INSTALL.txt', 'Extract the entire ZIP. Use a matching Flux checkout and its Python dependencies.\n'
+                    'Inspect: python tools/k6.py inspect /path/to/pack\n'
+                    'Existing Flux radio: python tools/k6.py flash-install-pack /path/to/pack --port /dev/ttyUSB0\n'
+                    'First installation: follow docs/manual/install.md and use starter-install.\n'
+                    'On Windows replace the port with your COM port. OTA builds require your own module key.\n'
+                    'Keep all system pages with this exact firmware; do not flash only the raw binary.\n')
+            archive.seek(0)
+        except (OSError, ValueError, KeyError, PackError) as exc:
+            abort(409, f'Build package could not be verified: {exc}')
+        name = 'flux-' + '-'.join(lock['packs']) + '-' + lock['tx_profile'] + '-' + job_id[:8] + '.zip'
+        return send_file(archive, mimetype='application/zip', as_attachment=True, download_name=name)
 
     @app.post("/profiles/build/<job_id>/radio")
     def provision_profile(job_id):
