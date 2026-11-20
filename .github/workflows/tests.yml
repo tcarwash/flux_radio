@@ -27,6 +27,7 @@ jobs:
           tests/test_k6_pack_install.py tests/test_k6_starter_install.py
           tests/test_k6_port_lock.py tests/test_k6_host_feature.py
           tests/test_k6_catalog_coop.py tests/test_k6_rigctld.py
+          tests/test_k6_live_acceptance.py
       - name: Native loader and APRS host regressions
         run: |
           make -C c/k6 km_host kl_host
@@ -45,7 +46,7 @@ jobs:
           python -m pytest -q tests/test_k6_port_lock.py
           tests/test_k6_starter_install.py tests/test_k6_unified_cli.py
           tests/test_k6_pack_install.py tests/test_k6_store_defaults.py
-          tests/test_k6_host_feature.py
+          tests/test_k6_host_feature.py tests/test_k6_live_acceptance.py
       - name: CLI entry points
         run: |
           python tools/k6.py starter-install --help

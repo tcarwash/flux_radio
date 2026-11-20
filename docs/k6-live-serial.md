@@ -797,3 +797,8 @@ stopped; only a returned, acknowledged -125 job is reported cancelled.
 The Catalog never automatically uploads, executes, or flashes modules.
 
 See [release hardening and remaining physical safety tests](k6-live-release-checklist.md).
+
+
+## Later physical acceptance
+
+The subsequent power-guard build `f693147e70527a58` was flashed on the physical K6 and passed RX-only live and Hamlib readback, library and calibration preservation, and abandoned-stream recovery. The earlier statement that the radio remained on build `ce46aac935c96e97` refers to the previous checkpoint. See the [2026-11-20 physical acceptance report](k6-live-physical-acceptance-20261120.md). Local PTT/power-switch and physical unplug tests are still pending.

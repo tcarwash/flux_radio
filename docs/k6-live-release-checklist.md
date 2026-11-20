@@ -79,9 +79,11 @@ firmware image temporarily reported idle despite the switch being
 logically open. The new source checks the physical power switch
 in live status/launch/CAT/bulk-idle guards, and compiled-firmware
 tests confirmed non-idle status during power-off with unchanged SPI.
-This firmware candidate (build f693147e70527a58) has **not** been
-flashed onto the physical K6. Virtual GPIO tests do not certify RF
-PTT, hardware power sequencing or the real serial cable.
+The power-guard firmware build `f693147e70527a58` was later flashed and
+accepted on the physical K6 in RX-only testing. See the
+[physical acceptance record](k6-live-physical-acceptance-20261120.md).
+The manual PTT, power-switch and USB-disconnect tests remain open.
+Virtual GPIO tests do not certify emitted RF or real power sequencing.
 
 This evidence does **not** prove operation with the physical PTT pressed,
 power switch opened during a byte stream, UART unplugged during TX,
