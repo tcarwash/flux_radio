@@ -232,3 +232,56 @@ def test_compiled_live_ram_module(simulated_radio, monkeypatch):
     after=link.status()
     assert after["standby_idle"] and after["vfos"]==status["vfos"] and not after["transmitting"]
     assert bytes(port.board.flash_data)==before
+
+
+def test_compiled_live_fast_upload(simulated_radio,monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:pytest.skip("set K6_SIM_LIVE_IMAGE")
+    from modem import k6mod
+    from k6_install import InstallError
+    from k6_live_v2 import (RAM_FAST_BEGIN,RAM_CHUNK,RAM_READY,RAM_COMMIT,
+                           request_bytes_v2,MAGIC_V2)
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    port.baudrate=115200
+    link=LiveLink(port,timeout=3,initial_seq=248)
+    if "fast_upload" not in link.capabilities()["features"]:pytest.skip("requires fast_upload")
+    before=bytes(port.board.flash_data)
+    floor=link.serial_watermark()
+    assert link.negotiate_upload()==192000
+    assert port.baudrate==115200
+    assert port.board.regs[0x4001380c]==round(96000000/115200)
+    assert link.serial_watermark()==floor
+    code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/"c/k6/mod/hello.c"))
+    env=k6mod.image(code,entry,floor+1,None,level=1)
+
+    # Stage directly, but attempt COMMIT before READY. Must not execute.
+    link._fast_stage(RAM_FAST_BEGIN,env)
+    assert port.board.regs[0x4001380c]==round(96000000/115200)
+    with pytest.raises(InstallError,match="Unsupported"):
+        link.request_v2(RAM_COMMIT,len(env))
+    assert link.serial_watermark()==floor
+    assert link.ram_status(floor+1)["state"]=="unknown"
+
+    # Corrupt a high-speed body. It must expire without arming/executing,
+    # drain back to normal and accept a later read-only status.
+    assert link.request_v2(RAM_FAST_BEGIN,len(env))==b"\x00\xee\x02\x00"
+    port.baudrate=192000
+    port.sleep(.05)
+    assert port.board.regs[0x4001380c]==500
+    bad=bytearray(request_bytes_v2(RAM_CHUNK,(link.seq+1)%256,0,env[:128])[len(MAGIC_V2):])
+    bad[-3]^=1
+    port.write(bad)
+    port.sleep(.25)
+    port.baudrate=115200
+    assert port.board.regs[0x4001380c]==round(96000000/115200)
+    assert link.status()["standby_idle"]
+    assert link.serial_watermark()==floor
+
+    result=link.run_ram(env,timeout=5)
+    assert result["result"]==0x6b and result["job_id"]==floor+1
+    assert link.ram_status(floor+1)["result"]==0x6b
+    assert port.baudrate==115200
+    assert port.board.regs[0x4001380c]==round(96000000/115200)
+    assert not link.status()["transmitting"]
+    assert bytes(port.board.flash_data)==before

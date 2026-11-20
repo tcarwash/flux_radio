@@ -20,7 +20,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -28,6 +28,10 @@ ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflict
 
 class LiveBulkError(InstallError):
     """Incomplete or corrupt download; radio returns to baseline by itself."""
+
+
+class LiveUploadError(InstallError):
+    """Failed data-only excursion; baseline recovery was verified."""
 
 
 class LiveUnavailable(InstallError):
@@ -58,6 +62,7 @@ class LiveLink(CpsLink):
         self.seq = secrets.randbelow(256) if initial_seq is None else initial_seq
         self._bulk_cap = None
         self._download_rate = None
+        self._upload_rate = None
 
     def request(self, cmd, arg=0):
         return self._exchange(cmd, lambda seq: request_bytes(cmd,seq,arg))
@@ -160,11 +165,73 @@ class LiveLink(CpsLink):
                     load=load if state else None, returned=bool(returned) if state == 2 else None,
                     result=ret if returned else None)
 
-    def run_ram(self, image, *, timeout=30.0, on_report=None):
+    def _recover_upload(self):
+        self.port.baudrate = 115200
+        # No writes while a bounded data frame or baseline READY/COMMIT
+        # wait may still be active. There has been no execution request.
+        time.sleep(1.0)
+        self.buf = self.text = b""
+        if hasattr(self.port, "reset_input_buffer"):
+            self.port.reset_input_buffer()
+        self.status()
+
+    def _fast_stage(self, cmd, data):
+        from k6_live_v2 import MAGIC_V2, RAM_CHUNK, MAX_PAYLOAD, UPLOAD_RATE, request_bytes_v2
+        bad = self.bad_response_crcs
+        try:
+            ack = self.request_v2(cmd, len(data))
+        except (InstallError, OSError) as exc:
+            if str(exc) in (ERRORS[1], ERRORS[2]):
+                raise  # explicit rejection, no rate change
+            # The radio may have switched even though its ACK was lost.
+            self._recover_upload()
+            raise LiveUploadError("Fast upload BEGIN failed; baseline recovered") from exc
+        try:
+            if ack != struct.pack("<I", UPLOAD_RATE) or self.bad_response_crcs != bad:
+                raise InstallError("Invalid fast upload baud acknowledgment")
+            self.port.baudrate = UPLOAD_RATE
+            # Target guards its switch for 30 ms after transmitting ACK.
+            time.sleep(.05)
+            for offset in range(0, len(data), MAX_PAYLOAD):
+                p = data[offset:offset+MAX_PAYLOAD]
+                # No ASCII magic during the data-only baud excursion.
+                d = self._exchange(RAM_CHUNK, lambda seq:
+                    request_bytes_v2(RAM_CHUNK, seq, offset, p)[len(MAGIC_V2):])
+                if d or self.bad_response_crcs != bad:
+                    raise InstallError("Fast upload chunk integrity failure")
+        except (InstallError, OSError, ValueError) as exc:
+            self._recover_upload()
+            raise LiveUploadError("Fast data upload failed; baseline recovered; no commit sent") from exc
+        finally:
+            self.port.baudrate = 115200
+        time.sleep(.05)
+
+    def negotiate_upload(self, features=None):
+        """Validate 4 KiB of non-mutating data at the known uplink rate."""
+        from k6_live_v2 import UPLOAD_PROBE, UPLOAD_RATE, RAM_MAX
+        if self._upload_rate is not None:
+            return self._upload_rate
+        if features is None:
+            features = self.capabilities()["features"]
+        if "fast_upload" not in features or getattr(self.port,"baudrate",None)!=115200:
+            self._upload_rate = 115200
+            return self._upload_rate
+        pattern = bytes((i*73+i//256)&255 for i in range(RAM_MAX))
+        try:
+            self._fast_stage(UPLOAD_PROBE,pattern)
+        except LiveUploadError:
+            # Only a verified data-only recovery permits fallback.
+            self._upload_rate = 115200
+        else:
+            self.status()
+            self._upload_rate = UPLOAD_RATE
+        return self._upload_rate
+
+    def run_ram(self, image, *, timeout=30.0, on_report=None, baseline=False):
         """Upload a complete typed standalone envelope and commit once.
         The host never retries or sends an abort after an uncertain commit.
         """
-        from k6_live_v2 import RAM_BEGIN,RAM_CHUNK,RAM_COMMIT,RAM_MAX,MAX_PAYLOAD
+        from k6_live_v2 import RAM_BEGIN,RAM_CHUNK,RAM_COMMIT,RAM_MAX,MAX_PAYLOAD,RAM_FAST_BEGIN,RAM_READY
         image=bytes(image)
         if not 25<=len(image)<=RAM_MAX or image[:4]!=b"K6M\x01":
             raise ValueError("Expected standalone K6M image, at most 4096 bytes")
@@ -173,15 +240,29 @@ class LiveLink(CpsLink):
             raise ValueError("RAM execution requires standalone API 1–2 image with exact length")
         if not 0<timeout<=3600:
             raise ValueError("Module wait timeout must be in (0,3600] seconds")
-        if "ram_run" not in self.capabilities()["features"]:
+        features=self.capabilities()["features"]
+        if "ram_run" not in features:
             raise InstallError("Firmware lacks live RAM execution")
         if serial<=self.serial_watermark():
             raise InstallError("Module serial is not newer than radio's replay watermark")
-        if self.request_v2(RAM_BEGIN,len(image)):
-            raise InstallError("Invalid RAM BEGIN acknowledgment")
-        for offset in range(0,len(image),MAX_PAYLOAD):
-            if self.request_v2(RAM_CHUNK,offset,image[offset:offset+MAX_PAYLOAD]):
-                raise InstallError("Invalid RAM CHUNK acknowledgment")
+        rate=115200 if baseline else self.negotiate_upload(features)
+        if rate!=115200:
+            # Staging is volatile, but never replay a failed real upload.
+            # An explicit baseline READY acknowledgment is required before
+            # any execution command may leave the host.
+            self._fast_stage(RAM_FAST_BEGIN,image)
+            try:
+                if self.request_v2(RAM_READY,len(image)):
+                    raise InstallError("Invalid RAM READY acknowledgment")
+            except (InstallError, OSError) as exc:
+                self._recover_upload()
+                raise LiveUploadError("RAM READY failed; baseline recovered; no commit sent") from exc
+        else:
+            if self.request_v2(RAM_BEGIN,len(image)):
+                raise InstallError("Invalid RAM BEGIN acknowledgment")
+            for offset in range(0,len(image),MAX_PAYLOAD):
+                if self.request_v2(RAM_CHUNK,offset,image[offset:offset+MAX_PAYLOAD]):
+                    raise InstallError("Invalid RAM CHUNK acknowledgment")
         try:
             d=self.request_v2(RAM_COMMIT,len(image))
         except LiveUnavailable as exc:
@@ -375,6 +456,7 @@ def main():
     sub.add_parser("status")
     sub.add_parser("caps")
     sub.add_parser("health")
+    sub.add_parser("upload-probe", help="validate upload speed without executing or writing a module")
     backup = sub.add_parser("backup", help="non-rebooting full SPI backup")
     backup.add_argument("-o", "--output", required=True)
     mode = sub.add_parser("mode")
@@ -395,6 +477,7 @@ def main():
     auth.add_argument("--key-file", help="keyed firmware: sign with this existing key")
     auth.add_argument("--cable-only", action="store_true", help="physical-cable-only firmware uses CRC, not authentication")
     ram.add_argument("--timeout",type=float,default=30)
+    ram.add_argument("--baseline-upload",action="store_true",help="skip fast upload negotiation")
     job = sub.add_parser("ram-status", help="query latest boot-local RAM job by signed serial")
     job.add_argument("job_id", type=int)
     watch = sub.add_parser("watch")
@@ -416,6 +499,12 @@ def main():
                 print(json.dumps(link.capabilities(), indent=2))
             elif a.cmd == "health":
                 print(json.dumps(link.health(), indent=2))
+            elif a.cmd == "upload-probe":
+                features=link.capabilities()["features"]
+                start=time.monotonic()
+                rate=link.negotiate_upload(features)
+                print(json.dumps(dict(baud=rate, fast_upload_supported="fast_upload" in features,
+                                      probe_seconds=round(time.monotonic()-start,3)),indent=2))
             elif a.cmd == "mode":
                 print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
             elif a.cmd == "vfo":
@@ -438,7 +527,7 @@ def main():
                     raise ValueError("Module replay watermark exhausted")
                 image=k6mod.image(code,entry,serial,key,level=level)
                 print(f"RAM job ID: {serial}",file=sys.stderr,flush=True)
-                result=link.run_ram(image,timeout=a.timeout,
+                result=link.run_ram(image,timeout=a.timeout,baseline=a.baseline_upload,
                                     on_report=lambda line:print(line,file=sys.stderr,flush=True))
                 print(json.dumps(result,indent=2))
                 if not result["returned"]:

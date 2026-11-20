@@ -295,3 +295,96 @@ def test_ram_job_status_rejects_bad_reply(data):
     p=Port(lambda d:cps_frame(d[6],d[7],b"\0"+data))
     with pytest.raises(InstallError,match="Invalid RAM job status"):
         LiveLink(p).ram_status(42)
+
+
+class FastUploadPort(Port):
+    """Mock a target that checks all fast-phase commands and baud transitions."""
+    baudrate=115200
+    def __init__(self, fault=None):
+        super().__init__(self.respond)
+        self.fault=fault
+        self.phase=None
+        self.offset=0
+        self.events=[]
+        self.upload=bytearray()
+
+    def reset_input_buffer(self):
+        self.buf=b""
+
+    def respond(self,d):
+        from k6_live import CAPS,WATERMARK,RUN_EVENT
+        from k6_live_v2 import (decode_request,MAGIC_V2,UPLOAD_PROBE,RAM_FAST_BEGIN,
+                               RAM_READY,RAM_BEGIN,RAM_CHUNK,RAM_COMMIT)
+        if d.startswith(b"FLXLV1"):
+            assert self.baudrate==115200
+            cmd,seq,arg=struct.unpack_from("<BBI",d,6)
+            self.events.append(cmd)
+            if cmd==CAPS:
+                return cps_frame(cmd,seq,b"\0FLCP\x01"+struct.pack("<I",1024|4096))
+            if cmd==WATERMARK:
+                return cps_frame(cmd,seq,b"\0"+struct.pack("<I",6))
+            assert cmd==STATUS
+            self.phase=None
+            return b"" if self.fault=="no_recovery" else cps_frame(cmd,seq,b"\0"+status_data())
+        fast=not d.startswith(MAGIC_V2)
+        assert self.baudrate==(192000 if fast else 115200)
+        cmd,seq,arg,p=decode_request(MAGIC_V2+d if fast else d)
+        self.events.append(cmd)
+        if cmd in (UPLOAD_PROBE,RAM_FAST_BEGIN,RAM_BEGIN):
+            self.phase=cmd
+            self.offset=0
+            self.total=arg
+            if cmd==RAM_BEGIN:return cps_frame(cmd,seq,b"\0")
+            if self.fault=="busy":return cps_frame(cmd,seq,b"\1")
+            return cps_frame(cmd,seq,b"\0"+struct.pack("<I",192000))
+        if cmd==RAM_CHUNK:
+            assert arg==self.offset
+            self.offset+=len(p)
+            if self.phase==UPLOAD_PROBE:
+                assert p==bytes((i*73+i//256)&255 for i in range(arg,self.offset))
+                if self.fault in ("probe","no_recovery"):return b""
+            else:
+                self.upload.extend(p)
+                if self.fault=="stage":return b""
+            return cps_frame(cmd,seq,b"\0")
+        if cmd==RAM_READY:
+            assert self.phase==RAM_FAST_BEGIN and self.offset==self.total
+            return b"" if self.fault=="ready" else cps_frame(cmd,seq,b"\0")
+        assert cmd==RAM_COMMIT and self.offset==self.total
+        code=len(self.upload)-24
+        return cps_frame(cmd,seq,b"\0"+struct.pack("<i",code))+cps_frame(
+            RUN_EVENT,seq,b"\1"+struct.pack("<BiBi",255,code,1,107))
+
+
+@pytest.mark.parametrize("fault", [None,"probe","stage","ready","busy","no_recovery"])
+def test_fast_upload_negotiation_fail_closed(fault,monkeypatch):
+    import k6_live as live
+    from k6_live_v2 import UPLOAD_PROBE,RAM_FAST_BEGIN,RAM_READY,RAM_BEGIN,RAM_CHUNK,RAM_COMMIT
+    from modem import k6mod
+    monkeypatch.setattr(live.time,"sleep",lambda _:None)
+    env=k6mod.image(b"\x70\x47"+bytes(range(256)),0,7,None,level=1)
+    port=FastUploadPort(fault)
+    link=LiveLink(port,timeout=.001,initial_seq=250)
+    if fault in (None,"probe"):
+        assert link.run_ram(env)["result"]==107
+        assert port.upload==env
+        assert port.events.count(RAM_COMMIT)==1
+        assert port.events.count(UPLOAD_PROBE)==1
+        if fault is None:
+            assert link._upload_rate==192000
+            assert port.events.count(RAM_CHUNK)==32+3
+            assert port.events[-2:]==[RAM_READY,RAM_COMMIT]
+            assert RAM_BEGIN not in port.events
+        else:
+            assert link._upload_rate==115200
+            assert RAM_BEGIN in port.events and RAM_FAST_BEGIN not in port.events
+    else:
+        with pytest.raises(InstallError):link.run_ram(env)
+        assert RAM_COMMIT not in port.events
+        assert RAM_BEGIN not in port.events
+        if fault in ("stage","ready"):
+            assert port.events.count(RAM_FAST_BEGIN)==1
+            assert port.events[-1]==STATUS
+        if fault=="busy":
+            assert port.events[-1]==UPLOAD_PROBE
+    assert port.baudrate==115200

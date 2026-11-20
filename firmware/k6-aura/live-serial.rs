@@ -18,6 +18,12 @@ const RAM_COMMIT:u8=0x73;
 const RAM_ABORT:u8=0x74;
 #[cfg(all(feature="spilib",k6_ram0_stack))]
 const RAM_STATUS:u8=0x75;
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+const UPLOAD_PROBE:u8=0x76;
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+const RAM_FAST_BEGIN:u8=0x77;
+#[cfg(all(feature="spilib",k6_ram0_stack))]
+const RAM_READY:u8=0x78;
 // Only the main runtime/foreground dispatcher touches this boot-local cache.
 // Never use the 8-bit wire sequence as a durable execution identifier.
 #[cfg(all(feature="spilib",k6_ram0_stack))]
@@ -188,7 +194,7 @@ fn ram_allowed(app:&mut App)->bool {
 }
 
 #[cfg(all(feature="spilib",k6_ram0_stack))]
-fn ram_upload(app:&mut App, req:&Request, payload:&[u8])->Option<(u8,i32)> {
+fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool)->Option<(u8,i32)> {
     use crate::hal::{arena,uptime};
     let n=req.arg as usize;
     if !payload.is_empty() || n<25 || n>4096 || n+4096>arena::ARENA_BYTES {
@@ -198,10 +204,25 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8])->Option<(u8,i32)> {
         reply(req,&[BUSY]);return None;
     }
     uart::set_binary_mode(true);
-    reply(req,&[OK]);
-    let t=uptime::now();
     let mut offset=0usize;
+    if fast {
+        #[cfg(k6_serial_transport)]
+        {
+            if !fast_receive(app,req,n,false) {
+                uart::set_binary_mode(false);
+                app.live_ram_abort();
+                return None;
+            }
+            offset=n;
+        }
+        #[cfg(not(k6_serial_transport))]
+        {unreachable!();}
+    } else {
+        reply(req,&[OK]);
+    }
+    let t=uptime::now();
     let mut job=None;
+    let mut ready=!fast;
     // Per-frame prefix deadline 500 ms, whole transaction <3.5 s plus
     // at most 100 ms for a frame body. No other request is dispatched here.
     'upload: loop {
@@ -223,12 +244,13 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8])->Option<(u8,i32)> {
             reply(&r,&[BUSY]);break;
         }
         match r.cmd {
-            RAM_CHUNK if r.arg as usize==offset && !p.is_empty() && offset+p.len()<=n => {
+            RAM_CHUNK if !fast && r.arg as usize==offset && !p.is_empty() && offset+p.len()<=n => {
                 unsafe{core::ptr::copy_nonoverlapping(p.as_ptr(),arena::base().add(offset),p.len());}
                 offset+=p.len();reply(&r,&[OK]);
             }
+            RAM_READY if fast && !ready && r.arg==n as u32 && p.is_empty()=>{ready=true;reply(&r,&[OK]);}
             RAM_ABORT if r.arg==0 && p.is_empty()=>{reply(&r,&[OK]);break;}
-            RAM_COMMIT if r.arg as usize==n && offset==n && p.is_empty()=>{
+            RAM_COMMIT if ready && r.arg as usize==n && offset==n && p.is_empty()=>{
                 unsafe extern "C" {fn km_live_verify(a:*const u8,n:u32)->i32;}
                 // The verifier moves code over the envelope; read its serial first.
                 let serial=unsafe{u32::from_le_bytes(core::ptr::read_unaligned(
@@ -249,6 +271,68 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8])->Option<(u8,i32)> {
     job
 }
 
+// Fast uplink is strictly a data-only phase. A frame consists of the V2
+// high-bit body and NUL (no ASCII prefix). Only one <=160-byte frame may
+// be outstanding. The radio restores 115200 before accepting COMMIT.
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+fn fast_receive(app:&mut App,req:&Request,n:usize,probe:bool)->bool {
+    use crate::hal::{arena,uptime,clock::SYSCLK_HZ};
+    const RATE:u32=192000;
+    let prior=uart::cable_stats();
+    let mut ack=[0u8;5];
+    ack[1..].copy_from_slice(&(SYSCLK_HZ/((SYSCLK_HZ+RATE/2)/RATE)).to_le_bytes());
+    reply(req,&ack);
+    let t=uptime::now();
+    while uptime::now().wrapping_sub(t)<300 {}
+    uart::cable_baud(RATE);
+    let start=uptime::now();
+    let mut offset=0usize;
+    let mut seq=req.seq;
+    while offset<n {
+        if !ram_allowed(app) || uptime::now().wrapping_sub(start)>=35000 {break;}
+        let Some(f)=receive_v2() else {break;};
+        let r=f.req();
+        let p=f.payload();
+        seq=seq.wrapping_add(1);
+        let size=(n-offset).min(V2_MAX);
+        if !ram_allowed(app) || r.cmd!=RAM_CHUNK || r.seq!=seq ||
+            r.arg as usize!=offset || p.len()!=size ||
+            uart::cable_stats()!=prior ||
+            (probe && p.iter().enumerate().any(|(i,&b)| {
+                let j=offset+i;
+                b!=(j*73+j/256) as u8
+            })) {
+            reply(&r,&[IO]);break;
+        }
+        if !probe {
+            unsafe{core::ptr::copy_nonoverlapping(p.as_ptr(),arena::base().add(offset),size);}
+        }
+        offset+=size;
+        reply(&r,&[OK]);
+    }
+    let ok=offset==n;
+    // A compliant sender stops after its one outstanding frame on error.
+    // Drain that bounded tail at the fast rate, before restoring baseline.
+    if !ok {
+        let t=uptime::now();
+        while uptime::now().wrapping_sub(t)<300 {let _=uart::take_byte();}
+    }
+    uart::cable_baud(115200);
+    for _ in 0..320 {if uart::take_byte().is_none(){break;}}
+    ok
+}
+
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+fn upload_probe(app:&mut App,req:&Request,payload:&[u8]) {
+    if !payload.is_empty() || req.arg!=4096 {reply(req,&[INVALID]);return;}
+    if !ram_allowed(app) || !app.live_bulk_idle() || uart::binary_mode() {
+        reply(req,&[BUSY]);return;
+    }
+    uart::set_binary_mode(true);
+    let _=fast_receive(app,req,4096,true);
+    uart::set_binary_mode(false);
+}
+
 struct V2Args {app:*mut App,job:Option<(u8,i32)>}
 unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
     let Some(f)=receive_v2() else {return;};
@@ -257,7 +341,11 @@ unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
     match req.cmd {
         V2_ECHO if req.arg==0 => reply_v2(&req,f.payload()),
         #[cfg(all(feature="spilib",k6_ram0_stack))]
-        RAM_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload());}
+        RAM_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false);}
+        #[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+        RAM_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true);}
+        #[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
+        UPLOAD_PROBE=>upload_probe(unsafe{&mut *args.app},&req,f.payload()),
         _=>reply(&req,&[INVALID]),
     }
 }
@@ -372,7 +460,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(feature="spilib") {8} else {0}
                 | if cfg!(k6_health_telemetry) {64} else {0}
                 | if cfg!(k6_serial_transport) {128} else {0}
-                | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0};
+                | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0}
+                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;

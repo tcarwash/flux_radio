@@ -281,9 +281,10 @@ verified job replaces it; reboot clears it. Unknown is not permission to
 retry; neither reports nor persistent history are cached. The synchronous
 runner cannot service status mid-execution; a timeout is not cancellation.
 
-V2 requests currently remain at 115200. The bounded downlink speed
-negotiation is separate. Next: negotiated/validated sustained uploads,
-cooperative job management, and typed persistent installation/removal.
+V2 control requests remain at 115200. The data-only fast upload described
+below is separate from the bounded downlink speed negotiation. Next:
+cooperative job management, windowed uploads and typed persistent
+installation/removal.
 
 Verified 2026-11-20: cable-only packed image 112316 bytes, stack layout
 audit passed, six compiled-image emulator tests passed (status/tune,
@@ -299,3 +300,69 @@ arena, 6304-byte stack, 280 bytes free in RAM0. All six compiled-image
 emulator tests passed, including fresh host sequence recovery, unknown
 IDs, rejection/replay preserving cached completion, and cache replacement.
 No physical validation or firmware flashing was performed.
+
+## Negotiated fast upload (experimental)
+
+Capability bit 12 (fast_upload) requires SPI library, the expanded-stack
+layout and serial transport. Older images retain the baseline V2 exchange.
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 upload-probe
+    python3 tools/k6_live.py --port /dev/ttyUSB0 run-ram c/k6/mod/hello.c --cable-only
+    python3 tools/k6_live.py --port /dev/ttyUSB0 run-ram c/k6/mod/hello.c --cable-only --baseline-upload
+
+The supported candidate is 192000 baud, the previously bench-tested
+legacy sustained uplink rate. Do not assume the live version has the same
+electrical reliability or effective throughput until it is measured.
+The probe sends 4096 deterministic bytes, checking every byte at the
+target plus frame CRCs, sequences, offsets and all UART error counters.
+It neither writes SPI nor arms a module. The host tries it once per
+LiveLink, verifies a baseline STATUS afterward, and caches the chosen
+rate. A failed data-only probe can fall back to 115200 only after
+verified recovery. Explicit BUSY/INVALID refusals do not trigger fallback.
+
+| Command | Arg | Payload | Response data after result |
+|---|---|---|---|
+| 76 UPLOAD_PROBE | 4096 | empty | actual baud:LE32 |
+| 77 RAM_FAST_BEGIN | exact envelope bytes 25–4096 | empty | actual baud:LE32 |
+| 72 CHUNK (fast phase) | next byte offset | exact min(128, remaining) | empty |
+| 78 RAM_READY | exact envelope bytes | empty | empty |
+
+BEGIN/probe is normal V2 at 115200. Radio suppresses debug and ACKs at
+baseline, waits 30 ms, then switches to 192000. Host changes baud and
+waits 50 ms before sending. During the fast phase only the encoded V2
+body and NUL are sent, omitting the six ASCII magic bytes; CRC still
+covers the conceptual FLXLV2 prefix. No control command is dispatched.
+One frame (at most 159 bytes on wire) is outstanding at a time so it
+fits the 320-byte RX ring. Sequence increments modulo 256; each
+128-byte chunk is verified and ACKed before the next. The probe checks
+byte j against (j*73+j/256) modulo 256.
+
+The target automatically restores 115200 after the final chunk or on
+timeout, CRC, sequence, length, offset, UART or probe-data failure.
+One fast frame has a 100 ms receive deadline and the total excursion
+is bounded by 3.5 s plus the current frame and 30 ms guard. On failure
+the radio drains the outstanding tail before restoring baud. The host
+stops sending, restores its baud, waits one second of silence, clears
+input, and verifies a fresh STATUS before proceeding. No legacy
+handshake or reboot. A failed real upload is not automatically replayed.
+A successfully staged RAM module requires a separate normal V2 READY
+acknowledgment at 115200 before the single COMMIT request. An attempted
+COMMIT without READY is rejected; a missing READY acknowledgment
+causes no COMMIT. Existing full envelope verification/replay handling
+and job-result recovery still apply.
+
+This is stop-and-wait rather than a windowed sustained transfer. A
+4 KiB negotiation costs time, especially for small one-shot probes;
+use --baseline-upload when speed negotiation is undesirable. The
+upload-probe command reports the selected baud and negotiation elapsed
+time, not measured effective application throughput. No radio or
+electrical testing has been performed on this live implementation.
+
+Fast upload checkpoint: packed cable-only firmware 113284 bytes, RAM
+audit passed (11776-byte arena, 6304-byte stack, 280 bytes free in RAM0).
+38 focused host regression tests passed (27 optional skipped), plus all
+seven compiled-image live tests. The new emulator test verifies the
+192000/115200 UART divisor transitions, full deterministic probe,
+missing READY refusal, corrupt-chunk recovery, successful temporary
+execution and unchanged SPI. Host tests separately cover fallback, lost
+READY, failed recovery, explicit busy and no automatic commit/replay.

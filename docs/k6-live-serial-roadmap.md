@@ -77,7 +77,7 @@ and boot constructor fix were ported from CW research. Expanded-stack
 image passed all compiled-image tests. The initial 4 KiB/API 1–2 limits
 are deliberate; no arbitrary unsigned execution on keyed firmware.
 Cable-only firmware retains its existing CRC-only physical-trust model.
-Remaining: physical validation, negotiated sustained uplink, cooperative
+Remaining: physical validation, windowed sustained uplink, cooperative
 cancel/job IDs and reconnect, larger module streaming/arena sizing,
 live persistent mutations and full CAT/remote TX safety.
 
@@ -89,3 +89,14 @@ completion and return code after a dropped completion frame/reconnect.
 History is one entry, boot-local; unknown does not prove non-execution.
 Still needed: installed-job IDs, bounded multi-job history, cooperative
 status/cancel during execution and binary/report replay.
+
+### Fast uplink checkpoint
+
+Capability bit 12: bounded 192 kbaud data-only upload, 4 KiB read-only
+integrity probe, per-chunk CRC/sequence/offset/length/UART checks, baseline
+READY before execution and automatic baseline restoration. Failed probe
+can fall back after verified recovery; actual uploads/commits are never
+automatically retried. Stop-and-wait fits the existing RX ring. Physical
+baud/timing and effective throughput remain to be tested. Future
+persistent writes can reuse the same staging exchange but need a separate
+typed authenticated mutation transaction and readback/recovery contract.
