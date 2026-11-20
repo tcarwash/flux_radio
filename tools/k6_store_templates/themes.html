@@ -34,13 +34,14 @@
         </g>
       </svg></div></div>
       <div class="editor-tabs" role="group" aria-label="Preview active VFO"><button type="button" data-editor-vfo="0" aria-pressed="true">VFO A</button><button type="button" data-editor-vfo="1" aria-pressed="false">VFO B</button></div>
+      <div class="editor-layout-controls"><label>Preview A <select data-preview-side-mode="a"><option value="vfo">VFO</option><option value="memory">Memory</option></select></label><label>Preview B <select data-preview-side-mode="b"><option value="vfo">VFO</option><option value="memory">Memory</option></select></label><label>Memory display <select data-preview-memory-display><option value="frequency">Frequency</option><option value="name">Name</option><option value="namefreq" selected>Name + frequency</option></select></label></div>
       <p class="radio-note" data-studio-help>Drag widgets. Pink guides indicate aligned edges or centers. Shift-drag moves their parent; Alt bypasses snapping.</p>
       <p class="radio-note" data-studio-status role="status"></p>
     </div>
     <div class="studio-inspector">
-      <section data-layout-controls data-studio-panel="layout" class="editor-layer-controls"><h3>Widget properties</h3>
+      <details data-layout-controls class="editor-layer-controls"><summary>Widget properties</summary>
     <div class="editor-layout-controls">
-      <label>Widget hierarchy <select data-layout-tree></select></label>
+      <label>Widget hierarchy <select data-layout-tree></select></label><label><input type="checkbox" data-layout-channel-names> Separate memory name widgets (Designer firmware update required)</label>
       <label>Snap grid <select data-layout-snap><option value="1" selected>1 pixel</option><option value="2">2 pixels</option><option value="4">4 pixels</option><option value="8">8 pixels</option></select></label>
       <label><input type="checkbox" data-layout-align checked> Snap to edges and centers (all widgets)</label><label>X (relative) <input data-layout-x type="number"></label><label>Y (relative) <input data-layout-y type="number"></label>
       <label>Width <input data-layout-w readonly></label><label>Height <input data-layout-h readonly></label>
@@ -48,7 +49,7 @@
     </div>
     <details><summary>Custom frequency bitmap font · 8 × 12</summary><p>Click pixels to edit the selected digit. Choose Custom bitmap on a frequency widget to use it. The reduced factory font preserves printable ASCII glyphs; custom frequency fonts are unchanged and stored in the theme asset.</p><label>Glyph <select data-font-char></select></label><div data-font-grid class="font-pixel-grid"></div><button type="button" data-font-reset>Reset to seven-segment</button><button type="button" data-font-invert>Invert glyph</button><button type="button" data-font-clear>Clear glyph</button><label>Import 132-byte raw font <input type="file" data-font-import accept=".bin,.raw"></label><button type="button" data-font-export>Export raw font</button><p data-font-message role="status" class="radio-note"></p></details>
     <div class="editor-tabs"><button type="button" data-layout-undo hidden disabled>Undo</button><button type="button" data-layout-redo hidden disabled>Redo</button><button type="button" data-layout-reset>Reset layout</button><button type="button" data-layout-save>Export layout JSON</button><button type="button" data-layout-import-trigger>Import layout JSON</button><input type="file" data-layout-import accept=".json,application/json" hidden><button type="button" data-layout-package>Export runtime layout</button></div><p class="radio-note" data-layout-message role="status"></p>
-      </section>
+      </details>
       <div class="editor-layer-controls" data-layer-controls data-studio-panel="graphics" hidden>
         <p class="eyebrow">FULL SCREEN GRAPHICS</p>
         <div class="editor-options"><input type="checkbox" data-layer-draw hidden><label><input type="checkbox" data-layer-guide> Alignment grid</label></div>
@@ -72,13 +73,12 @@
         <label><input type="checkbox" data-preview-dual checked> Dual watch</label>
         <label><input type="checkbox" data-preview-save> Power save</label><label><input type="checkbox" data-preview-vox> VOX</label><label><input type="checkbox" data-preview-lock> Key lock</label>
         {% for side,freq in [('a','146.52000'),('b','440.85000')] %}
-        <label>Memory name {{side|upper}} <input data-preview-channel-name="{{side}}" maxlength="12" placeholder="VFO mode"></label>
+        <label>Memory name {{side|upper}} <input data-preview-channel-name="{{side}}" maxlength="12" value="{{ 'LOCAL RPT' if side == 'a' else 'UHF RPT' }}"></label><label>Memory slot {{side|upper}} <input data-preview-channel-slot="{{side}}" type="number" min="0" max="999" value="{{ 1 if side == 'a' else 2 }}"></label>
         <label>VFO {{side|upper}} · MHz <input data-preview-frequency="{{side}}" value="{{freq}}" inputmode="decimal"></label>
         <label>Modulation {{side|upper}} <select data-preview-mode="{{side}}"><option>FM</option><option>AM</option><option>USB</option><option>LSB</option><option>CW</option></select></label>
         <label>Power {{side|upper}} <select data-preview-power="{{side}}"><option>LOW</option><option>MID</option><option>HIGH</option></select></label>
         <label>Bandwidth {{side|upper}} <select data-preview-bandwidth="{{side}}"><option>NAR</option><option>WIDE</option></select></label>
         {% endfor %}
-        <label><input type="checkbox" data-layout-channel-names> Separate memory name widgets (Designer firmware update required)</label>
         <label><input type="checkbox" data-preview-guides checked> Widget outlines</label>
       </div><p class="radio-note">Preview values are local to the editor; they are not exported to the radio.</p>
     </section>

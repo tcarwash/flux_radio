@@ -204,3 +204,13 @@ def test_build_device_confirmation_retains_firmware(tmp_path):
     assert result.location == path
     assert b'/dev/ttyUSB9' in client.get(path).data
     assert client.post("/settings", data={"build": "https://evil.invalid", "port": "COM5"}).location == "/settings"
+
+
+def test_theme_memory_controls_present():
+    import k6_store
+    client=k6_store.create_app().test_client()
+    html=client.get("/themes").get_data(as_text=True)
+    assert "<details data-layout-controls" in html
+    assert html.count("data-preview-side-mode=")==2
+    assert html.count("data-preview-channel-slot=")==2
+    assert html.count("data-layout-channel-names")==1

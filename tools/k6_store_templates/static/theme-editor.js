@@ -89,6 +89,7 @@
     if(mode==='graphics'&&Number(q('[data-layer-which]').value))setActive(Number(q('[data-layer-which]').value)-1);
     editor.querySelectorAll('[data-studio-mode]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.studioMode===mode)));
     editor.querySelectorAll('[data-studio-panel]').forEach(el=>el.hidden=el.dataset.studioPanel!==mode);
+    q('[data-layout-controls]').open=mode==='preview';
     q('[data-studio-help]').textContent=({layout:'Drag widgets. Pink guides indicate aligned edges or centers. Shift-drag moves their parent; Alt bypasses snapping.',graphics:'Draw on the selected graphics layer. Isolate hides live widgets; Composite shows the actual layout.',preview:'Change simulated radio state without altering the design.'})[mode];
     update(false);
   }
