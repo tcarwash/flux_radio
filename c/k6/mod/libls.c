@@ -53,7 +53,8 @@ static int directory(const k6_api_t *api, uint32_t base, uint8_t *d) {
   uint32_t crc=~0u;
   for (unsigned i=12;i<1036;i++) {crc^=d[i];for(unsigned j=0;j<8;j++)crc=(crc>>1)^(0xedb88320u&-(crc&1));}
   if (~crc!=le32(d+8)) return 0;
-  uint8_t used[126]={0};
+  uint8_t used[126];
+  for (volatile unsigned j=0;j<126;j++) used[j]=0;
   for(unsigned i=0;i<255;i++) {const uint8_t *e=d+16+4*i;unsigned n=e[2]|(unsigned)e[3]<<8;
     if(!n){if(e[0]||e[1])return 0;continue;}
     if(e[1]!=(n+4095u)/4096u || e[0]+e[1]>126)return 0;
@@ -79,8 +80,8 @@ int k6_main(const k6_api_t *api) {
     unsigned code, blank = 1, ok;
     uint32_t addr=KL_SLOT_ADDR(n);unsigned extent=KL_SLOT_BYTES;
     if(packed){const uint8_t*e=d+16+4*n;extent=e[2]|(unsigned)e[3]<<8;if(!extent)continue;addr=KL_BASE+8192u+4096u*e[0];}
-    if(extent<sizeof h)continue;
-    if (api->fl_read(addr, h, sizeof h) < 0) break;
+    if(extent<KM_HDR)continue;
+    if (api->fl_read(addr, h, KM_HDR) < 0) break;
     for (i = 0; i < KM_HDR; i++) blank &= h[i] == 0xFF;
     if (blank) continue;
     used++;
@@ -89,6 +90,9 @@ int k6_main(const k6_api_t *api) {
     code = (unsigned)h[4] | (unsigned)h[5] << 8;
     ok = h[0] == 'K' && h[1] == '6' && h[2] == 'M' && h[3] == KM_ABI && code &&
          KM_HDR + code + KM_TAG <= extent;
+    if (ok && code >= 4 + KL_NAME && !(h[13] & (KM_F_PAGE | KM_F_CARDS))) {
+      if (api->fl_read(addr + KM_HDR, h + KM_HDR, 4 + KL_NAME) < 0) break;
+    }
     if (!ok) {
       p = put(p, " BAD");
     } else {

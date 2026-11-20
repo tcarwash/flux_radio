@@ -106,3 +106,21 @@ def test_recovery_journal(tmp_path):
     c.read=lambda a,n:raw if a==BASE else fingerprint
     complete(journal)
     with pytest.raises(ValueError):load_recovery(journal,c,'1234','test')
+
+
+def test_packed_short_module_removal(tmp_path):
+    from modem import k6mod
+    from host_link import gc_sections, exported_symbols
+    path=tmp_path/'packed.so'
+    flags=exported_symbols(tmp_path/'exports', ('ku_*','kl_install','kl_info','kl_remove'))
+    subprocess.run(['cc','-shared','-fPIC','-O2','-ffunction-sections','-fdata-sections',
+                    gc_sections(),flags,'-DKM_USER_STORE',
+                    str(ROOT/'c/k6/user_store.c'),str(ROOT/'c/k6/k6_lib.c'),'-o',str(path)],check=True)
+    l=C.CDLL(str(path));n=Nor(l);assert n.call('format')==0
+    l.kl_install.argtypes=[C.c_char_p,C.POINTER(Flash)]
+    for slot,code,entry in [(24,b'\x2a\x20\x70\x47',0),(25,b'K6NM'+b'PACK TEST'.ljust(12,b'\0')+b'\x2a\x20\x70\x47',16)]:
+        img=k6mod.image(code,entry,1,None,lib=slot,level=1)
+        assert l.kl_install(img,C.byref(n.flash))==len(img)
+        assert n.call('open')==0 and n.get(slot)==img
+        assert l.kl_remove(slot,C.byref(n.flash))==0
+        assert n.call('open')==0 and n.get(slot) is None

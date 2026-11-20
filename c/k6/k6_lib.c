@@ -86,8 +86,8 @@ int kl_info(int slot, const kl_flash_t *fl, kl_info_t *out) {
   unsigned i, blank = 1, named;
   if (slot < 0 || slot >= KL_SLOTS) return KL_SLOT;
   uint32_t base;unsigned extent;int r=kl_locate(slot,fl,&base,&extent);if(r)return r;
-  if(extent<sizeof h)return KL_BAD_HDR;
-  if (fl->read(base, h, sizeof h)) return KL_IO;
+  if(extent<KM_HDR)return KL_BAD_HDR;
+  if (fl->read(base, h, KM_HDR)) return KL_IO;
   for (i = 0; i < KM_HDR; i++) blank &= h[i] == 0xFF;
   if (blank) return KL_EMPTY;
   if (!hdr_len(h) || hdr_len(h)>extent || h[15]!=slot) return KL_BAD_HDR;
@@ -95,8 +95,11 @@ int kl_info(int slot, const kl_flash_t *fl, kl_info_t *out) {
   out->serial = (uint32_t)h[8] | (uint32_t)h[9] << 8 | (uint32_t)h[10] << 16 | (uint32_t)h[11] << 24;
   out->level = h[12], out->flags = h[13];
   /* the name block: a module's (not a page's or a deck's), whole inside its code */
-  named = !(h[13] & (KM_F_PAGE | KM_F_CARDS)) && out->code_len >= 4 + KL_NAME && h[16] == 'K' &&
-          h[17] == '6' && h[18] == 'N' && h[19] == 'M';
+  named = !(h[13] & (KM_F_PAGE | KM_F_CARDS)) && out->code_len >= 4 + KL_NAME;
+  if (named) {
+    if (fl->read(base + KM_HDR, h + KM_HDR, 4 + KL_NAME)) return KL_IO;
+    named = h[16] == 'K' && h[17] == '6' && h[18] == 'N' && h[19] == 'M';
+  }
   for (i = 0; i < KL_NAME; i++) out->name[i] = named ? (char)h[KM_HDR + 4 + i] : 0;
   return 0;
 }
