@@ -730,10 +730,12 @@ def create_app(store: ModuleStore | None = None):
                     z.write(path, 'pack/' + Path(name).as_posix())
                 z.writestr('INSTALL.txt', 'Extract the entire ZIP. Use a matching Flux checkout and its Python dependencies.\n'
                     'Inspect: python tools/k6.py inspect /path/to/pack\n'
-                    'Existing Flux radio: python tools/k6.py flash-install-pack /path/to/pack --port /dev/ttyUSB0\n'
+                    'Existing Flux radio: python tools/k6.py flash-install-pack /path/to/pack --port /dev/ttyUSB0 --yes\n'
                     'First installation: follow docs/manual/install.md and use starter-install.\n'
                     'On Windows replace the port with your COM port. OTA builds require your own module key.\n'
                     'Keep all system pages with this exact firmware; do not flash only the raw binary.\n')
+                from k6_pack_readme import readme
+                z.writestr('README.md', readme(lock))
             archive.seek(0)
         except (OSError, ValueError, KeyError, PackError) as exc:
             abort(409, f'Build package could not be verified: {exc}')

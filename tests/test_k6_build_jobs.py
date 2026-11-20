@@ -142,7 +142,10 @@ def test_download_completed_pack(tmp_path):
     assert result.status_code == 200 and result.mimetype == 'application/zip'
     assert 'attachment;' in result.headers['Content-Disposition']
     with zipfile.ZipFile(io.BytesIO(result.data)) as z:
-        assert set(z.namelist()) == {'INSTALL.txt', 'pack/firmware.bin', 'pack/pack.lock.json', 'pack/firmware.receipt.json'}
+        assert set(z.namelist()) == {'README.md', 'INSTALL.txt', 'pack/firmware.bin', 'pack/pack.lock.json', 'pack/firmware.receipt.json'}
         assert z.read('pack/firmware.bin') == image.read_bytes()
+        guide = z.read('README.md').decode()
+        assert 'flash-install-pack' in guide and '--yes' in guide
+        assert 'FORMAT FLASH?' in guide and 'COM5' in guide and '/dev/cu.*' in guide
     (output/'firmware.bin').write_bytes(b'tampered')
     assert client.get(route).status_code == 409
