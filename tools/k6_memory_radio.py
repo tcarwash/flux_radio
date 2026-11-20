@@ -94,6 +94,12 @@ def plan(bank,rows,mode):
     return bytes(new),{'added':added,'duplicates':skipped,'occupied':len(occupied)}
 def read_bank(c):
     if c.call(0x90)!=CAP:raise ValueError('firmware does not support Flux memory-bank protocol v1')
+    # Capability v1 defines the bank at SPI offset zero. Bulk reads are read-only;
+    # retain the explicit opcode for test/fixed clients without a bulk reader.
+    if callable(getattr(c,'read',None)):
+        bank=c.read(0,BANK)
+        if len(bank)!=BANK:raise ValueError('short memory-bank read')
+        return bank
     parts=[c.call(0x91,i) for i in range(BANK//64)]
     if any(len(p)!=64 for p in parts):raise ValueError('malformed memory-bank read frame')
     bank=b''.join(parts)

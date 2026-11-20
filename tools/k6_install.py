@@ -283,6 +283,14 @@ class CpsLink:
 class Cable(CpsLink):
     """blowfang's cable session"""
 
+    def invalidate_library_directory(self):
+        self.__dict__.pop('_library_directory', None)
+
+    def handshake(self, *args, **kwargs):
+        self.invalidate_library_directory()
+        self.__dict__.pop('_info', None)
+        return super().handshake(*args, **kwargs)
+
     def info(self):
         if hasattr(self,"_info"):return self._info
         d = self.call(CMD_INFO)
@@ -341,6 +349,7 @@ class Cable(CpsLink):
         """One signed image as L chunks; the last chunk alone (its install erases and programs
         SPI, and the radio's 320-byte receive ring must not overflow meanwhile). Returns
         (km_packet's last result, the install's result)."""
+        self.invalidate_library_directory()
         self.km_diag_stage = None
         self.km_diag_by_chunk = {}
         pk = k6mod.packets(img, xfer, CHUNK)
@@ -468,13 +477,17 @@ class Cable(CpsLink):
         return bytes(out)
 
     def library_directory(self):
-        """Return packed logical locations, or None for legacy firmware."""
+        """Read the validated directory once per session, invalidated before mutations."""
+        if hasattr(self, '_library_directory'):
+            return self._library_directory.copy()
         if self.info()['protocol'] < 5:
             return None
         from k6_user_store_migrate import locations
         # Only the two directory sectors are needed for metadata validation.
         raw=self.read(LIB_BASE,8192)+bytes(512*1024-8192)
-        try:return locations(raw)
+        try:
+            self._library_directory = locations(raw)
+            return self._library_directory.copy()
         except ValueError as exc:raise InstallError(str(exc)) from exc
 
     def library_read(self,slot,n):
@@ -1242,6 +1255,46 @@ def install_boot_logo(port, image_path, yes=False, log=print, ask=input):
         link.end()
 
 
+def select_theme_install(link, blob, requested_slot=None):
+    """Reuse identical design, otherwise use an empty slot with a distinct display name.
+
+    Never erase an earlier revision or reinterpret an occupied module as a theme.
+    """
+    from k6_theme_package import pack, unpack, display_name
+    token, name = unpack(blob, include_name=True)
+    existing = {}
+    # Some legacy test/transport implementations cannot enumerate typed themes.
+    if callable(getattr(link, 'theme_at', None)):
+        for slot in AUTO_SLOTS:
+            item = link.theme_at(slot)
+            if item is not None:
+                existing[slot] = item
+    if requested_slot is None:
+        # Identical design with original name or previously assigned slot suffix.
+        for slot, (label, installed) in existing.items():
+            if installed == blob or (name and label == revision_theme_name(name, slot)
+                                     and installed == pack(token,label)):
+                return slot, installed, True
+        slot = find_empty_theme_slot(link)
+    else:
+        slot = requested_slot
+        if slot in existing and existing[slot][1] == blob:
+            return slot, blob, True
+    if library_read(link,slot,LIB_SLOT) != b'\xff'*LIB_SLOT:
+        raise InstallError("theme slot is not entirely erased")
+    if name and any(label.casefold() == name.casefold() or label.casefold() == revision_theme_name(name, old_slot).casefold()
+                    for old_slot,(label,_) in existing.items()):
+        label = revision_theme_name(name,slot)
+        blob = pack(token,label)
+    return slot,blob,False
+
+
+def revision_theme_name(name, slot):
+    from k6_theme_package import display_name
+    suffix = f"-{slot:02d}"
+    return display_name(name)[:14-len(suffix)].rstrip() + suffix
+
+
 def find_empty_theme_slot(link):
     """Choose a fully erased non-reserved library slot without overwriting data."""
     for slot in (*range(16, 32), *range(0, 9)):
@@ -1378,14 +1431,17 @@ def main(argv=None, log=None, ask=input):
                 if info["protocol"]<3:
                     raise InstallError("Designer typed theme protocol 3 is required")
                 try:
-                    slot=find_empty_theme_slot(c) if a.slot=="auto" else int(a.slot)
+                    requested=None if a.slot=="auto" else int(a.slot)
                 except ValueError:
                     raise InstallError("theme slot must be auto or a number") from None
-                if not (0<=slot<=8 or 16<=slot<32):
+                if requested is not None and requested not in AUTO_SLOTS:
                     raise InstallError("theme slot must be a non-reserved library slot")
-                address=LIB_BASE+slot*LIB_SLOT
-                if library_read(c,slot,LIB_SLOT)!=b"\xff"*LIB_SLOT:
-                    raise InstallError("theme slot is not entirely erased")
+                slot,blob,current=select_theme_install(c,blob,requested)
+                _,theme_name=unpack(blob,include_name=True)
+                if current:
+                    log(f"Theme verified in slot {slot}: {theme_name!r} is already current; no duplicate installed.")
+                    c.end()
+                    return 0
                 if not a.yes and ask(f"Install {theme_name or 'theme'} in empty slot {slot}? Type INSTALL: ").strip()!="INSTALL":
                     raise InstallError("theme installation cancelled")
                 serials=Serials()
@@ -1493,6 +1549,7 @@ def main(argv=None, log=None, ask=input):
                         if theme is not None:
                             name, blob = theme
                             log(f"slot {s:2d} theme  {name:12s} {len(blob):6d} B code, serial 0")
+                            log(f"theme revision {s} v{blob[3]} sha256 {hashlib.sha256(blob).hexdigest()}")
                             continue
                     h = c.slot_head(s)
                     if h:
