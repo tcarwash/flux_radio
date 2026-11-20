@@ -33,15 +33,32 @@ sotto = os.environ.get("K6_SOTTO_SERVICE", "0")
 if sotto not in ("0", "1"): raise SystemExit("invalid Sotto gate")
 mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if scan == '1' else 0) | (4 if fsk == '1' else 0) | (64 if sotto == "1" else 0)
 level = 24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23
+# Shared record keeps legacy and live capability reporting identical.
+helper = f'''// FLUX_CAP_RECORD_BEGIN
+#[cfg(feature = "spilib")]
+fn module_capability_record() -> [u8; 16] {{
+    let mut d = [b'K', b'6', b'C', b'P', 2, {mask}, {level}, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    extern "C" {{ static k6_build_id: [u8; 8]; }}
+    d[8..].copy_from_slice(unsafe {{ &*core::ptr::addr_of!(k6_build_id) }});
+    d
+}}
+// FLUX_CAP_RECORD_END
+'''
+if '// FLUX_CAP_RECORD_BEGIN' in text:
+    a=text.index('// FLUX_CAP_RECORD_BEGIN')
+    b=text.index('// FLUX_CAP_RECORD_END',a)+len('// FLUX_CAP_RECORD_END')
+    text=text[:a]+helper.rstrip()+text[b:]
+else:
+    # Later generated-host overlays replace the tail of cps/mod.rs.
+    # Keep this helper beside the stable command declarations instead.
+    marker_helper = 'const CMD_CABLE_INFO: u8 = 0x56;'
+    if text.count(marker_helper)!=1:
+        raise SystemExit("missing capability helper anchor")
+    text=text.replace(marker_helper,helper+"\n"+marker_helper,1)
 insert = f'''            // Read-only capability query: K6CP, format 2, flags, API ceiling, reserved.
             // Version 2 includes the embedded linker build ID (not a runtime measurement).
             CMD_CABLE_CAPS if f.addr == 0 && (f.len == 0 || f.len == 16) => {{
-                let mut d: [u8; 16] = [b'K', b'6', b'C', b'P', 2, {mask}, {level}, 0,
-                                   0, 0, 0, 0, 0, 0, 0, 0];
-                extern "C" {{
-                    static k6_build_id: [u8; 8];
-                }}
-                d[8..].copy_from_slice(unsafe {{ &*core::ptr::addr_of!(k6_build_id) }});
+                let d = module_capability_record();
                 if f.len == 0 {{
                     cable_send(CMD_CABLE_CAPS, 0, &d);
                 }} else {{

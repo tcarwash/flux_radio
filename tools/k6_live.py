@@ -21,7 +21,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -106,6 +106,40 @@ class LiveLink(CpsLink):
             raise InstallError("Unexpected capability response")
         bits = struct.unpack("<I", d[5:])[0]
         return dict(version=1, flags=bits, features=[f for i,f in enumerate(FEATURES) if bits & (1 << i)])
+
+    def module_capabilities(self, key=None):
+        """Read module service record; prove keyed identity with fresh nonce."""
+        import hmac
+        from k6_install import k6mod
+        from k6_live_v2 import MODULE_CAPS
+        if "module_caps" not in self.capabilities()["features"]:
+            raise InstallError("Firmware lacks live module capability query")
+        record=self.request_v2(MODULE_CAPS)
+        caps=Cable.parse_capabilities(record)
+        if caps["cable_only"]:
+            if key is not None:
+                raise InstallError("Radio is cable-only, not keyed")
+            return caps
+        if key is None:
+            return caps
+        if len(key)!=16 or key==k6mod.PLACEHOLDER:
+            raise InstallError("Invalid module key")
+        nonce=secrets.token_bytes(16)
+        proof=self.request_v2(MODULE_CAPS,0,nonce)
+        if len(proof)!=25 or proof[:16]!=record or proof[16]!=0:
+            raise InstallError("Live capability proof refused or changed")
+        tag=k6mod.siphash24(key,b"K6CAPAU1"+record+nonce).to_bytes(8,"little")
+        if not hmac.compare_digest(tag,proof[17:]):
+            raise InstallError("Live capability proof did not match the expected key")
+        return dict(caps,authenticated=True)
+
+    def library_limit(self,features=None):
+        from k6_live_v2 import LIB_MAX,RAM_MAX
+        if features is None:
+            features=self.capabilities()["features"]
+        if "lib_mutate" not in features:
+            raise InstallError("Firmware lacks live library mutations")
+        return min(self.info()["arena"]-4096,LIB_MAX if "lib_large" in features else RAM_MAX)
 
     def set_mode(self, mode, wide=False):
         if mode not in MODES or not isinstance(wide, bool):
@@ -251,10 +285,10 @@ class LiveLink(CpsLink):
 
     @staticmethod
     def _library_envelope(image):
-        from k6_live_v2 import RAM_MAX
+        from k6_live_v2 import LIB_MAX
         image=bytes(image)
-        if not 25<=len(image)<=RAM_MAX or image[:4]!=b"K6M\x01":
-            raise ValueError("Expected K6M envelope up to 4096 bytes")
+        if not 25<=len(image)<=LIB_MAX or image[:4]!=b"K6M\x01":
+            raise ValueError("Expected K6M envelope up to 7168 bytes")
         code,entry,serial,level,flags,tlm,slot=struct.unpack_from("<HHIBBBB",image,4)
         if (code+24!=len(image) or entry>=code or entry&1 or not serial
             or not level or tlm or flags not in (1,9) or slot not in (*range(9),*range(16,32))
@@ -288,6 +322,8 @@ class LiveLink(CpsLink):
         features=self.capabilities()["features"]
         if "lib_mutate" not in features or self.info()["protocol"]!=5:
             raise InstallError("Live mutation requires packed KUL2 firmware")
+        if len(image)>self.library_limit(features):
+            raise InstallError("Envelope exceeds advertised live library staging limit")
         if serial<=self.serial_watermark():
             raise InstallError("Module serial is not newer than radio's replay watermark")
         # Validate directory before staging; no implicit formatting.
@@ -628,7 +664,7 @@ def main():
                 print(json.dumps(link.mutate_library(image,baseline=a.baseline_upload),indent=2))
             elif a.cmd == "verify-module":
                 with a.envelope.open("rb") as f:
-                    image=f.read(4097)
+                    image=f.read(7169)
                 result=link.verify_library_mutation(image)
                 print(json.dumps(result,indent=2))
                 if not result["verified"]:

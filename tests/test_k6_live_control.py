@@ -401,7 +401,7 @@ def test_library_mutation_never_retries_and_verifies(fault):
             self.calls=[]
             self.bank={}
         def capabilities(self):return {"features":["lib_mutate"]}
-        def info(self):return {"protocol":5}
+        def info(self):return {"protocol":5,"arena":11776}
         def serial_watermark(self):return 6
         def library_directory(self):
             if fault=="read_error" and self.calls[-1:]==[LIB_COMMIT]:
@@ -440,7 +440,7 @@ def test_library_read_only_recovery_uses_fresh_directory():
             super().__init__(Port())
             self.bank={24:install}
             self._library_directory={24:(123,42)}
-        def info(self):return {"protocol":5}
+        def info(self):return {"protocol":5,"arena":11776}
         def library_directory(self):
             assert not hasattr(self,"_library_directory")
             self._library_directory={k:(8192,len(v)) for k,v in self.bank.items()}
@@ -455,3 +455,110 @@ def test_library_read_only_recovery_uses_fresh_directory():
     assert link.verify_library_mutation(remove)["verified"]
     assert not link.verify_library_mutation(install)["verified"]
     assert not link.port.writes
+
+
+@pytest.mark.parametrize("keyed", [True,False])
+def test_live_module_capability_proof(keyed):
+    from modem import k6mod
+    from k6_live_v2 import decode_request,MODULE_CAPS
+    from k6_live import CAPS
+    key=bytes(range(16))
+    record=b"K6CP"+bytes([2,1|(8 if keyed else 16),23,0])+b"12345678"
+    seen=[]
+    def respond(w):
+        if w.startswith(b"FLXLV1"):
+            return cps_frame(w[6],w[7],b"\0FLCP\x01"+struct.pack("<I",1<<14))
+        cmd,seq,arg,p=decode_request(w)
+        assert cmd==MODULE_CAPS and arg==0
+        if p:
+            assert len(p)==16
+            seen.append(p)
+            return cps_frame(cmd,seq,b"\0"+record+b"\0"+
+                k6mod.siphash24(key,b"K6CAPAU1"+record+p).to_bytes(8,"little"))
+        return cps_frame(cmd,seq,b"\0"+record)
+    link=LiveLink(Port(respond))
+    assert link.module_capabilities()["cable_only"]!=keyed
+    if keyed:
+        assert link.module_capabilities(key)["authenticated"]
+        with pytest.raises(InstallError,match="expected key"):
+            link.module_capabilities(b"\xff"*16)
+        assert len(seen)==2 and seen[0]!=seen[1]
+    else:
+        with pytest.raises(InstallError,match="cable-only"):
+            link.module_capabilities(key)
+        assert not seen
+
+
+def test_live_library_limit_is_advertised_and_ram_limit_unchanged():
+    from k6_live_v2 import RAM_MAX,LIB_MAX
+    class L(LiveLink):
+        def info(self):return {"protocol":5,"arena":11776}
+    link=L(Port())
+    assert link.library_limit(["lib_mutate"])==4096
+    assert link.library_limit(["lib_mutate","lib_large"])==7168
+    assert RAM_MAX==4096 and LIB_MAX==7168
+    with pytest.raises(InstallError):
+        link.library_limit([])
+
+
+def test_live_installer_plan_and_remove(tmp_path,monkeypatch):
+    import k6_install as ki
+    from modem import k6mod
+    class L:
+        def __init__(self):
+            self.bank={}; self.mutations=[]
+        def status(self):return {"standby_idle":True,"transmitting":False,"sleeping":False}
+        def module_capabilities(self,key=None):
+            return {"cable_only":True,"module_loader":True,"module_api_max":23,"build_id":"0102030405060708"}
+        def info(self):return {"protocol":5,"slots":32,"arena":11776,"build_id":bytes.fromhex("0102030405060708")}
+        def library_limit(self):return 7168
+        def library_directory(self):return {k:(8192,len(v)) for k,v in self.bank.items()}
+        def library_read(self,slot,n):return (self.bank.get(slot,b"")+b"\xff"*n)[:n]
+        def serial_watermark(self):return 20
+        def mutate_library(self,img):
+            self.mutations.append(img)
+            if img[13]==9:del self.bank[img[15]]
+            else:self.bank[img[15]]=img
+    link=L()
+    quiet=lambda *a:None
+    def entry(slot,n=4):
+        path=tmp_path/f"module{slot}-{n}.bin";path.write_bytes(b"\x2a\x20\x70\x47"+bytes(n-4))
+        return {"kind":"module","name":"test","slot":slot,"path":str(path),"level":1}
+    monkeypatch.setattr(k6mod,"bin_entry",lambda _:0)
+    good=entry(24)
+    for invalid in (entry(25,7200),dict(entry(9),kind="page"),dict(entry(25),level=99),good):
+        with pytest.raises(InstallError):
+            ki.live_load(link,{"library":[good,invalid]},None,ki.Serials(10),quiet)
+        assert not link.mutations
+    link.bank[25]=b"K6T\x09"+b"x"*20
+    with pytest.raises(InstallError):ki.live_load(link,{"library":[good,entry(25)]},None,ki.Serials(10),quiet)
+    assert not link.mutations
+    ki.live_load(link,{"library":[good]},None,ki.Serials(10),quiet,required_caps=["module_loader"])
+    assert len(link.mutations)==1 and link.bank[24][13]==1
+    ki.live_load(link,{"library":[good]},None,ki.Serials(10),quiet)
+    assert len(link.mutations)==1  # unchanged signed module not rewritten
+    with pytest.raises(InstallError):ki.live_remove(link,[24,25],False,None,ki.Serials(30),True,quiet)
+    assert len(link.mutations)==1
+    ki.live_remove(link,[],True,None,ki.Serials(30),True,quiet)
+    assert set(link.bank)=={25} and link.mutations[-1][13]==9
+
+
+def test_bench_preflight_readonly_and_identity_mismatch(tmp_path):
+    from k6_live_bench import validate
+    class L:
+        def status(self):
+            return {"standby_idle":True,"transmitting":False,"sleeping":False,"vfos":[{}],"master":0}
+        def capabilities(self):
+            return {"features":["bulk_read","fast_upload"]}
+        def info(self):return {"protocol":5,"build_id":b"12345678"}
+        def negotiate_download(self):return 500000
+        def negotiate_upload(self,features):return 192000
+        def read(self,addr,n):return bytes(n)
+    link=L();report={"steps":[]}
+    with pytest.raises(InstallError,match="Unexpected firmware"):
+        validate(link,tmp_path,report,expected_build="bad")
+    assert [s["name"] for s in report["steps"]]==["identity"]
+    report={"steps":[]}
+    validate(link,tmp_path,report,expected_build=b"12345678".hex())
+    assert [s["name"] for s in report["steps"]]==["identity","download","upload_probe","calibration","final"]
+    assert (tmp_path/"report.json").is_file()

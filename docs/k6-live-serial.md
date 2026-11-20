@@ -372,7 +372,7 @@ READY, failed recovery, explicit busy and no automatic commit/replay.
 Capability bit 13 (lib_mutate) requires the expanded-stack SPI library
 and KUL2 user store. It does not appear in fixed-slot firmware. No
 automatic storage migration, formatting, legacy handshake or reboot.
-The first version accepts exact K6M envelopes up to 4096 bytes
+The first version accepted 4096 bytes; capability bit 15 (lib_large) raises the limit to 7168 bytes. The current version accepts exact K6M envelopes up to 7168 bytes
 (including header/tag) in ordinary slots 0–8 and 16–31. Supported flags
 are LIB (1) and LIB|REMOVE (9), with nonzero supported API level and
 zero telemetry field; removal must contain the exact K6ERASE payload
@@ -434,7 +434,7 @@ publishing the new directory magic and verifies writes. Removed and
 superseded bytes can persist in unallocated sectors until reuse:
 removal is logical, not secure physical erasure.
 
-This is not yet the Catalog/pack installer default. Large modules,
+Ordinary Catalog and format-1 bundle installs/removals now default to live serial. Pack provisioning still uses the explicit legacy pipeline. Larger modules outside the advertised capacity,
 system bundles, fixed-slot mutation, themes and resident providers
 continue to use their existing explicit legacy workflows. Physical
 flash timing, interrupted-power recovery and button/audio behavior
@@ -448,3 +448,65 @@ compiled-image tests passed on the corrected cable-only packed firmware
 Repeated builds exposed and fixed an accumulating watchdog guard in
 apply-lean-txdog.py. Two corrected builds match byte-for-byte outside
 their 8-byte GNU linker build IDs. No physical flash or radio tests.
+
+### Live installer integration and expanded staging
+
+Bit 14 (module_caps) adds V2 opcode 0x7c, arg zero, empty payload
+for the 16-byte K6CP module capability record or 16-byte nonce for
+the 25-byte record/status/SipHash proof. Legacy and live use the same
+record and domain-separated K6CAPAU1 proof. This reports firmware
+identity, not an independent measurement of its flash contents.
+Live INFO now supplies the build ID for lean SPI-library hosts too.
+Bit 15 (lib_large) allows persistent envelopes through 7168 bytes
+while keeping 4608 bytes available in the 11776-byte arena. RAM
+execution remains limited to 4096 bytes. Older bit-13-only live
+firmware retains 4096-byte capacity.
+
+The format-1 installer and Catalog preflight authentication, build
+ID, API and required services, slot allocation, protected objects,
+duplicate destinations and every selected envelope size before the
+first write. Exact unchanged signed bundles are skipped. Each change
+is committed once and verified; batches are not a single atomic
+transaction. If any commit fails, subsequent entries are not sent.
+The installer never falls back to the legacy loader implicitly.
+Use load/remove-slot/remove-slots --legacy explicitly where needed.
+
+### Physical acceptance test
+
+Keep physical radio access exclusive; coordinate with the CW and
+GP0 research agents. Test in awake RX standby, no PTT, stable supply,
+and with an appropriate antenna or dummy load. First identify the
+installed image and the current packed library, then preserve a
+verified full SPI backup and an independently known-good firmware
+image before any MCU flash. Never use the test to implicitly format
+or migrate storage. Confirm actual build ID before mutation.
+
+Read-only acceptance test (no loader, reset, tuning or TX command):
+
+    python3 tools/k6_live_bench.py --port /dev/ttyUSB0 --output-dir ~/flux-bench/live-read --backup
+
+The report contains status, identity, selected baud rates, elapsed
+times, repeated calibration verification and backup hash. This works
+only on live-enabled firmware with the negotiated transports.
+
+Once the exact test image is installed and an ordinary empty slot
+has been identified, explicitly permit a module lifecycle test:
+
+    python3 tools/k6_live_bench.py --port /dev/ttyUSB0 --output-dir ~/flux-bench/live-lifecycle --backup --expect-build-id BUILD_ID --exercise-slot EMPTY_SLOT
+
+The test executes a four-byte return-42 Thumb routine with no RF
+calls, checks its RAM job cache, installs it into the empty slot,
+runs it, removes it and verifies unchanged logical allocations,
+calibration and VFO settings. Keyed hosts use --key-file. It saves
+signed envelopes before sending and durable checkpoints throughout.
+A failure stops immediately without automatic cleanup, retry or
+legacy fallback. No intentional transmission or power cut. The
+physical pass must check display responsiveness, no resets and
+actual link reliability; emulation is not electrical validation.
+
+Expanded-staging checkpoint: 73 host tests passed (27 optional tests
+skipped), and all eight compiled-image emulator tests passed, including
+the exact 7168-byte persistent replacement and full readback. The
+bench script is tested with a mock for its read-only path. Firmware
+114012 bytes, arena 11776, stack reservation 6304, 280 bytes free RAM0.
+Candidate build ID 1c66cf6e9171a15f. Physical tests remain outstanding.

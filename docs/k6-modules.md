@@ -419,9 +419,12 @@ into the shared block first, as an upload does; reading 11.7 KB takes about 16 m
   module image never runs straight from an install packet, even on an image without the
   library (km_packet leaves it unarmed).
 - **Remove:** `python3 tools/k6_install.py --port PORT remove-slot N` sends a module-key-signed
-  `K6ERASE` request (the normal checked cable chunk path, with a new signed flag). Firmware only
-  accepts module slots 0-8 and 16-31, confirms the stored header marks a module rather than a page
-  or deck, erases all four 4 KB sectors in the slot and verifies the entire 16 KB reads as `0xFF`.
+  `K6ERASE` request, normally through live serial on packed KUL2 firmware. Firmware only
+  accepts module slots 0-8 and 16-31, confirms the stored header marks an ordinary module rather
+  than protected data, commits a new directory and verifies logical absence. Removed bytes can
+  remain in free sectors until reuse. Explicit `--legacy` selects the rebooting cable chunk
+  path for older firmware; fixed-slot storage erases all four 4 KB sectors and verifies 16 KB
+  reads as `0xFF`.
   The CLI asks you to type `ERASE`; `--yes` skips that prompt for an explicit caller. This never
   erases codebooks, calibration, pages, cards, or another slot.
 - **Run:** `python -m modem.k6 ctl OUT.wav --action lib --slot N` (control action 11, the slot

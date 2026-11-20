@@ -24,6 +24,9 @@ const UPLOAD_PROBE:u8=0x76;
 const RAM_FAST_BEGIN:u8=0x77;
 #[cfg(all(feature="spilib",k6_ram0_stack))]
 const RAM_READY:u8=0x78;
+#[cfg(feature="spilib")]
+const MODULE_CAPS:u8=0x7c;
+const LIB_STAGE_MAX:usize=7168;
 #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store))]
 const LIB_BEGIN:u8=0x79;
 #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
@@ -203,7 +206,7 @@ fn ram_allowed(app:&mut App)->bool {
 fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool, library:bool)->Option<(u8,i32)> {
     use crate::hal::{arena,uptime};
     let n=req.arg as usize;
-    if !payload.is_empty() || n<25 || n>4096 || n+4096>arena::ARENA_BYTES {
+    if !payload.is_empty() || n<25 || n>(if library {LIB_STAGE_MAX} else {4096}) || n+4096>arena::ARENA_BYTES {
         reply(req,&[INVALID]);return None;
     }
     if !ram_allowed(app) || uart::binary_mode() || !app.live_ram_begin() {
@@ -363,6 +366,18 @@ unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
         LIB_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false,true);}
         #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
         LIB_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true,true);}
+        #[cfg(feature="spilib")]
+        MODULE_CAPS if req.arg==0 && (f.payload().is_empty() || f.payload().len()==16)=>{
+            let record=super::module_capability_record();
+            if f.payload().is_empty() {reply_v2(&req,&record);}
+            else {
+                unsafe extern "C" {fn km_capability_proof(record:*const u8,nonce:*const u8,tag:*mut u8)->i32;}
+                let mut d=[0u8;25];
+                d[..16].copy_from_slice(&record);
+                d[16]=unsafe{km_capability_proof(record.as_ptr(),f.payload().as_ptr(),d[17..].as_mut_ptr())} as u8;
+                reply_v2(&req,&d);
+            }
+        }
         _=>reply(&req,&[INVALID]),
     }
 }
@@ -479,7 +494,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(k6_serial_transport) {128} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0}
-                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192} else {0};
+                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192 | 32768} else {0}
+                | if cfg!(feature="spilib") {16384} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;
@@ -526,7 +542,7 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             d[5]=if cfg!(k6_user_store) {5} else if cfg!(k6_designer) {4} else {2};
             d[6]=32;
             d[7..9].copy_from_slice(&(crate::hal::arena::ARENA_BYTES as u16).to_le_bytes());
-            #[cfg(feature="voice-explore")]
+            #[cfg(any(feature="voice-explore",feature="spilib"))]
             {
                 unsafe extern "C" {static k6_build_id:[u8;8];}
                 d[9..].copy_from_slice(unsafe{&*core::ptr::addr_of!(k6_build_id)});

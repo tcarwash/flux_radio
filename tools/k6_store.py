@@ -895,7 +895,7 @@ def create_app(store: ModuleStore | None = None):
                     slot["source"] = {"id": repo["id"], "title": repo["title"]}
                     break
         return render_template("radio.html", inventory={"ok": result.returncode == 0,
-                               "output": output, "slots": slots, "protocol": protocol}, port=port,
+                               "output": output, "slots": slots, "protocol": protocol, "legacy": request.form.get("legacy")=="1"}, port=port,
                                key_file=key_file, action_result=None)
 
     @app.post("/radio/remove-theme")
@@ -974,7 +974,7 @@ def create_app(store: ModuleStore | None = None):
                 abort(400)
             args = ("remove-slots", ",".join(map(str, slots)), "--yes")
         try:
-            command = cable_command(*args)
+            command = cable_command(*args, *(["--legacy"] if request.form.get("legacy")=="1" else []))
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("settings_page"))
@@ -1036,7 +1036,7 @@ def create_app(store: ModuleStore | None = None):
             flash(str(exc), "error")
             return redirect(url_for("detail", repo_id=repo_id))
         try:
-            command = cable_command("load", str(repo["bundle"]["path"]), *flags)
+            command = cable_command("load", str(repo["bundle"]["path"]), *flags, *(["--legacy"] if request.form.get("legacy")=="1" else []))
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("settings_page"))
@@ -1135,6 +1135,7 @@ def main(argv=None) -> int:
     install.add_argument("--port", required=True)
     install.add_argument("--key-file")
     install.add_argument("--verify", action="store_true")
+    install.add_argument("--legacy",action="store_true",help="explicitly use rebooting legacy loader")
     install.add_argument("--experimental", action="store_true", help="acknowledge experimental module limitations")
     args = parser.parse_args(argv)
     store = ModuleStore(args.config, args.cache)
@@ -1180,6 +1181,8 @@ def main(argv=None) -> int:
             command += ["load", str(repo["bundle"]["path"]), *catalog_install_flags(repo, args.experimental)]
             if args.verify:
                 command.append("--verify")
+            if args.legacy:
+                command.append("--legacy")
             return subprocess.run(command).returncode
     except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
         print(f"k6-store: {exc}", file=sys.stderr)

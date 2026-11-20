@@ -28,7 +28,9 @@
         {% if repo.install_blocked %}<p class="radio-note"><strong>Installation blocked:</strong> {{ repo.blocked_reason or 'This module needs an FD6818B port or further development.' }}</p>{% else %}
         <form method="post" action="{{ url_for('install', repo_id=repo.id) }}" class="install-form">
           {% if repo.status == 'experimental' %}<label class="check"><input type="checkbox" name="experimental" value="yes" required> I understand this module is experimental and not fully hardware validated.</label>{% endif %}
-          <label class="check"><input type="checkbox" name="verify" value="yes"> Read back installed slots to verify</label>
+          <p class="radio-note">Live installation verifies every write and does not reboot. Requires live-enabled packed firmware.</p>
+          <label class="check"><input type="checkbox" name="legacy" value="1"> Use legacy loader (reboots; required for older firmware or system bundles)</label>
+          <label class="check"><input type="checkbox" name="verify" value="yes"> Also verify legacy installs</label>
           <button type="submit" {% if not radio_settings.port %}disabled{% endif %}>Install on radio</button>
         </form>{% endif %}
         {% if result %}<pre class="install-result {{ 'ok' if result.ok else 'failed' }}">{{ result.output or 'Installer finished without output.' }}</pre>{% endif %}

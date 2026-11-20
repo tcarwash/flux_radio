@@ -5,7 +5,8 @@ The instruction book is docs/manual/install.md; this is the tool it walks you th
   python3 tools/k6_install.py install BUNDLE        everything, step by step (a new radio, or an update)
   python3 tools/k6_install.py backup -o FILE        the radio's whole 2 MB SPI flash (calibration included)
   python3 tools/k6_install.py flash IMAGE           key an image with your key and flash it
-  python3 tools/k6_install.py load BUNDLE           EXPLORE's pages, the help deck and the modules
+  python3 tools/k6_install.py load BUNDLE           ordinary modules, live serial (no reboot)
+  python3 tools/k6_install.py load BUNDLE --legacy  system pages/decks or older firmware
   python3 tools/k6_install.py status                what the radio runs and what its library holds
   python3 tools/k6_install.py key                   make your module key (once)
   python3 tools/k6_install.py bundle OUT -o DIR     a release folder from the Flux build output or CI
@@ -1084,6 +1085,109 @@ def load(c, bundle, key, serials, log=print, only=None, verify=False, force=Fals
     write_entries(c, entries, key, serials, log, verify)
 
 
+def live_ready(link, key_file=None, log=print):
+    """Verify current firmware and its module key without a legacy handshake."""
+    state=link.status()
+    if not state["standby_idle"] or state["transmitting"] or state["sleeping"]:
+        raise InstallError("Radio must be awake in idle standby")
+    caps=link.module_capabilities()
+    if not caps["cable_only"]:
+        key=k6mod.read_key(find_key(key_file,log=log))
+        caps=link.module_capabilities(key)
+        if not caps["authenticated"]:
+            raise InstallError("Live module key proof was not verified")
+    else:
+        if key_file:
+            # Match legacy cable_key behavior: cable-only ignores the configured key.
+            log("  cable-only firmware: configured key not used")
+        key=None
+    info=link.info()
+    if info["protocol"]!=5 or not info["build_id"] or info["build_id"].hex()!=caps["build_id"]:
+        raise InstallError("Live writer requires matching packed KUL2 firmware; use explicit --legacy for older images")
+    limit=link.library_limit()
+    log(f"  live serial: {limit} B staging, API {caps['module_api_max']}, storage protocol 5")
+    return caps,key,limit
+
+
+def live_load(link, bundle, key_file, serials, log=print, only=None, required_caps=()):
+    """Plan the entire ordinary-module batch before touching SPI."""
+    entries=[e for e in bundle["library"] if only is None or e.get("slot") in only]
+    if not entries:
+        raise InstallError("No selected library entries")
+    if any(e["kind"]!="module" or (e.get("slot") is not None and e["slot"] not in AUTO_SLOTS) for e in entries):
+        raise InstallError("System pages/decks require explicit load --legacy; no live writes issued")
+    caps,key,limit=live_ready(link,key_file,log)
+    missing=[cap for cap in required_caps if not caps.get(cap)]
+    if missing:
+        raise InstallError("Radio lacks required capability: "+", ".join(missing))
+    if any(not 1<=e.get("level",1)<=caps["module_api_max"] for e in entries):
+        raise InstallError("Module API not supported by this firmware")
+    entries=allocate_slots(link,entries,link.info(),key)
+    slots=[e["slot"] for e in entries]
+    if len(set(slots))!=len(slots) or any(type(slot) is not int or slot not in AUTO_SLOTS for slot in slots):
+        raise InstallError("Duplicate or invalid module destination; no live writes issued")
+    directory=link.library_directory()
+    serials.advance_after(link.serial_watermark())
+    plan=[]
+    # Check every size, destination and envelope before the first commit.
+    for e in entries:
+        slot=e["slot"]
+        serial=serials.next()
+        if serial>0xffffffff:
+            raise InstallError("Module serial exhausted")
+        image=sign(e,serial,key)
+        if len(image)>limit:
+            raise InstallError(f"Slot {slot} needs {len(image)} B, live limit is {limit}; select explicit --legacy before any writes")
+        if slot in directory:
+            old=link.library_read(slot,directory[slot][1])
+            if (len(old)<25 or old[:4]!=b"K6M"+bytes([k6mod.ABI])
+                or old[13]!=1 or old[15]!=slot or not old[12]
+                or int.from_bytes(old[4:6],"little")+24!=len(old)):
+                raise InstallError(f"Slot {slot} contains protected or unknown data")
+            if (old[:8]==image[:8] and old[12:-8]==image[12:-8]
+                and hmac.compare_digest(old[-8:],k6mod.image_tag(key,old[:-8]))):
+                log(f"  slot {slot}: already verified")
+                continue
+        plan.append((e,image))
+    # One authenticated commit and readback per module; no retry or fallback.
+    for e,image in plan:
+        link.mutate_library(image)
+        log(f"  slot {e['slot']:2d} {e['name']}: installed and verified over live serial")
+    log(f"  {len(plan)} change(s) verified; no reboot requested")
+
+
+def live_remove(link, requested, all_modules, key_file, serials, yes=False, log=print, ask=input):
+    caps,key,limit=live_ready(link,key_file,log)
+    directory=link.library_directory()
+    candidates=list(AUTO_SLOTS) if all_modules else requested
+    if not candidates or len(set(candidates))!=len(candidates) or any(s not in AUTO_SLOTS for s in candidates):
+        raise InstallError("Select unique ordinary module slots 0–8 or 16–31")
+    plan=[]
+    for slot in candidates:
+        extent=directory.get(slot)
+        if extent is not None:
+            h=link.library_read(slot,16)
+            if (extent[1]>=25 and h[:4]==b"K6M"+bytes([k6mod.ABI])
+                and h[13]==1 and h[15]==slot and h[12]
+                and int.from_bytes(h[4:6],"little")+24==extent[1]):
+                plan.append(slot)
+                continue
+        if not all_modules:
+            raise InstallError(f"Slot {slot} is empty, protected or not an ordinary module")
+    if not plan:
+        raise InstallError("No removable ordinary modules")
+    if not yes and ask(f"Erase {len(plan)} module(s) in slots {plan}? Type ERASE: ").strip()!="ERASE":
+        raise InstallError("Erase cancelled")
+    serials.advance_after(link.serial_watermark())
+    if serials.n+len(plan)>0xffffffff:
+        raise InstallError("Module serial exhausted")
+    for slot in plan:
+        image=k6mod.image(b"K6ERASE",0,serials.next(),key,level=1,lib=slot,remove=True)
+        link.mutate_library(image)
+        log(f"  slot {slot} removed and verified over live serial")
+    log("  no reboot requested")
+
+
 def write_entries(c, entries, key, serials, log=print, verify=False, skip_current=False):
     """Write a fully allocated plan and verify each automatic module."""
     order = {"page": 0, "cards": 1, "module": 2}
@@ -1212,7 +1316,7 @@ def cmd_install(a, bundle, port, key, log=print, ask=input):
     c = open_cable(port, log, wait=40.0)
     if not c:
         raise InstallError("the new image doesn't answer on the cable: switch the radio off and on, then run "
-                           f"`{sys.argv[0]} load {a.bundle}`")
+                           f"`{sys.argv[0]} load {a.bundle} --legacy`")
     log("6. Loading EXPLORE's pages, the help deck and the modules over the cable...")
     load(c, bundle, cable_key(c, key, a.key_file, log), serials, log, verify=a.verify)
     c.end()
@@ -1354,6 +1458,7 @@ def main(argv=None, log=None, ask=input):
                                                                    "showing UPDATE")
     f.add_argument("--debug-boot", action="store_true", help="show raw bootloader reply bytes on timeouts")
     ld = sub.add_parser("load", help="the library: EXPLORE's pages, the help deck, the modules")
+    ld.add_argument("--legacy", action="store_true", help="explicitly enter rebooting legacy loader")
     ld.add_argument("bundle")
     ld.add_argument("--only", help="these slots only, e.g. 0,13,26")
     ld.add_argument("--verify", action="store_true")
@@ -1361,9 +1466,11 @@ def main(argv=None, log=None, ask=input):
     ld.add_argument("--require-capability", action="append", default=[], choices=("module_loader", "scanner", "fsk_rx", "designer", "sotto", "ota"), help="refuse before writing if firmware lacks a requested service")
     ld.add_argument("--skip-key-check", action="store_true", help="skip the standalone probe and try the selected image")
     rm = sub.add_parser("remove-slot", help="erase one module slot from the radio")
+    rm.add_argument("--legacy", action="store_true", help="explicitly enter rebooting legacy loader")
     rm.add_argument("slot", type=int, help="module slot number; firmware pages and decks are protected")
     rm.add_argument("--yes", action="store_true", help="confirm erasing this occupied module slot")
     rms = sub.add_parser("remove-slots", help="erase selected module slots or all removable modules")
+    rms.add_argument("--legacy", action="store_true", help="explicitly enter rebooting legacy loader")
     rms.add_argument("slots", nargs="?", help="comma-separated module slots, e.g. 0,3,18")
     rms.add_argument("--all-modules", action="store_true", help="select every occupied removable module slot")
     rms.add_argument("--yes", action="store_true", help="confirm the removal operation")
@@ -1448,6 +1555,27 @@ def main(argv=None, log=None, ask=input):
                 elif not a.power and open_cable(port, log, wait=3.0):
                     how = "cable"
                 flash(port, open(a.image, "rb").read(), key, how, log, ask, a.debug_boot)
+                return 0
+            if a.cmd in ("load","remove-slot","remove-slots") and not a.legacy:
+                from k6_live import LiveLink
+                from k6_port_lock import serial_lock
+                with serial_lock(a.port or port.port):
+                    link=LiveLink(port)
+                    if a.cmd=="load":
+                        if a.force or a.skip_key_check:
+                            raise InstallError("--force/--skip-key-check are legacy-only")
+                        only={int(part) for part in a.only.split(",")} if a.only else None
+                        live_load(link,bundle,a.key_file,Serials(),log,only,a.require_capability)
+                    else:
+                        if a.cmd=="remove-slot":
+                            all_modules=False
+                            slots=[a.slot]
+                        else:
+                            if a.all_modules==bool(a.slots):
+                                raise InstallError("Choose either comma-separated slots or --all-modules")
+                            all_modules=a.all_modules
+                            slots=[int(part) for part in a.slots.split(",")] if a.slots else []
+                        live_remove(link,slots,all_modules,a.key_file,Serials(),a.yes,log,ask)
                 return 0
             c = open_cable(port, log, wait=20.0)
             if not c:
@@ -1583,7 +1711,7 @@ def main(argv=None, log=None, ask=input):
             return 0
         finally:
             port.close()
-    except (InstallError, OSError) as e:
+    except (InstallError, OSError, ValueError) as e:
         log(f"\nstopped: {e}")
         return 1
 

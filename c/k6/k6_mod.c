@@ -162,7 +162,7 @@ int km_live_lib_verify(const uint8_t *a, unsigned n) {
   int r;
   unsigned slot, code;
   km_reset();
-  if (n < KM_HDR + KM_TAG + 1 || n > 4096 || a[12] < 1 || a[14])
+  if (n < KM_HDR + KM_TAG + 1 || n > 7168 || a[12] < 1 || a[14])
     return KM_BAD_HDR;
   slot = a[15];
   if (!(slot <= 8 || (slot >= 16 && slot < KL_SLOTS))) return KM_BAD_HDR;

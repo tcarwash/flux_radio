@@ -417,7 +417,7 @@ def test_bundle_refuses_a_keyed_image(out_dir, tmp_path):
 
 def test_load(bundle, keyfile, monkeypatch):
     radio = Radio()
-    r, log = run(["--key-file", str(keyfile), "load", str(bundle), "--verify"], radio, monkeypatch)
+    r, log = run(["--key-file", str(keyfile), "load", str(bundle), "--legacy", "--verify"], radio, monkeypatch)
     assert r == 0, log
     for slot, flags, name in ((9, 3, ""), (10, 3, ""), (13, 5, ""), (0, 1, "SURF"), (7, 1, "GROUNDWAVE")):
         i = slot_info(radio, slot)
@@ -436,7 +436,7 @@ def test_wrong_key_writes_nothing(bundle, tmp_path, monkeypatch):
     k = tmp_path / "other.key"
     k.write_text("ff" * 16 + "\n")
     radio = Radio()
-    r, log = run(["--key-file", str(k), "load", str(bundle)], radio, monkeypatch)
+    r, log = run(["--key-file", str(k), "load", str(bundle), "--legacy"], radio, monkeypatch)
     assert r == 1 and "another key" in log
     for slot in (0, 7, 9, 13):
         assert slot_info(radio, slot) == {"r": "-1"}
@@ -445,7 +445,7 @@ def test_wrong_key_writes_nothing(bundle, tmp_path, monkeypatch):
 
 def test_pages_for_another_image_are_skipped(bundle, keyfile, monkeypatch):
     radio = Radio(build_id=bytes(8))
-    r, log = run(["--key-file", str(keyfile), "load", str(bundle)], radio, monkeypatch)
+    r, log = run(["--key-file", str(keyfile), "load", str(bundle), "--legacy"], radio, monkeypatch)
     assert r == 0 and "skipping EXPLORE's pages" in log
     assert slot_info(radio, 9) == {"r": "-1"}
     assert slot_info(radio, 0)["r"] == "0" and slot_info(radio, 13)["r"] == "0"

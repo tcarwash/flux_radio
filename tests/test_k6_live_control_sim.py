@@ -324,7 +324,13 @@ def test_compiled_live_library_mutation(simulated_radio,monkeypatch):
     assert link.mutate_library(first,baseline=True)["verified"]
     assert objects(port.board.flash_data[BASE:END])=={24:first,25:other}
     assert link.run_module(24,timeout=5)["result"]==0x6b
-    second=env(floor+2)
+    # Exercise a full new staging allocation and multiple NOR sectors.
+    assert link.library_limit()==7168
+    caps=link.module_capabilities()
+    assert caps["cable_only"] and caps["module_loader"]
+    assert caps["build_id"]==link.info()["build_id"].hex()
+    second=k6mod.image(code+bytes(7168-24-len(code)),entry,floor+2,None,level=1,lib=24)
+    assert len(second)==7168
     assert link.mutate_library(second)["verified"]
     assert objects(port.board.flash_data[BASE:END])=={24:second,25:other}
     delete=k6mod.image(b"K6ERASE",0,floor+3,None,level=1,lib=24,remove=True)

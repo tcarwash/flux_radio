@@ -112,3 +112,14 @@ legacy fallback. CLI can save exact envelope for recovery. Remaining:
 large-object staging, Catalog integration, typed management of system
 objects and physical validation. Fixed-slot upgrades remain explicit
 legacy operations to avoid promising atomicity they do not have.
+
+### Installer integration / larger uploads
+
+Live capability/key proof shares the legacy K6CP record; lean INFO
+reports the linker build ID. Persistent staging up to 7168 bytes,
+RAM execution unchanged. Format-1 load and module removals default
+to live; Catalog inherits this and offers explicit legacy mode.
+System/pack provisioning still uses the legacy path. A guarded
+read-only bench tool and explicitly authorized empty-slot lifecycle
+test document the next physical acceptance pass. Coordinate access
+with all RF research agents before contacting or flashing hardware.

@@ -97,7 +97,7 @@ insufficient space and a full library are refused before library writes. `load -
 by fixed manifest slots and therefore does not select automatic entries; omit it for these bundles.
 Fixed-slot format-1 entries continue to work as before and can overwrite their specified slots.
 
-An automatic update is in-place and can be interrupted by power loss. The signature authorizes
+Live installation is the default for ordinary modules on packed KUL2 firmware. It uses copy-on-write publication and full readback, with no reboot. An explicit `load --legacy` (or the Catalog legacy checkbox) is required for older firmware, system bundles, and envelopes exceeding the negotiated capacity. Fixed-slot legacy updates are in-place and can be interrupted by power loss. The signature authorizes
 native code; it does not sandbox it. Keep a backup and install only trusted modules.
 
 ## CLI
@@ -116,7 +116,7 @@ python3 tools/k6_install.py --port /dev/ttyUSB0 remove-slot 30
 Add prints the catalog ID used by the other commands. `install` calls `tools/k6_install.py load`
 with the selected repository's bundle. The browser offers the same explicit action and shows the
 installer's output. This module-install action only loads library entries in the
-module manifest; the separate firmware builder can flash firmware.
+module manifest; the separate firmware builder can flash firmware. Live removal is the default. For older firmware, explicitly select legacy inventory mode before using removal actions, or pass `--legacy` to `remove-slot` or `remove-slots`. No automatic legacy fallback is performed.
 
 ## README content
 
