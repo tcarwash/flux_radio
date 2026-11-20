@@ -21,9 +21,9 @@ available; do not interrupt another bench job. In normal VFO standby, use:
     python3 tools/k6_live.py --port /dev/ttyUSB0 watch --interval 0.5
 
 Use the actual K6 port (not an attached rig's port). The Catalog's My Radio
-panel also exposes status and VFO tuning. Memories uses the live API by
-default; its explicitly selected legacy checkbox restores the older rebooting
-read path. No fallback is automatic, including on timeout. Older firmware
+panel exposes status, VFO tuning and experimental API-25 cooperative
+module Run/Stop controls. Memories uses the live API by default; its
+explicitly selected legacy checkbox restores the older rebooting read path. No fallback is automatic, including on timeout. Older firmware
 will not respond to live requests. The Catalog memory programming and recovery retain the loader; the live bank read preserves native decoding and pending-write identity. The Catalog library inventory uses live reads by default in the primary-transport branch; module install/remove still use the old loader.
 
 ## Wire protocol
@@ -782,3 +782,18 @@ new build passed the compiled-FW cooperative cancellation test.
 The physical radio was deliberately left on the fully tested
 ce46aac935c96e97 build rather than flashed again just to change
 its self-reported ID.
+
+
+## Catalog cooperative runner acceptance
+
+The Catalog's My radio panel now has an API-25 module runner, disabled
+until the server administrator explicitly sets `FLUX_CATALOG_COOP_ENABLED=1`
+(loopback only) or additionally `FLUX_CATALOG_COOP_REMOTE=1` with external
+authentication. It uses single-job serial-port ownership, CSRF/session ownership checks,
+a separate foreground worker, streamed reports, and one-shot stop
+requests. An uncertain result blocks further launches until a successful
+read-only idle-radio recheck. A button press is **not** proof the module
+stopped; only a returned, acknowledged -125 job is reported cancelled.
+The Catalog never automatically uploads, executes, or flashes modules.
+
+See [release hardening and remaining physical safety tests](k6-live-release-checklist.md).

@@ -77,7 +77,9 @@ if "pub fn live_module_idle(" not in app.read_text():
     pub fn live_module_idle(&mut self) -> bool {
         if self.mode() != Mode::Standby || self.is_transmitting()
             || self.cw_key_down() || self.radio_mut().ptt_asserted()
-            || self.power_save_is_asleep() { return false; }
+            || self.power_save_is_asleep()
+            || crate::board::power_switch_off(unsafe { &*kd32f328_pac::Gpioa::ptr() })
+            { return false; }
         #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
         if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
         true
@@ -164,7 +166,9 @@ if "pub fn live_set_mode(" not in app.read_text():
     pub(crate) fn live_cat_idle(&mut self) -> bool {
         if self.mode()!=Mode::Standby || self.is_transmitting() || self.cw_tx_active
             || self.cw_key_down() || self.radio_mut().ptt_asserted()
-            || self.power_save_is_asleep() { return false; }
+            || self.power_save_is_asleep()
+            || crate::board::power_switch_off(unsafe { &*kd32f328_pac::Gpioa::ptr() })
+            { return false; }
         #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
         if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
         true
@@ -206,13 +210,37 @@ if "pub(crate) fn live_bulk_idle(" not in app.read_text():
            '''    #[cfg(all(k6_live_serial,k6_serial_transport))]
     pub(crate) fn live_bulk_idle(&mut self) -> bool {
         if self.mode()!=Mode::Standby || self.is_transmitting() || self.cw_tx_active
-            || self.cw_key_down() || self.radio_mut().ptt_asserted() { return false; }
+            || self.cw_key_down() || self.radio_mut().ptt_asserted()
+            || self.power_save_is_asleep()
+            || crate::board::power_switch_off(unsafe { &*kd32f328_pac::Gpioa::ptr() })
+            { return false; }
         #[cfg(all(k6_vfo_probe, k6_vfo_spi_probe, k6_vfo_selector, not(k6_no_fsk_rx), feature = "blowfang-host"))]
         if self.resident_selected[self.master] || self.resident_selected[self.watching] { return false; }
         true
     }
 
     pub fn master_index(&self) -> usize {''')
+
+# Existing build worktrees retain generated app/mod.rs; upgrade the three
+# guards in place as well as on a clean source overlay. A power-off MCU may
+# keep running while the local switch and RF path are already off.
+guard = '|| crate::board::power_switch_off(unsafe { &*kd32f328_pac::Gpioa::ptr() })'
+old = '            || self.power_save_is_asleep() { return false; }'
+new = '            || self.power_save_is_asleep()\n            ' + guard + '\n            { return false; }'
+text = app.read_text()
+if text.count(old) == 2:
+    text = text.replace(old, new)
+elif text.count(new) not in (2, 3):
+    raise SystemExit("live serial: cannot locate exactly two module/CAT power guards")
+old_bulk = '            || self.cw_key_down() || self.radio_mut().ptt_asserted() { return false; }'
+new_bulk = ('            || self.cw_key_down() || self.radio_mut().ptt_asserted()\n'
+            '            || self.power_save_is_asleep()\n'
+            '            ' + guard + '\n            { return false; }')
+if old_bulk in text:
+    text = text.replace(old_bulk, new_bulk, 1)
+elif new_bulk not in text:
+    raise SystemExit("live serial: cannot locate bulk read power guard")
+app.write_text(text)
 
 # V2 prefix is recognized separately so body bytes are never passed to the
 # legacy detector. Keep the V1 sliding-window path untouched.

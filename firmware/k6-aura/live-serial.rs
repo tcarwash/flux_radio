@@ -613,7 +613,10 @@ pub fn dispatch(app: &mut App, syst: &mut SYST, req: Request) {
 
 fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
     // No SPI or tuning while transmitting, asleep, or an app owns the RF path.
+    // The CPU can remain awake after the switch opens. Never advertise
+    // that interval as an idle, safe-to-launch radio state.
     let idle = app.mode() == Mode::Standby && !app.is_transmitting()
+        && !crate::board::power_switch_off(unsafe{&*kd32f328_pac::Gpioa::ptr()})
         && !app.cw_key_down() && !app.radio_mut().ptt_asserted();
     match req.cmd {
         STATUS if req.arg == 0 => {

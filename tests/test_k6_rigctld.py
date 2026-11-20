@@ -138,3 +138,60 @@ def test_real_hamlib_rx_meter(server):
                           capture_output=True,text=True,timeout=10)
     assert result.returncode==0, result.stderr
     assert result.stdout.splitlines()==["-12","1"],result.stdout
+
+
+def test_capability_advertisement_is_consistent_with_setters():
+    link=CatLink()
+    for features,can_tune,can_vfo in [
+        (["status"],False,False),
+        (["status","tune"],True,False),
+        (["status","tune","vfo"],True,True),
+    ]:
+        rig=Rig(link,features)
+        capabilities=rig.execute(r"\dump_state")
+        assert f"has_set_freq={int(can_tune)}" in capabilities
+        assert f"has_set_vfo={int(can_vfo)}" in capabilities
+        assert rig.execute("F 146550000")==("RPRT 0\n" if can_tune else "RPRT -11\n")
+        assert rig.execute("V VFOB")==("RPRT 0\n" if can_vfo else "RPRT -11\n")
+        for cmd in ("T 1","T 0",r"\set_ptt 1",r"\set_ptt 0",
+                    r"\set_powerstat 0","L SQL 5"):
+            assert rig.execute(cmd)=="RPRT -11\n"
+
+
+def test_discovery_on_real_hamlib_does_not_advertise_ptt(socket_enabled):
+    link=CatLink()
+    with Server(("127.0.0.1",0),Rig(link,["status","tune","mode","vfo"])) as server:
+        worker=threading.Thread(target=server.serve_forever,daemon=True)
+        worker.start()
+        try:
+            with socket.create_connection(server.server_address,timeout=2) as sock:
+                sock.sendall(b"\\dump_state\n")
+                buf=b""
+                while b"done\n" not in buf:
+                    part=sock.recv(8192)
+                    assert part
+                    buf+=part
+                data=buf.decode("ascii")
+                assert "has_set_vfo=1" in data and "has_set_freq=1" in data
+                assert "ptt_type=0x0" in data
+                assert "0x0\n0x0\n0x40000000" in data
+            result=subprocess.run(
+                ["rigctl","-m","2","-r",
+                 f"127.0.0.1:{server.server_address[1]}","t"],
+                capture_output=True,text=True,timeout=10)
+            assert result.returncode==0 and result.stdout.strip()=="0"
+        finally:
+            server.shutdown()
+            worker.join(timeout=2)
+
+
+def test_bad_commands_do_not_mutate_radio():
+    link=CatLink()
+    rig=Rig(link,["status","tune","mode","vfo"])
+    initial=link.status()
+    for command in ("F 433500000.5","F 0","F nan","F -1",
+                    "M FM 2000","M BOGUS 0","V Other",
+                    "T 1","T 0",r"\set_ptt 1",
+                    "Z 123","l UNKNOWN","l ? UNKNOWN"):
+        assert rig.execute(command) in ("RPRT -1\n","RPRT -11\n")
+    assert link.status()==initial

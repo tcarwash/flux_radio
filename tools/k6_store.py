@@ -401,6 +401,8 @@ def create_app(store: ModuleStore | None = None):
     app.config["build_jobs"] = build_jobs
     app.config["module_store"] = catalog
     app.config["theme_library"] = theme_library
+    from k6_catalog_coop import CoopJobs
+    app.config["cooperative_jobs"] = CoopJobs()
 
     # Persist only the last port on the local server, not the signing key.
     # Restored preferences are a suggestion until explicitly confirmed.
@@ -437,9 +439,25 @@ def create_app(store: ModuleStore | None = None):
             command += ["--key-file", settings["key_file"]]
         return command + list(args)
 
+    def coop_allowed():
+        # Native modules are unrestricted executable code, not an ordinary
+        # unauthenticated Catalog read. Enabling this feature is an explicit
+        # administrator decision. Proxied remote deployments must supply
+        # their own access control before enabling remote clients.
+        local_peer = request.remote_addr in ("127.0.0.1", "::1")
+        # Also refuse a forwarded public Host header by default: a local
+        # reverse proxy may appear as 127.0.0.1 to Flask.
+        local_host = request.host.rsplit(":", 1)[0].strip("[]").lower() in (
+            "localhost", "127.0.0.1", "::1")
+        return (os.environ.get("FLUX_CATALOG_COOP_ENABLED") == "1"
+                and ((local_peer and local_host)
+                     or os.environ.get("FLUX_CATALOG_COOP_REMOTE") == "1"))
+
     @app.context_processor
     def inject_radio_settings():
-        return {"radio_settings": radio_settings(), "live_radio_token": session.setdefault("live_radio_token", secrets.token_urlsafe(32))}
+        return {"radio_settings": radio_settings(),
+                "live_radio_token": session.setdefault("live_radio_token", secrets.token_urlsafe(32)),
+                "live_coop_allowed": coop_allowed()}
 
     @app.get("/memories")
     def memories_page():
@@ -517,6 +535,60 @@ def create_app(store: ModuleStore | None = None):
                 return jsonify(link.status() if action == "status" else link.tune(hz))
         except (InstallError, OSError, ValueError) as exc:
             return jsonify(error=str(exc)), 502
+
+    @app.post("/radio/coop/<action>")
+    def radio_cooperative(action):
+        # No browser request talks directly to UART during a native run.
+        # The private server worker retains the exclusive process port lock.
+        from k6_catalog_coop import CoopJobs
+        from k6_install import InstallError
+        if not coop_allowed():
+            return jsonify(error="Native module controls are disabled or require local access."), 403
+        if action not in ("current", "start", "status", "cancel", "recover"):
+            return jsonify(error="Unsupported cooperative action"), 404
+        data = request.get_json(silent=True)
+        owner = session.get("live_radio_token", "")
+        if not isinstance(data, dict) or not owner or not secrets.compare_digest(
+                owner, str(data.get("token", ""))):
+            abort(403)
+        jobs: CoopJobs = app.config["cooperative_jobs"]
+        if action == "current":
+            return jsonify(jobs.current(owner))
+        if action == "start":
+            # Higher API modules are unrestricted native code. Require an
+            # explicit acknowledgment on every launch, never auto-launch.
+            if data.get("confirm") != "run" or data.get("higher_api_ack") is not True:
+                return jsonify(error="Confirm trusted native API-25 execution first."), 400
+            port = radio_settings()["port"]
+            if not port:
+                return jsonify(error="Select a USB serial port first."), 400
+            slot = data.get("slot")
+            timeout = data.get("timeout", 30)
+            try:
+                return jsonify(jobs.start(owner=owner, port=port, slot=slot,
+                                          key_file=radio_settings()["key_file"],
+                                          timeout=timeout)), 202
+            except ValueError as exc:
+                return jsonify(error=str(exc)), 400
+            except RuntimeError as exc:
+                return jsonify(error=str(exc)), 409
+        if action == "recover":
+            if data.get("confirm") != "recheck":
+                return jsonify(error="Confirm a read-only radio recheck."), 400
+            try:
+                return jsonify(jobs.recheck_unknown(owner, radio_settings()["port"]))
+            except RuntimeError as exc:
+                return jsonify(error=str(exc)), 409
+            except (ValueError, OSError, InstallError) as exc:
+                return jsonify(error=str(exc)), 502
+        job_id = data.get("id")
+        if not isinstance(job_id, str) or len(job_id) > 100:
+            return jsonify(error="Invalid job ID."), 400
+        try:
+            return jsonify(jobs.cancel(owner, job_id) if action == "cancel"
+                           else jobs.snapshot(owner, job_id))
+        except KeyError:
+            return jsonify(error="Unknown cooperative run."), 404
 
     @app.post("/memories/import")
     def memories_import():

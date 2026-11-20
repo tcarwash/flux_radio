@@ -54,10 +54,37 @@
         {% if inventory.ok %}<details class="readme"><summary>Show radio status output</summary><pre>{{ inventory.output }}</pre></details>{% endif %}
       </section>
     {% endif %}
+    <section class="panel radio-cooperative" id="radio-cooperative" data-token="{{ live_radio_token }}">
+      <div class="section-heading"><div><p class="eyebrow">EXPERIMENTAL · FOREGROUND MODULE</p><h2>Run and stop a module</h2></div><span class="badge">Live API 25</span></div>
+      <p class="radio-note">A live API-25 module can respond to a token-bound stop request <strong>only if its code periodically calls <code>cancel_poll()</code></strong>. Cancellation does not preempt native code, and a timeout does not mean the module stopped. Remote PTT remains disabled in the serial protocol.</p>
+      {% if not live_coop_allowed %}
+      <p class="radio-note">Native module controls are disabled by default. A trusted local Catalog administrator can set <code>FLUX_CATALOG_COOP_ENABLED=1</code> before starting the server. Remote browsers additionally require <code>FLUX_CATALOG_COOP_REMOTE=1</code> and separate access authentication.</p>
+      {% elif radio_settings.port %}
+      <div class="memory-actions">
+        <label for="coop-slot">Installed module
+          <select id="coop-slot">
+            <option value="">Choose a library module…</option>
+            {% if inventory and inventory.ok %}
+              {% for item in inventory.slots if item.kind == 'module' %}
+              <option value="{{ item.slot }}">Slot {{ '%02d'|format(item.slot) }} · {{ item.name or ('Module ' ~ item.slot) }}</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </label>
+        <label for="coop-timeout">Completion deadline (seconds)<input id="coop-timeout" type="number" min="1" max="120" step="1" value="30"></label>
+      </div>
+      <p class="radio-note">Read the radio library above to select a module. Only integrity-checked installed API-25 executables are accepted (keyed radios additionally require key authentication). A cable-only CRC is not proof of trust, and API level alone does not prove code is safe or cancel-aware.</p>
+      <label class="coop-ack"><input type="checkbox" id="coop-higher-ack"> I trust this installed module to execute unrestricted native code, including possible transmitter and hardware access, and understand that stopping is cooperative.</label>
+      <div class="memory-actions"><button type="button" id="coop-start" disabled>Run selected module</button><button type="button" class="quiet" id="coop-stop" disabled>Request stop</button><button type="button" class="quiet" id="coop-recover" hidden>Recheck idle radio</button><span id="coop-phase" role="status" aria-live="polite">No module running</span></div>
+      <pre class="install-result" id="coop-output" aria-live="polite"></pre>
+      {% else %}<p class="radio-note">Select a serial port in <a href="{{ url_for('settings_page') }}">Device settings</a> before starting a module.</p>{% endif %}
+      <p class="radio-note">The Catalog holds the serial port exclusively until the module returns or the connection fails. Closing this tab does not cancel a job. If execution becomes uncertain, inspect the radio before attempting another launch.</p>
+    </section>
     <section class="panel notice radio-capability"><strong>Module erasure is permanent.</strong> Cable protocol 2 firmware accepts only module slots (0–8 and 16–31), verifies the slot type, erases and reads back the entire 16 KB slot. Themes require Designer protocol 4 for removal and are excluded from bulk module operations. EXPLORE pages and help decks remain protected. Live module removal requires packed storage and does not reboot. If the inventory was read in explicitly selected legacy mode, removal also uses that mode and restarts the radio.</section>
     <footer><span class="footer-brand"><span class="brand-mark">F</span> FLUX</span><span>Device status is read over your local programming cable.</span></footer>
   </main>
   <script src="{{ url_for('static', filename='radio.js') }}" defer></script>
   <script src="{{ url_for('static', filename='radio-live.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='radio-coop.js') }}" defer></script>
 </body>
 </html>

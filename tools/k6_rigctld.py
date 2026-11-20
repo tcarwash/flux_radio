@@ -97,7 +97,9 @@ class Rig:
 
     def _execute(self, op, args):
         if op == r"\dump_state" and not args:
-            return DUMP_STATE.replace("has_set_vfo=0", "has_set_vfo=" + str(int("vfo" in self.features)))
+            return (DUMP_STATE
+                    .replace("has_set_vfo=0", "has_set_vfo=" + str(int("vfo" in self.features)))
+                    .replace("has_set_freq=1", "has_set_freq=" + str(int("tune" in self.features))))
         if op == r"\chk_vfo" and not args:
             return "0\n"
         # NET backend checks CAT lock before changing mode. This bridge does
@@ -140,7 +142,7 @@ class Rig:
                 return "RPRT -1\n"
             index = int(args[0] == "VFOB")
             return "RPRT 0\n" if self.link.select_vfo(index)["master"] == index else "RPRT -5\n"
-        if op == "F" and len(args) == 1:
+        if op == "F" and len(args) == 1 and "tune" in self.features:
             value = float(args[0])
             if not math.isfinite(value) or value % 10 or not (
                 136e6 <= value <= 174e6 or 400e6 <= value <= 480e6):

@@ -342,3 +342,11 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 .settings-form button { justify-self:start; }
 
 .top-actions a.button { display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border:1px solid var(--line); border-radius:7px; background:var(--acid); color:#16200e; font-weight:750; text-decoration:none; }
+
+/* Live cooperative module runner: keep the hazards and state visible. */
+.radio-cooperative .coop-ack { display: flex; gap: 10px; align-items: flex-start; max-width: 820px; margin: 16px 0; color: var(--text); line-height: 1.5; }
+.radio-cooperative .coop-ack input { flex-shrink: 0; margin-top: 4px; }
+.radio-cooperative .memory-actions { align-items: end; }
+.radio-cooperative #coop-phase { font-size: 12px; color: var(--muted); }
+.radio-cooperative #coop-output { min-height: 58px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.radio-cooperative #coop-stop:not(:disabled) { border-color: var(--red); color: var(--red); }

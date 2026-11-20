@@ -62,3 +62,22 @@ behavior, device-specific audio and real hardware Hamlib use need validation.
 Remote PTT is deliberately absent until the firmware has a fail-closed
 independent TX timeout/lease, explicit opt-in, safe local override and
 verified behavior on disconnect/timeout. No transmit support is claimed. CAT lock queries report that the bridge has no CAT lock; this is not keypad-lock telemetry.
+
+## Mainline acceptance and limits
+
+The live branch was merged to `main` on 2026-11-20. Actual Hamlib 4.6.5
+`rigctl -m 2` was tested over the physical cable with the RX-only K6
+build `ce46aac935c96e97`: frequency 147790000, FM 15000, VFOA, PTT
+status 0, STRENGTH +6 and closed squelch (DCD 0). These were read-only
+checks; the earlier physical acceptance also exercised guarded CAT
+setters. The bridge now gates both frequency-setting behavior **and**
+its discovery flag on the firmware's `tune` capability, while both
+`T 0` and `T 1` continue to refuse. See the [live release
+checklist](k6-live-release-checklist.md) for safety limitations.
+
+The Catalog and rigctld both require the exclusive programming port;
+stop one before using the other. Multiple clients may connect through
+the loopback rigctld bridge, but all radio operations are serialized.
+An uncalibrated RSSI reading is not a signal-strength measurement for
+lab calibration. The physical PTT/power-off interruption tests are still
+outstanding and must be done on a locally monitored RF test setup.
