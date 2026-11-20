@@ -120,5 +120,5 @@ def test_read_location_packed_protocol_is_read_only(monkeypatch):
     monkeypatch.setattr(r,"serial_lock",lambda p:nullcontext())
     monkeypatch.setattr(r,"open_port",lambda a:nullcontext(object()))
     monkeypatch.setattr(r,"open_cable",lambda *a,**kw:Link())
-    assert r.read_radio("mock-port","location")=={"lat":45.6,"lon":-122.4}
+    assert r.read_radio("mock-port","location",legacy=True)=={"lat":45.6,"lon":-122.4}
     assert calls==[(0xb000,64),(0x9000,4096),"end"]

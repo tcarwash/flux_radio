@@ -33,10 +33,11 @@
   const radioButtons=()=>[$('radio-location'),...document.querySelectorAll('[data-radio]')];
   function setRadioBusy(busy){radioButtons().forEach(b=>b.disabled=busy||!$('radio-program').dataset.port);}
   $('radio-location').onclick=async()=>{
-    if(!confirm('Read the saved APRS location from the selected radio? The cable session may restart it.'))return;
+    const legacy=$('legacy-radio-read').checked;
+    if(legacy&&!confirm('Use legacy cable mode? The radio will restart.'))return;
     setRadioBusy(true);$('location-status').textContent='Reading radio…';
     try{
-      const r=await checked(await fetch('/memories/radio/location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('radio-program').dataset.token})}));
+      const r=await checked(await fetch('/memories/radio/location'+(legacy?'?legacy=1':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('radio-program').dataset.token})}));
       const data=await r.json(),f=$('discovery');f.elements.lat.value=data.lat;f.elements.lon.value=data.lon;
       $('location-status').textContent='Saved APRS location loaded.';
     }catch(e){$('location-status').textContent=e.message;}finally{setRadioBusy(false);}
@@ -47,9 +48,10 @@
   $('add-results').onclick=()=>add([...document.querySelectorAll('[data-result]:checked')].map(c=>results[Number(c.dataset.result)]));
   document.querySelectorAll('[data-radio]').forEach(button=>button.onclick=async()=>{
     const action=button.dataset.radio;
-    if(!confirm(action==='read'?'Read radio and replace the browser working list? Export your current list first if needed.':action==='recover'?'Resume the saved pending memory write for this radio?':action==='replace'?'Replace ALL radio memories with this list? A binary backup will be saved.':'Merge this list into free radio memory slots?'))return;
+    const live=action==='read'&&!$('legacy-radio-read').checked;
+    if(!confirm(action==='read'?('Read radio and replace the browser working list? Export your current list first if needed.'+(live?'':' The radio will restart.')):action==='recover'?'Resume the saved pending memory write for this radio?':action==='replace'?'Replace ALL radio memories with this list? A binary backup will be saved.':'Merge this list into free radio memory slots?'))return;
     setRadioBusy(true);status('Communicating with radio — keep cable connected.');
-    try{const response=await checked(await fetch('/memories/radio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('radio-program').dataset.token,action,confirm:action,channels:rows})}));const result=await response.json();
+    try{const response=await checked(await fetch('/memories/radio'+(live?'/live-bank':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('radio-program').dataset.token,action,confirm:action,channels:rows})}));const result=await response.json();
     if(action==='read'){const opaque=result.opaque_slots||[];if(opaque.length&&!confirm('Some radio records could not be decoded ('+opaque.slice(0,10).join(', ')+'). Load the remaining channels?')){status('Read completed; working list unchanged.');return;}rows=result.channels;save();render();status('Read '+rows.length+' memories; '+opaque.length+' unrecognized records (preserved by Merge).'+(result.pending?' Pending write: choose Resume interrupted write.':''));}
     else status('Verified '+result.occupied+' memories; '+result.added+' added, '+result.duplicates+' duplicates skipped. Backup: '+result.backup);
     }catch(e){status(e.message);}finally{setRadioBusy(false);}

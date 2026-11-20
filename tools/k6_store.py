@@ -439,7 +439,7 @@ def create_app(store: ModuleStore | None = None):
 
     @app.context_processor
     def inject_radio_settings():
-        return {"radio_settings": radio_settings()}
+        return {"radio_settings": radio_settings(), "live_radio_token": session.setdefault("live_radio_token", secrets.token_urlsafe(32))}
 
     @app.get("/memories")
     def memories_page():
@@ -476,7 +476,45 @@ def create_app(store: ModuleStore | None = None):
         if not isinstance(data, dict) or not token or not secrets.compare_digest(token, str(data.get("token", ""))):
             abort(403)
         try:
-            return jsonify(read_radio(port, what))
+            return jsonify(read_radio(port, what, legacy=True) if request.args.get("legacy") == "1" else read_radio(port, what))
+        except (InstallError, OSError, ValueError) as exc:
+            return jsonify(error=str(exc)), 502
+
+    @app.post("/memories/radio/live-bank")
+    def memories_live_bank():
+        from k6_memory_radio import operate_live_read
+        from k6_install import InstallError
+        data=request.get_json(silent=True)
+        token=session.get("memory_token","")
+        if not isinstance(data,dict) or not token or not secrets.compare_digest(token,str(data.get("token",""))):abort(403)
+        port=radio_settings()["port"]
+        if not port:return jsonify(error="Select serial port in Device settings first"),400
+        try:return jsonify(operate_live_read(port))
+        except (ValueError,OSError,InstallError) as exc:return jsonify(error=str(exc)),502
+
+    @app.post("/radio/live/<action>")
+    def radio_live(action):
+        from types import SimpleNamespace
+        from k6_live import LiveLink
+        from k6_install import InstallError, open_port
+        from k6_port_lock import serial_lock
+        if action not in ("status", "tune"):
+            return jsonify(error="Unsupported live radio action"), 404
+        port = radio_settings()["port"]
+        if not port:
+            return jsonify(error="Set the USB serial port in Device settings first."), 400
+        payload = request.get_json(silent=True)
+        token=session.get("live_radio_token","")
+        if not isinstance(payload,dict) or not token or not secrets.compare_digest(token,str(payload.get("token",""))):
+            abort(403)
+        hz = payload.get("hz") if isinstance(payload, dict) else None
+        if action == "tune" and (type(hz) is not int or not
+                (136_000_000 <= hz <= 174_000_000 or 400_000_000 <= hz <= 480_000_000) or hz % 10):
+            return jsonify(error="Enter a VHF/UHF frequency in Hz (10 Hz resolution)."), 400
+        try:
+            with serial_lock(port), open_port(SimpleNamespace(port=port)) as serial:
+                link = LiveLink(serial)
+                return jsonify(link.status() if action == "status" else link.tune(hz))
         except (InstallError, OSError, ValueError) as exc:
             return jsonify(error=str(exc)), 502
 

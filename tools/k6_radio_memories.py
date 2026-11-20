@@ -72,10 +72,28 @@ def decode_channels(data):
             warnings.append(f"Memory {slot}: {exc}")
     return {"channels": rows, "warnings": warnings}
 
-def read_radio(port, what):
+def _read_memories(link, what):
+    if link.read(0xb000,64,window=1)[:4] != b"AURA":
+        raise InstallError("Unrecognized Aura storage marker")
+    if what == "location":
+        return decode_location(link.read(0x9000,4096,window=4))
+    # Check the settings record CRC as a layout sanity check even if position is unset.
+    sector = link.read(0x9000,4096,window=4)
+    try: decode_location(sector)
+    except ValueError as exc:
+        if not str(exc).startswith("No valid saved APRS location"): raise
+    return decode_channels(link.read(0,32000,window=4))
+
+
+def read_radio(port, what, *, legacy=False):
+    from k6_live import LiveLink
     if what not in ("location", "channels"): raise ValueError("Unknown radio read")
     with serial_lock(port):
         with open_port(SimpleNamespace(port=port)) as serial:
+            if not legacy:
+                link = LiveLink(serial)
+                link.status()
+                return _read_memories(link, what)
             link = open_cable(serial, lambda *_: None, wait=5)
             if link is None:
                 raise InstallError("No Flux cable session; put the radio in its supported cable-ready screen.")
@@ -83,15 +101,6 @@ def read_radio(port, what):
                 info = link.info()
                 if info["protocol"] not in (1, 2, 3, 4, 5):
                     raise InstallError("Unsupported cable protocol for this reader")
-                if link.read(0xb000,64,window=1)[:4] != b"AURA":
-                    raise InstallError("Unrecognized Aura storage marker")
-                if what == "location":
-                    return decode_location(link.read(0x9000,4096,window=4))
-                # Check the settings record CRC as a layout sanity check even if position is unset.
-                sector = link.read(0x9000,4096,window=4)
-                try: decode_location(sector)
-                except ValueError as exc:
-                    if not str(exc).startswith("No valid saved APRS location"): raise
-                return decode_channels(link.read(0,32000,window=4))
+                return _read_memories(link, what)
             finally:
                 link.end()

@@ -124,6 +124,22 @@ def write_bank(c,old,new,directory=BACKUPS,*,identity=None,recovery=None):
         cmd(0x94,i)
     if read_bank(c)!=new:raise ValueError(f'memory verification failed; backup {path}')
     record['status']='complete';persist(path/'journal.json',json.dumps(record).encode());return str(path)
+def operate_live_read(port):
+    import k6_install as radio
+    from k6_live import LiveLink
+    with serial_lock(port), radio.open_port(SimpleNamespace(port=port)) as connection:
+        c=LiveLink(connection)
+        c.status()
+        if c.read(0xb000,64)[:4]!=b'AURA':raise ValueError('Unrecognized Aura storage marker')
+        old=c.read(0,BANK)
+        identity={'port':str(port),'calibration':hashlib.sha256(c.read(0xf000,4096)).hexdigest()}
+        pending=False
+        for p in BACKUPS.glob('memory-*/journal.json'):
+            record=json.loads(p.read_text())
+            if record.get('status')=='pending' and record.get('identity')==identity:pending=True
+        rows,opaque=inventory(old)
+        return {'channels':rows,'opaque_slots':opaque,'pending':pending}
+
 def operate(port,key_file,action,rows=None):
     import k6_install as radio
     with serial_lock(port):

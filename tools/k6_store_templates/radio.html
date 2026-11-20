@@ -18,6 +18,16 @@
     {% endwith %}
 
     <section class="panel radio-connect">
+      <div class="section-heading"><div><p class="eyebrow">EXPERIMENTAL · LIVE SERIAL</p><h2>Live radio control</h2></div></div>
+      <p class="radio-note">Requires live-enabled firmware. Read status or tune the active VFO without opening the loader or restarting. Tuning is volatile, limited to idle VFO standby, and does not key the transmitter.</p>
+      {% if radio_settings.port %}
+      <div class="memory-actions"><button type="button" id="live-status" data-token="{{ live_radio_token }}">Read live status</button>
+      <label>Frequency (MHz)<input id="live-frequency" type="number" min="136" max="480" step="0.00001" value="146.520"></label>
+      <button type="button" id="live-tune">Tune active VFO</button></div>
+      <pre id="live-result" class="install-result" role="status" aria-live="polite"></pre>
+      {% else %}<p class="radio-note">Set your serial port in Device settings.</p>{% endif %}
+    </section>
+    <section class="panel radio-connect">
       <div class="section-heading"><div><p class="eyebrow">CONNECT OVER THE PROGRAMMING CABLE</p><h2>Read installed slots</h2></div><span class="badge">Local USB serial</span></div>
       <p class="radio-note">Reading status opens and closes a Flux cable session. The current firmware restarts the radio when that session ends.</p>
       {% if radio_settings.port %}<p class="radio-note">Using <strong>{{ radio_settings.port }}</strong>{% if radio_settings.key_file %} · key file <code>{{ radio_settings.key_file }}</code>{% else %} · default key{% endif %}. <a href="{{ url_for('settings_page') }}">Change connection settings</a></p>
@@ -48,5 +58,6 @@
     <footer><span class="footer-brand"><span class="brand-mark">F</span> FLUX</span><span>Device status is read over your local programming cable.</span></footer>
   </main>
   <script src="{{ url_for('static', filename='radio.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='radio-live.js') }}" defer></script>
 </body>
 </html>

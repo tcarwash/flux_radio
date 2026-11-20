@@ -479,7 +479,7 @@ impl HostHandshakeDetector {
 }
 
 '''
-if host_detector not in cps_text:
+if "pub struct HostHandshakeDetector" not in cps_text:
     if cps_text.count(detector_anchor) != 1:
         raise SystemExit("cps/mod.rs: cannot find handshake detector insertion point")
     cps_text = cps_text.replace(detector_anchor, host_detector + detector_anchor, 1)
