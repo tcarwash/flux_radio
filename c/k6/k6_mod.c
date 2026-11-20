@@ -156,6 +156,28 @@ int km_live_verify(const uint8_t *a, unsigned n) {
   return K.code_len;
 }
 
+/* Exact typed foreground library mutation. Reuse tag/replay checks;
+   never arm this envelope to execute. Packed storage performs the write. */
+int km_live_lib_verify(const uint8_t *a, unsigned n) {
+  int r;
+  unsigned slot, code;
+  km_reset();
+  if (n < KM_HDR + KM_TAG + 1 || n > 4096 || a[12] < 1 || a[14])
+    return KM_BAD_HDR;
+  slot = a[15];
+  if (!(slot <= 8 || (slot >= 16 && slot < KL_SLOTS))) return KM_BAD_HDR;
+  code = a[4] | a[5] << 8;
+  if (a[13] == (KM_F_LIB | KM_F_REMOVE)) {
+    static const uint8_t del[7] = {'K','6','E','R','A','S','E'};
+    if (code != 7 || a[6] || a[7] || n != KM_HDR + 7 + KM_TAG) return KM_BAD_HDR;
+    for (unsigned i=0;i<7;i++) if(a[KM_HDR+i]!=del[i]) return KM_BAD_HDR;
+  } else if (a[13] != KM_F_LIB) return KM_BAD_HDR;
+  r=check(a,n,1);
+  if (r==KM_READY) km_arm(a,0); /* clear any stale RF report state */
+  km_reset();
+  return r==KM_READY ? (int)code : r;
+}
+
 int km_tag_check(const uint8_t *a, unsigned code) {
 #ifdef KM_CABLE_ONLY
   const uint8_t *t=a+KM_HDR+code;

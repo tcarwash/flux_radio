@@ -283,3 +283,49 @@ pub(super) fn live_ram_finish(app:&mut App,syst:&mut SYST,seq:u8,n:i32) {
 }
 
 /// Enter Aura's sideloaded-module picker from the normal launcher.''')
+
+# Live mutations reuse the packed library callbacks, with a stricter raw
+# PTT/power check before every erase/program. Never alter legacy behavior.
+if "pub(crate) fn live_lib_commit(" not in app.read_text():
+    insert(app, "    pub fn master_index(&self) -> usize {",
+       '''    #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
+    pub(crate) fn live_lib_commit(&mut self,n:usize)->i32 {
+        if !self.live_cat_idle() {return -4;}
+        pager::live_lib_commit(self,n)
+    }
+
+    pub fn master_index(&self) -> usize {''')
+insert(pager, "/// Enter Aura's sideloaded-module picker from the normal launcher.",
+       '''#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
+static mut LIVE_LIB_WRITE: bool = false;
+
+#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
+fn live_lib_write_allowed()->bool {
+    let gpioa=unsafe{&*kd32f328_pac::Gpioa::ptr()};
+    crate::board::read_ptt(gpioa) && !crate::board::power_switch_off(gpioa)
+}
+
+#[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
+pub(super) fn live_lib_commit(app:&mut App,n:usize)->i32 {
+    if !live_lib_write_allowed() {return -4;}
+    unsafe extern "C" {fn kl_live_mutate(img:*const u8,n:u32,fl:*const ffi::KlFlash)->i32;}
+    let r=unsafe {
+        CB_NOR=&mut app.storage.norflash as *mut _;
+        LIVE_LIB_WRITE=true;
+        LIB_WRITE=true;
+        let result=kl_live_mutate(arena::base(),n as u32,core::ptr::addr_of!(LIB_FL));
+        LIB_WRITE=false;
+        LIVE_LIB_WRITE=false;
+        result
+    };
+    r
+}
+
+/// Enter Aura's sideloaded-module picker from the normal launcher.''')
+for name,signature in [
+    ("prog","unsafe extern \"C\" fn lib_fl_prog(addr: u32, buf: *const u8, n: u32) -> i32 {"),
+    ("erase","unsafe extern \"C\" fn lib_fl_erase(addr: u32) -> i32 {"),
+]:
+    insert(pager,signature,signature+'''
+    #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
+    if LIVE_LIB_WRITE && !live_lib_write_allowed() {return -1;}''')

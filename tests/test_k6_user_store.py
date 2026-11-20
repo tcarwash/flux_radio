@@ -124,3 +124,68 @@ def test_packed_short_module_removal(tmp_path):
         assert n.call('open')==0 and n.get(slot)==img
         assert l.kl_remove(slot,C.byref(n.flash))==0
         assert n.call('open')==0 and n.get(slot) is None
+
+
+@pytest.fixture(scope="module")
+def live_lib(tmp_path_factory):
+    from host_link import gc_sections,exported_symbols
+    p=tmp_path_factory.mktemp("live-lib")
+    flags=exported_symbols(p/"exports",("ku_*","kl_live_mutate","km_serial_highwater","km_armed","km_init"))
+    so=p/"live.so"
+    subprocess.run(["cc","-shared","-fPIC","-O2","-ffunction-sections","-fdata-sections",
+        gc_sections(),flags,"-DKM_USER_STORE","-DKM_KEY="+",".join(map(str,range(16))),
+        *(str(ROOT/"c/k6"/f) for f in ("user_store.c","k6_lib.c","k6_mod.c")),
+        "-o",str(so)],check=True)
+    l=C.CDLL(str(so))
+    l.kl_live_mutate.argtypes=[C.c_char_p,C.c_uint,C.POINTER(Flash)]
+    return l
+
+
+def test_live_mutation_signed_and_typed(live_lib):
+    from modem import k6mod
+    l=live_lib;l.km_init()
+    n=Nor(l);assert n.call("format")==0
+    key=bytes(range(16))
+    def img(serial,slot=24,**kw):
+        return k6mod.image(b"\x2a\x20\x70\x47",0,serial,key,lib=slot,level=1,**kw)
+    def mutate(b):return l.kl_live_mutate(b,len(b),C.byref(n.flash))
+    original=img(10);bad=original[:-1]+bytes([original[-1]^1])
+    raw=bytes(n.data)
+    for malformed in (bad,original+b"x",original[:-1],img(11,slot=9),img(11,page=True)):
+        assert mutate(malformed)<0
+        assert bytes(n.data)==raw and l.km_serial_highwater()==0
+    assert mutate(original)==len(original)
+    assert l.km_armed()==0 and l.km_serial_highwater()==10
+    assert n.call("open")==0 and n.get(24)==original
+    raw=bytes(n.data);assert mutate(original)<0 and bytes(n.data)==raw
+    # A typed page in an ordinary slot and unknown opaque objects are protected.
+    for slot,blob in [(25,img(11,slot=25,page=True)),(26,b"opaque"),(27,b"K6T\x09"+b"x"*20)]:
+        assert n.put(slot,blob)==0
+        before=bytes(n.data)
+        assert mutate(img(20+slot,slot=slot))<0
+        assert bytes(n.data)==before
+    delete=k6mod.image(b"K6ERASE",0,100,key,lib=24,level=1,remove=True)
+    assert mutate(delete)==0 and not l.km_armed()
+    assert n.call("open")==0 and n.get(24) is None
+
+
+def test_live_mutation_interrupted_commit(live_lib):
+    from modem import k6mod
+    l=live_lib;l.km_init()
+    key=bytes(range(16))
+    n=Nor(l);assert n.call("format")==0
+    old=k6mod.image(b"\x70\x47",0,1,key,lib=24,level=1)
+    new=k6mod.image(b"\x70\x47"+b"x"*2000,0,2,key,lib=24,level=1)
+    delete=k6mod.image(b"K6ERASE",0,3,key,lib=24,level=1,remove=True)
+    assert n.put(24,old)==0 and n.put(25,b"untouched")==0
+    for blob,want in ((new,new),(delete,None)):
+        raw=bytes(n.data)
+        probe=Nor(l,raw);l.km_init()
+        assert l.kl_live_mutate(blob,len(blob),C.byref(probe.flash))>=0
+        for cut in range(1,probe.ops+1):
+            m=Nor(l,raw);l.km_init();m.limit=cut
+            l.kl_live_mutate(blob,len(blob),C.byref(m.flash))
+            recovered=Nor(l,m.data);assert recovered.call("open")==0
+            assert recovered.get(24) in (old,want)
+            assert recovered.get(25)==b"untouched"
+            assert not l.km_armed()

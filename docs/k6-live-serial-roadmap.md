@@ -100,3 +100,15 @@ automatically retried. Stop-and-wait fits the existing RX ring. Physical
 baud/timing and effective throughput remain to be tested. Future
 persistent writes can reuse the same staging exchange but need a separate
 typed authenticated mutation transaction and readback/recovery contract.
+
+### Persistent ordinary modules
+
+Packed KUL2-only, exact authenticated foreground module install/replace
+and removal in user slots, up to 4096 bytes per envelope. Shared
+baseline/fast data-only staging, distinct transaction and commit opcodes,
+reuse kl_install/kl_remove, raw PTT/power checks on mutation callbacks,
+copy-on-write and complete readback. No automatic mutation retry or
+legacy fallback. CLI can save exact envelope for recovery. Remaining:
+large-object staging, Catalog integration, typed management of system
+objects and physical validation. Fixed-slot upgrades remain explicit
+legacy operations to avoid promising atomicity they do not have.

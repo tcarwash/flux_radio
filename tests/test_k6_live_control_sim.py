@@ -285,3 +285,51 @@ def test_compiled_live_fast_upload(simulated_radio,monkeypatch):
     assert port.board.regs[0x4001380c]==round(96000000/115200)
     assert not link.status()["transmitting"]
     assert bytes(port.board.flash_data)==before
+
+
+def test_compiled_live_library_mutation(simulated_radio,monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:pytest.skip("set K6_SIM_LIVE_IMAGE")
+    from modem import k6mod
+    from k6_install import InstallError
+    from k6_live_v2 import LIB_BEGIN,LIB_FAST_BEGIN,LIB_COMMIT,RAM_COMMIT
+    from k6_user_store_migrate import compact,objects,BASE,END
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    port.baudrate=115200
+    link=LiveLink(port,timeout=3,initial_seq=0)
+    if "lib_mutate" not in link.capabilities()["features"]:pytest.skip("requires live packed mutation")
+    code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/"c/k6/mod/hello.c"))
+    floor=link.serial_watermark()
+    def env(serial,slot=24,**kw):return k6mod.image(code,entry,serial,None,level=1,lib=slot,**kw)
+    other=env(floor+1,25,page=True)
+    port.board.flash_data[BASE:END]=compact({25:other})[0]
+    outside=bytes(port.board.flash_data[:BASE])+bytes(port.board.flash_data[END:])
+    state=link.status()
+    first=env(floor+2)
+    # Wrong commit kind cannot launch a staged library image.
+    link._stage_image(first,[],True,LIB_BEGIN,LIB_FAST_BEGIN)
+    with pytest.raises(InstallError,match="Unsupported"):link.request_v2(RAM_COMMIT,len(first))
+    assert link.serial_watermark()==floor
+    assert objects(port.board.flash_data[BASE:END])=={25:other}
+    # Corrupt signature and protected slot rejected on device, not just host.
+    bad=first[:-1]+bytes([first[-1]^1])
+    for invalid in (bad,env(floor+2,25),env(floor+2,9)):
+        link._stage_image(invalid,[],True,LIB_BEGIN,LIB_FAST_BEGIN)
+        assert int.from_bytes(link.request_v2(LIB_COMMIT,len(invalid)),"little",signed=True)<0
+        assert objects(port.board.flash_data[BASE:END])=={25:other}
+    # Rejected protected-slot envelope may consume its verified replay serial.
+    floor=link.serial_watermark()
+    first=env(floor+1)
+    assert link.mutate_library(first,baseline=True)["verified"]
+    assert objects(port.board.flash_data[BASE:END])=={24:first,25:other}
+    assert link.run_module(24,timeout=5)["result"]==0x6b
+    second=env(floor+2)
+    assert link.mutate_library(second)["verified"]
+    assert objects(port.board.flash_data[BASE:END])=={24:second,25:other}
+    delete=k6mod.image(b"K6ERASE",0,floor+3,None,level=1,lib=24,remove=True)
+    assert link.mutate_library(delete)["removed"]
+    assert objects(port.board.flash_data[BASE:END])=={25:other}
+    assert bytes(port.board.flash_data[:BASE])+bytes(port.board.flash_data[END:])==outside
+    assert link.status()["vfos"]==state["vfos"]
+    assert not link.status()["transmitting"]

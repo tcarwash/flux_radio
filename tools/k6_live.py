@@ -7,6 +7,7 @@ import struct
 import sys
 import time
 from types import SimpleNamespace
+from pathlib import Path
 
 from k6_install import CpsLink, Cable, InstallError, crc16_xmodem, open_port
 from k6_port_lock import serial_lock
@@ -20,7 +21,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -227,6 +228,104 @@ class LiveLink(CpsLink):
             self._upload_rate = UPLOAD_RATE
         return self._upload_rate
 
+    def _stage_image(self,image,features,baseline,begin,fast_begin):
+        from k6_live_v2 import RAM_CHUNK,RAM_READY,MAX_PAYLOAD
+        rate=115200 if baseline else self.negotiate_upload(features)
+        if rate!=115200:
+            # Staging is volatile, but never replay a failed real upload.
+            # An explicit baseline READY acknowledgment is required before
+            # any execution command may leave the host.
+            self._fast_stage(fast_begin,image)
+            try:
+                if self.request_v2(RAM_READY,len(image)):
+                    raise InstallError("Invalid RAM READY acknowledgment")
+            except (InstallError, OSError) as exc:
+                self._recover_upload()
+                raise LiveUploadError("RAM READY failed; baseline recovered; no commit sent") from exc
+        else:
+            if self.request_v2(begin,len(image)):
+                raise InstallError("Invalid RAM BEGIN acknowledgment")
+            for offset in range(0,len(image),MAX_PAYLOAD):
+                if self.request_v2(RAM_CHUNK,offset,image[offset:offset+MAX_PAYLOAD]):
+                    raise InstallError("Invalid RAM CHUNK acknowledgment")
+
+    @staticmethod
+    def _library_envelope(image):
+        from k6_live_v2 import RAM_MAX
+        image=bytes(image)
+        if not 25<=len(image)<=RAM_MAX or image[:4]!=b"K6M\x01":
+            raise ValueError("Expected K6M envelope up to 4096 bytes")
+        code,entry,serial,level,flags,tlm,slot=struct.unpack_from("<HHIBBBB",image,4)
+        if (code+24!=len(image) or entry>=code or entry&1 or not serial
+            or not level or tlm or flags not in (1,9) or slot not in (*range(9),*range(16,32))
+            or (flags==9 and (entry or image[16:-8]!=b"K6ERASE"))):
+            raise ValueError("Expected ordinary module or exact removal envelope in a user slot")
+        return image,slot,serial,flags
+
+    def verify_library_mutation(self,image):
+        """Read-only comparison to a saved transaction, not proof of execution."""
+        image,slot,serial,flags=self._library_envelope(image)
+        if self.info()["protocol"]!=5:
+            raise InstallError("Verification requires packed KUL2 firmware")
+        self.__dict__.pop("_library_directory",None)
+        directory=self.library_directory()
+        if flags==9:
+            verified=slot not in directory
+        else:
+            verified=(slot in directory and directory[slot][1]==len(image)
+                      and self.library_read(slot,len(image))==image)
+        return dict(slot=slot,serial=serial,removed=flags==9,
+                    bytes=0 if flags==9 else len(image),verified=verified)
+
+    def mutate_library(self,image,*,baseline=False):
+        """Commit one exact authenticated ordinary module install or removal.
+
+        A lost commit ACK is never retried. Reopen KUL2 and verify the
+        exact signed image or absence before deciding on further action.
+        """
+        from k6_live_v2 import LIB_BEGIN,LIB_FAST_BEGIN,LIB_COMMIT
+        image,slot,serial,flags=self._library_envelope(image)
+        features=self.capabilities()["features"]
+        if "lib_mutate" not in features or self.info()["protocol"]!=5:
+            raise InstallError("Live mutation requires packed KUL2 firmware")
+        if serial<=self.serial_watermark():
+            raise InstallError("Module serial is not newer than radio's replay watermark")
+        # Validate directory before staging; no implicit formatting.
+        self.__dict__.pop("_library_directory",None)
+        directory=self.library_directory()
+        if slot in directory:
+            hdr=self.library_read(slot,16)
+            if (hdr[:4]!=b"K6M\x01" or hdr[13]!=1 or hdr[15]!=slot or not hdr[12]
+                or int.from_bytes(hdr[4:6],"little")+24!=directory[slot][1]):
+                raise InstallError("Destination is not an ordinary module")
+        elif flags==9:
+            raise InstallError("Cannot remove an empty module slot")
+        self._stage_image(image,features,baseline,LIB_BEGIN,LIB_FAST_BEGIN)
+        expected=0 if flags==9 else len(image)
+        self.__dict__.pop("_library_directory",None)
+        # Packed publication may erase both an allocation and a directory
+        # sector. Use a separate bounded commit deadline, never a retry.
+        previous_timeout=self.timeout
+        try:
+            self.timeout=max(previous_timeout,10.0)
+            d=self.request_v2(LIB_COMMIT,len(image))
+            if len(d)!=4:
+                raise InstallError("Invalid library COMMIT acknowledgment")
+            result=struct.unpack("<i",d)[0]
+        except (InstallError,OSError) as exc:
+            raise LiveUnavailable(f"Library commit outcome unknown for slot {slot}, serial {serial}; inspect inventory/readback before any retry") from exc
+        finally:
+            self.timeout=previous_timeout
+        if result!=expected:
+            raise InstallError(f"Library mutation returned {result} (slot {slot}); inspect inventory before retry")
+        try:
+            readback=self.verify_library_mutation(image)
+        except (InstallError,OSError) as exc:
+            raise InstallError(f"Library commit acknowledged but readback unavailable for slot {slot}, serial {serial}; do not retry blindly") from exc
+        if not readback["verified"]:
+            raise InstallError(f"Library readback did not verify slot {slot}; do not retry blindly")
+        return readback
+
     def run_ram(self, image, *, timeout=30.0, on_report=None, baseline=False):
         """Upload a complete typed standalone envelope and commit once.
         The host never retries or sends an abort after an uncertain commit.
@@ -245,24 +344,7 @@ class LiveLink(CpsLink):
             raise InstallError("Firmware lacks live RAM execution")
         if serial<=self.serial_watermark():
             raise InstallError("Module serial is not newer than radio's replay watermark")
-        rate=115200 if baseline else self.negotiate_upload(features)
-        if rate!=115200:
-            # Staging is volatile, but never replay a failed real upload.
-            # An explicit baseline READY acknowledgment is required before
-            # any execution command may leave the host.
-            self._fast_stage(RAM_FAST_BEGIN,image)
-            try:
-                if self.request_v2(RAM_READY,len(image)):
-                    raise InstallError("Invalid RAM READY acknowledgment")
-            except (InstallError, OSError) as exc:
-                self._recover_upload()
-                raise LiveUploadError("RAM READY failed; baseline recovered; no commit sent") from exc
-        else:
-            if self.request_v2(RAM_BEGIN,len(image)):
-                raise InstallError("Invalid RAM BEGIN acknowledgment")
-            for offset in range(0,len(image),MAX_PAYLOAD):
-                if self.request_v2(RAM_CHUNK,offset,image[offset:offset+MAX_PAYLOAD]):
-                    raise InstallError("Invalid RAM CHUNK acknowledgment")
+        self._stage_image(image,features,baseline,RAM_BEGIN,RAM_FAST_BEGIN)
         try:
             d=self.request_v2(RAM_COMMIT,len(image))
         except LiveUnavailable as exc:
@@ -478,6 +560,18 @@ def main():
     auth.add_argument("--cable-only", action="store_true", help="physical-cable-only firmware uses CRC, not authentication")
     ram.add_argument("--timeout",type=float,default=30)
     ram.add_argument("--baseline-upload",action="store_true",help="skip fast upload negotiation")
+    for name in ("install-module","remove-module"):
+        lib=sub.add_parser(name,help="authenticated live packed-library mutation")
+        lib.add_argument("slot",type=int,choices=(*range(9),*range(16,32)))
+        if name=="install-module":
+            lib.add_argument("source")
+        auth=lib.add_mutually_exclusive_group(required=True)
+        auth.add_argument("--key-file")
+        auth.add_argument("--cable-only",action="store_true")
+        lib.add_argument("--baseline-upload",action="store_true")
+        lib.add_argument("--envelope-out",help="save exact signed transaction to a new file before sending")
+    verify=sub.add_parser("verify-module",help="read-only compare with a saved install/removal envelope")
+    verify.add_argument("envelope",type=Path)
     job = sub.add_parser("ram-status", help="query latest boot-local RAM job by signed serial")
     job.add_argument("job_id", type=int)
     watch = sub.add_parser("watch")
@@ -509,6 +603,36 @@ def main():
                 print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
             elif a.cmd == "vfo":
                 print(json.dumps(link.select_vfo(a.index), indent=2))
+            elif a.cmd in ("install-module","remove-module"):
+                from k6_install import k6mod,Serials
+                key=None if a.cable_only else k6mod.read_key(a.key_file)
+                if key==k6mod.PLACEHOLDER:
+                    raise ValueError("Do not sign with the key placeholder")
+                removing=a.cmd=="remove-module"
+                if removing:
+                    code,entry,level=b"K6ERASE",0,1
+                else:
+                    level=k6mod.source_level(a.source)
+                    code,entry=k6mod.build(a.source)
+                serials=Serials()
+                serials.advance_after(link.serial_watermark())
+                serial=serials.next()
+                if serial>0xffffffff:
+                    raise ValueError("Module replay watermark exhausted")
+                image=k6mod.image(code,entry,serial,key,level=level,lib=a.slot,remove=removing)
+                if a.envelope_out:
+                    with Path(a.envelope_out).open("xb") as out:
+                        out.write(image)
+                import hashlib
+                print(f"Library slot {a.slot}, serial {serial}, envelope SHA256 {hashlib.sha256(image).hexdigest()}",file=sys.stderr,flush=True)
+                print(json.dumps(link.mutate_library(image,baseline=a.baseline_upload),indent=2))
+            elif a.cmd == "verify-module":
+                with a.envelope.open("rb") as f:
+                    image=f.read(4097)
+                result=link.verify_library_mutation(image)
+                print(json.dumps(result,indent=2))
+                if not result["verified"]:
+                    p.exit(1,"Library does not match the saved transaction\n")
             elif a.cmd == "ram-status":
                 print(json.dumps(link.ram_status(a.job_id), indent=2))
             elif a.cmd == "run-ram":

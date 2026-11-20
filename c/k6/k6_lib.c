@@ -81,6 +81,27 @@ int kl_remove(int slot, const kl_flash_t *fl) {
 #endif
 }
 
+/* Live updates are limited to regular foreground modules in KUL2.
+   Never replace reserved, resident, page, theme or opaque objects. */
+#ifdef KM_USER_STORE
+int kl_live_mutate(const uint8_t *img, unsigned n, const kl_flash_t *fl) {
+  unsigned slot, extent;
+  uint32_t addr;
+  kl_info_t info;
+  int r=km_live_lib_verify(img,n);
+  if(r<=0)return r-100; /* distinguish envelope validation from storage errors */
+  slot=img[15];
+  r=kl_locate(slot,fl,&addr,&extent);
+  if(r==0) {
+    r=kl_info(slot,fl,&info);
+    if(r || info.flags!=KM_F_LIB || !info.level ||
+       extent!=KM_HDR+info.code_len+KM_TAG) return KL_NOT_MODULE;
+  } else if(r!=KL_EMPTY) return r;
+  if(img[13] & KM_F_REMOVE) return r==KL_EMPTY ? KL_NOT_MODULE : kl_remove(slot,fl);
+  return kl_install(img,fl);
+}
+#endif
+
 int kl_info(int slot, const kl_flash_t *fl, kl_info_t *out) {
   uint8_t h[KM_HDR + 4 + KL_NAME];
   unsigned i, blank = 1, named;

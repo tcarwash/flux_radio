@@ -366,3 +366,85 @@ seven compiled-image live tests. The new emulator test verifies the
 missing READY refusal, corrupt-chunk recovery, successful temporary
 execution and unchanged SPI. Host tests separately cover fallback, lost
 READY, failed recovery, explicit busy and no automatic commit/replay.
+
+## Live persistent foreground modules (packed KUL2)
+
+Capability bit 13 (lib_mutate) requires the expanded-stack SPI library
+and KUL2 user store. It does not appear in fixed-slot firmware. No
+automatic storage migration, formatting, legacy handshake or reboot.
+The first version accepts exact K6M envelopes up to 4096 bytes
+(including header/tag) in ordinary slots 0–8 and 16–31. Supported flags
+are LIB (1) and LIB|REMOVE (9), with nonzero supported API level and
+zero telemetry field; removal must contain the exact K6ERASE payload
+and zero entry. Other objects (themes, pages, cards, resident engines,
+unknown or structurally invalid data) are refused, including in user
+slots. Existing destination classification uses the header, exact
+packed extent and type; the incoming envelope is fully authenticated.
+A new install never executes the module.
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 install-module 24 c/k6/mod/hello.c --cable-only
+    python3 tools/k6_live.py --port /dev/ttyUSB0 run 24
+    python3 tools/k6_live.py --port /dev/ttyUSB0 remove-module 24 --cable-only
+
+For keyed builds use --key-file PATH instead. Optional --envelope-out
+PATH writes the exact signed transaction to a new local file before
+sending; the CLI prints slot, serial and SHA256. To inspect the resulting
+logical state later, including after a lost acknowledgment:
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 verify-module PATH
+
+This read-only command compares exact bytes/length or checks absence
+using a freshly opened packed directory; it does not authenticate a
+new request, consume a serial or prove which mutation caused the state.
+A mismatch returns a nonzero exit status. --baseline-upload
+disables speed negotiation. The user should select the intended slot
+explicitly; installing into an occupied ordinary module slot replaces it.
+
+| Command | Arg | Payload | Success data after result |
+|---|---|---|---|
+| 79 LIB_BEGIN | exact envelope bytes | empty | empty |
+| 7a LIB_FAST_BEGIN | exact envelope bytes | empty | actual baud:LE32 |
+| 7b LIB_COMMIT | exact envelope bytes | empty | signed LE32 result |
+
+Reuse the existing RAM_CHUNK/READY/ABORT staging exchange and the 192k
+data-only fast upload. The transaction type is locked at BEGIN: RAM
+COMMIT cannot execute a library transaction, and LIB_COMMIT cannot
+write a RAM execution transaction. COMMIT runs at baseline with the
+staged data owned by the borrowed stack. The loader checks exact
+length, permitted header, tag and boot-local replay serial, never
+arms execution, then the packed library checks the destination type
+and uses its normal copy-on-write allocator and verified directory
+publication. Raw PTT and power switch are checked before each flash
+erase/program in addition to the normal idle guard. RF operations are
+not requested. Authentication failures return loader errors minus
+100; storage failures use KL_* directly. A valid envelope can consume
+its replay serial even if the subsequent storage operation refuses.
+
+Positive commit result is the exact installed envelope length;
+successful removal returns zero. The host invalidates the cached
+directory, reopens it, and checks exact length and every installed
+byte (or absence of the removed slot). The host allows at least ten
+seconds for SPI commit; no retries, including on timeout, nor
+automatic legacy fallback. A lost acknowledgment is an unknown
+outcome: reopen inventory and compare exact bytes/serial/SHA256 with
+the saved envelope, or check absence for removal, before deciding
+on another operation. Readback failure after ACK also requires
+inspection. The packed allocator retains the old extent until
+publishing the new directory magic and verifies writes. Removed and
+superseded bytes can persist in unallocated sectors until reuse:
+removal is logical, not secure physical erasure.
+
+This is not yet the Catalog/pack installer default. Large modules,
+system bundles, fixed-slot mutation, themes and resident providers
+continue to use their existing explicit legacy workflows. Physical
+flash timing, interrupted-power recovery and button/audio behavior
+need bench validation before release.
+
+Persistent module checkpoint: 55 focused host tests passed (27 optional
+skipped), including keyed C verification, typed protection and injected
+power cuts at every allocator write/erase for replace/remove. All eight
+compiled-image tests passed on the corrected cable-only packed firmware
+(113852 bytes, 11776-byte arena, 6304-byte stack, 280 bytes free RAM0).
+Repeated builds exposed and fixed an accumulating watchdog guard in
+apply-lean-txdog.py. Two corrected builds match byte-for-byte outside
+their 8-byte GNU linker build IDs. No physical flash or radio tests.

@@ -92,6 +92,7 @@ int kl_locate(int slot,const kl_flash_t *fl,uint32_t *addr,unsigned *len);
 /* Write the checked image at img (KM_READY from km_packet, flag KM_F_LIB) to the slot in its
    byte 15. The image's length, or KL_*. */
 int kl_install(const uint8_t *img, const kl_flash_t *fl);
+int kl_live_mutate(const uint8_t *img, unsigned n, const kl_flash_t *fl);
 /* Erase one module slot, refusing EXPLORE pages, help decks, and malformed entries. */
 int kl_remove(int slot, const kl_flash_t *fl);
 /* Read slot n into dst (cap bytes) and check it: the code length and arm km_run, or KL_*.

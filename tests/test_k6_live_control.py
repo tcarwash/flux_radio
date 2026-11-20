@@ -388,3 +388,70 @@ def test_fast_upload_negotiation_fail_closed(fault,monkeypatch):
         if fault=="busy":
             assert port.events[-1]==UPLOAD_PROBE
     assert port.baudrate==115200
+
+
+@pytest.mark.parametrize("fault", [None,"lost","refused","wrong_readback","read_error"])
+def test_library_mutation_never_retries_and_verifies(fault):
+    from k6_live_v2 import LIB_BEGIN,LIB_FAST_BEGIN,LIB_COMMIT
+    from modem import k6mod
+    env=k6mod.image(b"\x70\x47",0,7,None,level=1,lib=24)
+    class Link(LiveLink):
+        def __init__(self):
+            super().__init__(Port())
+            self.calls=[]
+            self.bank={}
+        def capabilities(self):return {"features":["lib_mutate"]}
+        def info(self):return {"protocol":5}
+        def serial_watermark(self):return 6
+        def library_directory(self):
+            if fault=="read_error" and self.calls[-1:]==[LIB_COMMIT]:
+                raise InstallError("read failed")
+            return {slot:(8192,len(data)) for slot,data in self.bank.items()}
+        def library_read(self,slot,n):
+            return (self.bank[slot]+b"\xff"*n)[:n]
+        def _stage_image(self,image,features,baseline,begin,fast_begin):
+            assert image==env
+            assert (begin,fast_begin)==(LIB_BEGIN,LIB_FAST_BEGIN)
+            self.calls.append(begin)
+        def request_v2(self,cmd,arg,payload=b""):
+            assert cmd==LIB_COMMIT and arg==len(env)
+            assert self.timeout>=10
+            self.calls.append(cmd)
+            if fault=="refused":return struct.pack("<i",-4)
+            self.bank[24]=env if fault!="wrong_readback" else env[:-1]+b"X"
+            if fault=="lost":raise LiveUnavailable("lost ACK")
+            return struct.pack("<i",len(env))
+    link=Link()
+    if fault is None:
+        assert link.mutate_library(env)["verified"]
+    else:
+        with pytest.raises(InstallError):link.mutate_library(env)
+    assert link.calls==[LIB_BEGIN,LIB_COMMIT]
+    assert link.timeout==1.0
+
+
+def test_library_read_only_recovery_uses_fresh_directory():
+    from modem import k6mod
+    key=bytes(range(16))
+    install=k6mod.image(b"\x70\x47",0,7,key,level=1,lib=24)
+    remove=k6mod.image(b"K6ERASE",0,8,key,level=1,lib=24,remove=True)
+    class Recovery(LiveLink):
+        def __init__(self):
+            super().__init__(Port())
+            self.bank={24:install}
+            self._library_directory={24:(123,42)}
+        def info(self):return {"protocol":5}
+        def library_directory(self):
+            assert not hasattr(self,"_library_directory")
+            self._library_directory={k:(8192,len(v)) for k,v in self.bank.items()}
+            return self._library_directory
+        def library_read(self,slot,n):return self.bank[slot][:n]
+    link=Recovery()
+    assert link.verify_library_mutation(install)["verified"]
+    assert not link.verify_library_mutation(remove)["verified"]
+    link.bank[24]=install[:-1]+b"X"
+    assert not link.verify_library_mutation(install)["verified"]
+    link.bank.clear()
+    assert link.verify_library_mutation(remove)["verified"]
+    assert not link.verify_library_mutation(install)["verified"]
+    assert not link.port.writes

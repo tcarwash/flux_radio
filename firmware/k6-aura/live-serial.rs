@@ -24,6 +24,12 @@ const UPLOAD_PROBE:u8=0x76;
 const RAM_FAST_BEGIN:u8=0x77;
 #[cfg(all(feature="spilib",k6_ram0_stack))]
 const RAM_READY:u8=0x78;
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store))]
+const LIB_BEGIN:u8=0x79;
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
+const LIB_FAST_BEGIN:u8=0x7a;
+#[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store))]
+const LIB_COMMIT:u8=0x7b;
 // Only the main runtime/foreground dispatcher touches this boot-local cache.
 // Never use the 8-bit wire sequence as a durable execution identifier.
 #[cfg(all(feature="spilib",k6_ram0_stack))]
@@ -194,7 +200,7 @@ fn ram_allowed(app:&mut App)->bool {
 }
 
 #[cfg(all(feature="spilib",k6_ram0_stack))]
-fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool)->Option<(u8,i32)> {
+fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool, library:bool)->Option<(u8,i32)> {
     use crate::hal::{arena,uptime};
     let n=req.arg as usize;
     if !payload.is_empty() || n<25 || n>4096 || n+4096>arena::ARENA_BYTES {
@@ -250,7 +256,14 @@ fn ram_upload(app:&mut App, req:&Request, payload:&[u8], fast:bool)->Option<(u8,
             }
             RAM_READY if fast && !ready && r.arg==n as u32 && p.is_empty()=>{ready=true;reply(&r,&[OK]);}
             RAM_ABORT if r.arg==0 && p.is_empty()=>{reply(&r,&[OK]);break;}
-            RAM_COMMIT if ready && r.arg as usize==n && offset==n && p.is_empty()=>{
+            #[cfg(k6_user_store)]
+            LIB_COMMIT if library && ready && r.arg as usize==n && offset==n && p.is_empty()=>{
+                let result=app.live_lib_commit(n);
+                let mut d=[0u8;5];d[1..].copy_from_slice(&result.to_le_bytes());
+                reply(&r,&d);
+                break;
+            }
+            RAM_COMMIT if !library && ready && r.arg as usize==n && offset==n && p.is_empty()=>{
                 unsafe extern "C" {fn km_live_verify(a:*const u8,n:u32)->i32;}
                 // The verifier moves code over the envelope; read its serial first.
                 let serial=unsafe{u32::from_le_bytes(core::ptr::read_unaligned(
@@ -341,11 +354,15 @@ unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
     match req.cmd {
         V2_ECHO if req.arg==0 => reply_v2(&req,f.payload()),
         #[cfg(all(feature="spilib",k6_ram0_stack))]
-        RAM_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false);}
+        RAM_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false,false);}
         #[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
-        RAM_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true);}
+        RAM_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true,false);}
         #[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
         UPLOAD_PROBE=>upload_probe(unsafe{&mut *args.app},&req,f.payload()),
+        #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store))]
+        LIB_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false,true);}
+        #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
+        LIB_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true,true);}
         _=>reply(&req,&[INVALID]),
     }
 }
@@ -461,7 +478,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(k6_health_telemetry) {64} else {0}
                 | if cfg!(k6_serial_transport) {128} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack)) {1024 | 2048} else {0}
-                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0};
+                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0}
+                | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;
