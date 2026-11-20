@@ -139,7 +139,14 @@ if [ -n "${K6_CB:-}" ]; then
   CFLAGS="$CFLAGS $CB"
   echo "codebook in SPI flash: $CB"
 fi
-if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then CFLAGS="$CFLAGS -DKM_LEVEL=24"; fi
+# Keep the legacy verifier ceiling unchanged. The append-only level 25
+# callback exists only on live-enabled firmware with the SPI module API.
+# Raw-FSK-only non-live images continue to declare API level 24.
+if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
+  CFLAGS="$CFLAGS -DKM_LEVEL=25"
+elif [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
+  CFLAGS="$CFLAGS -DKM_LEVEL=24"
+fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then

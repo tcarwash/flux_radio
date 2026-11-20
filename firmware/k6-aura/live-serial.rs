@@ -27,6 +27,11 @@ const RAM_READY:u8=0x78;
 #[cfg(feature="spilib")]
 const MODULE_CAPS:u8=0x7c;
 const LIB_STAGE_MAX:usize=7168;
+// V2 cooperative launch and request. Neither command keys the radio.
+#[cfg(feature="spilib")]
+const RUN_COOP:u8=0x7e;
+#[cfg(feature="spilib")]
+const RUN_CANCEL:u8=0x7f;
 #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store))]
 const LIB_BEGIN:u8=0x79;
 #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
@@ -220,6 +225,108 @@ fn reply_v2(req:&Request,payload:&[u8]) {
     for &b in &buf[..n] {uart::send_byte(b);}
 }
 
+// A synchronous native module never services normal serial dispatch.
+// Only an opt-in API-25 module calls cancel_poll; it consumes a bounded
+// number of bytes from the UART ring and recognizes exactly one 8-byte
+// capability token in the canonical V2 frame. No forced stack unwind,
+// interruption of a TX frame, or implicit retry is permitted.
+#[cfg(feature="spilib")]
+const CANCEL_RAW:usize=18; // cmd, seq, length, arg, token, CRC
+#[cfg(feature="spilib")]
+struct CancelState {
+    armed:bool, seq:u8, token:[u8;8], accepted:bool,
+    prefix:usize, n:usize, symbols:usize, acc:u16, bits:u8,
+    raw:[u8;CANCEL_RAW],
+}
+#[cfg(feature="spilib")]
+impl CancelState {
+    const fn empty()->Self {
+        Self {armed:false,seq:0,token:[0;8],accepted:false,
+              prefix:0,n:0,symbols:0,acc:0,bits:0,raw:[0;CANCEL_RAW]}
+    }
+    fn reset_frame(&mut self) {
+        self.prefix=0;self.n=0;self.symbols=0;self.acc=0;self.bits=0;
+    }
+    fn byte(&mut self,byte:u8)->bool {
+        if self.prefix < MAGIC_V2.len() {
+            self.prefix=if byte==MAGIC_V2[self.prefix] {
+                self.prefix+1
+            } else if byte==MAGIC_V2[0] {1} else {0};
+            return false;
+        }
+        if byte==0 {
+            let valid=self.n==CANCEL_RAW && self.symbols==21
+                && self.acc==0 && self.raw[0]==RUN_CANCEL
+                && self.raw[1]==self.seq && self.raw[2..4]==[8,0]
+                && self.raw[4..8]==[0,0,0,0]
+                && self.raw[8..16]==self.token;
+            let mut crc_bytes=[0u8;6+16];
+            crc_bytes[..6].copy_from_slice(MAGIC_V2);
+            crc_bytes[6..].copy_from_slice(&self.raw[..16]);
+            let ok=valid && crc16_xmodem(&crc_bytes)
+                ==u16::from_be_bytes([self.raw[16],self.raw[17]]);
+            self.reset_frame();
+            return ok;
+        }
+        if byte&0x80==0 || self.symbols>=21 {
+            self.reset_frame();
+            return false;
+        }
+        self.symbols+=1;
+        self.acc|=u16::from(byte&127)<<self.bits;
+        self.bits+=7;
+        if self.bits>=8 {
+            if self.n==CANCEL_RAW {
+                self.reset_frame();
+                return false;
+            }
+            self.raw[self.n]=self.acc as u8;
+            self.n+=1;
+            self.acc>>=8;self.bits-=8;
+        }
+        false
+    }
+}
+#[cfg(feature="spilib")]
+static mut CANCEL:CancelState=CancelState::empty();
+
+#[cfg(feature="spilib")]
+fn cancel_arm(seq:u8,token:[u8;8]){
+    unsafe {
+        CANCEL=CancelState::empty();
+        CANCEL.armed=true;
+        CANCEL.seq=seq;
+        CANCEL.token=token;
+    }
+}
+
+#[cfg(feature="spilib")]
+fn cancel_disarm(){
+    unsafe {CANCEL=CancelState::empty();}
+}
+
+/// Return -1 if no token-bound launch (or UART is in exclusive KISS
+/// mode), 0 if still active, 1 only after a valid matching token frame.
+/// Never call the full HostHandshake while a foreground module runs.
+#[cfg(feature="spilib")]
+pub fn cancel_poll()->i32 {
+    if uart::binary_mode(){return -1;}
+    let state=unsafe{&mut *core::ptr::addr_of_mut!(CANCEL)};
+    if !state.armed{return -1;}
+    if state.accepted{return 1;}
+    // Bound caller latency even if a hostile UART producer streams forever.
+    // A full cancel packet is only 28 bytes on the wire.
+    for _ in 0..64 {
+        let Some(b)=uart::take_byte() else {break;};
+        if state.byte(b) {
+            state.accepted=true;
+            reply(&Request{cmd:RUN_CANCEL,seq:state.seq,arg:0},&[OK]);
+            return 1;
+        }
+    }
+    0
+}
+
 // RAM staging is a single bounded exchange on the borrowed arena stack.
 // Keep the lower 4 KiB for code and at least 4 KiB for this stack/interrupts.
 #[cfg(all(feature="spilib",k6_ram0_stack))]
@@ -406,6 +513,25 @@ unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
         #[cfg(all(feature="spilib",k6_ram0_stack,k6_user_store,k6_serial_transport))]
         LIB_FAST_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),true,true);}
         #[cfg(feature="spilib")]
+        RUN_COOP if req.arg & !0x11f == 0 && f.payload().len()==8
+            && f.payload().iter().any(|&b|b!=0) => {
+            let app=unsafe{&mut *args.app};
+            if !app.live_module_idle() {
+                reply(&req,&[BUSY]);
+            } else {
+                let status=app.live_queue_module(req.arg as u8,req.seq,req.arg&0x100!=0);
+                if status==OK {
+                    let mut token=[0u8;8];
+                    token.copy_from_slice(f.payload());
+                    cancel_arm(req.seq,token);
+                    reply_v2(&req,&[]);
+                    uart::flush();
+                } else {
+                    reply(&req,&[status]);
+                }
+            }
+        }
+        #[cfg(feature="spilib")]
         MODULE_CAPS if req.arg==0 && (f.payload().is_empty() || f.payload().len()==16)=>{
             let record=super::module_capability_record();
             if f.payload().is_empty() {reply_v2(&req,&record);}
@@ -444,6 +570,8 @@ pub fn module_text(seq: u8, text: &[u8]) {
 }
 
 pub fn module_finish(seq: u8, slot: u8, load: i32, result: Option<i32>) {
+    #[cfg(feature="spilib")]
+    cancel_disarm();
     #[cfg(all(feature="spilib",k6_ram0_stack))]
     if slot==255 {
         unsafe {
@@ -535,7 +663,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_serial_transport)) {4096} else {0}
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192 | 32768} else {0}
                 | if cfg!(feature="spilib") {16384} else {0}
-                | if cfg!(k6_serial_transport) {65536} else {0};
+                | if cfg!(k6_serial_transport) {65536} else {0}
+                | if cfg!(feature="spilib") {131072} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;

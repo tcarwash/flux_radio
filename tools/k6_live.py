@@ -22,7 +22,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -179,6 +179,35 @@ class LiveLink(CpsLink):
         except LiveUnavailable as exc:
             raise LiveUnavailable("Launch acknowledgment lost; execution unknown. Do not retry blindly.") from exc
         return self._collect_module(slot, timeout, on_report)
+
+    def run_module_cooperative(self, slot, *, timeout=30.0, allow_higher_api=False,
+                               cancel_after=None, should_cancel=None, on_report=None):
+        """Launch with an unguessable per-run 64-bit cancellation capability.
+
+        Native code must explicitly call API-25 cancel_poll to return itself;
+        this never forcefully unwinds a stack or considers timeout a stop.
+        """
+        from k6_live_v2 import RUN_COOP
+        if isinstance(slot,bool) or not isinstance(slot,int) or not 0<=slot<32:
+            raise ValueError("Module slot must be 0–31")
+        if not 0 < timeout <= 3600:
+            raise ValueError("Module wait timeout must be in (0,3600] seconds")
+        if cancel_after is not None and not 0 <= cancel_after < timeout:
+            raise ValueError("Cancel delay must be >=0 and shorter than completion timeout")
+        if should_cancel is not None and not callable(should_cancel):
+            raise ValueError("should_cancel must be a callback")
+        if "coop_cancel" not in self.capabilities()["features"]:
+            raise InstallError("Firmware lacks token-bound cooperative module cancellation")
+        token = secrets.token_bytes(8)
+        while not any(token):
+            token = secrets.token_bytes(8)
+        try:
+            if self.request_v2(RUN_COOP,slot|(0x100 if allow_higher_api else 0),token):
+                raise InstallError("Unexpected cooperative launch acknowledgment")
+        except LiveUnavailable as exc:
+            raise LiveUnavailable("Cooperative launch acknowledgment lost; execution unknown. Do not retry.") from exc
+        return self._collect_module(slot,timeout,on_report,cancel_token=token,
+                                    cancel_after=cancel_after,should_cancel=should_cancel)
 
     def serial_watermark(self):
         d = self.request(WATERMARK)
@@ -402,15 +431,38 @@ class LiveLink(CpsLink):
         result["ram"]=True
         return result
 
-    def _collect_module(self, slot, timeout, on_report):
+    def _collect_module(self, slot, timeout, on_report, *, cancel_token=None,
+                        cancel_after=None, should_cancel=None):
+        from k6_live_v2 import RUN_CANCEL, request_bytes_v2
         seq = self.seq
-        deadline = time.monotonic() + timeout
+        started = time.monotonic()
+        deadline = started + timeout
+        cancel_deadline = (started+cancel_after
+                           if cancel_token is not None and cancel_after is not None else None)
         reports = []
+        cancel_requested = cancel_acknowledged = False
         while time.monotonic() < deadline:
-            frame = self._frame(deadline)
+            due = cancel_deadline is not None and time.monotonic()>=cancel_deadline
+            requested = should_cancel is not None and should_cancel()
+            if not cancel_requested and cancel_token is not None and (due or requested):
+                # Same launch sequence, nonce and CRC; no ordinary dispatch
+                # is allowed while native code owns the foreground.
+                self.port.write(request_bytes_v2(RUN_CANCEL,seq,0,cancel_token))
+                cancel_requested=True
+            read_deadline = deadline
+            if cancel_deadline is not None and not cancel_requested:
+                read_deadline=min(read_deadline,cancel_deadline)
+            if should_cancel is not None and not cancel_requested:
+                read_deadline=min(read_deadline,time.monotonic()+.1)
+            frame = self._frame(read_deadline)
             if frame is None:
-                break
+                continue
             cmd, received_seq, data = frame
+            if (cmd,received_seq)==(RUN_CANCEL,seq) and cancel_token is not None:
+                if data != b"\0":
+                    raise InstallError("Invalid cancellation acknowledgment; state unknown")
+                cancel_acknowledged=True
+                continue
             if (cmd, received_seq) != (RUN_EVENT, seq):
                 continue
             if not data:
@@ -424,8 +476,13 @@ class LiveLink(CpsLink):
                 got_slot, load, returned, ret = struct.unpack("<BiBi", data[1:])
                 if got_slot != slot or returned not in (0, 1) or (returned and load <= 0):
                     raise InstallError("Invalid module completion; execution state unknown")
-                return dict(slot=slot, load=load, returned=bool(returned),
-                            result=ret if returned else None, reports=reports)
+                result = dict(slot=slot, load=load, returned=bool(returned),
+                              result=ret if returned else None, reports=reports)
+                if cancel_token is not None:
+                    result.update(cancel_requested=cancel_requested,
+                                  cancel_acknowledged=cancel_acknowledged,
+                                  cancelled=cancel_acknowledged and bool(returned) and ret==-125)
+                return result
             else:
                 raise InstallError("Invalid module event; execution state unknown")
         raise LiveUnavailable("Module completion not received; it may still be running. Do not retry blindly.")
@@ -617,6 +674,13 @@ def main():
     run.add_argument("--timeout", type=float, default=30)
     run.add_argument("--allow-higher-api", action="store_true",
                      help="explicitly allow modules above level 2 (may transmit or write hardware)")
+    coop = sub.add_parser("run-coop",
+        help="launch a cooperative module; Ctrl+C requests a token-bound stop")
+    coop.add_argument("slot",type=int)
+    coop.add_argument("--timeout",type=float,default=30)
+    coop.add_argument("--cancel-after",type=float,help="send one token-bound stop request after N seconds")
+    coop.add_argument("--allow-higher-api",action="store_true",
+                      help="required for API-25 modules; other higher APIs may access RF/TX")
     ram = sub.add_parser("run-ram", help="compile and execute a temporary API 1–2 C module without writing SPI")
     ram.add_argument("source")
     auth = ram.add_mutually_exclusive_group(required=True)
@@ -720,13 +784,31 @@ def main():
                 print(json.dumps(result,indent=2))
                 if not result["returned"]:
                     p.exit(1,"Temporary module did not execute to completion\n")
-            elif a.cmd == "run":
-                result = link.run_module(a.slot, timeout=a.timeout,
-                                         allow_higher_api=a.allow_higher_api,
-                                         on_report=lambda line: print(line, file=sys.stderr, flush=True))
-                print(json.dumps(result, indent=2))
+            elif a.cmd in ("run","run-coop"):
+                runner=(link.run_module_cooperative if a.cmd=="run-coop"
+                        else link.run_module)
+                opts=dict(timeout=a.timeout,allow_higher_api=a.allow_higher_api,
+                          on_report=lambda line:print(line,file=sys.stderr,flush=True))
+                if a.cmd=="run-coop":
+                    import signal
+                    stop=[False]
+                    def request_cancel(_signal,_frame):
+                        if not stop[0]:
+                            stop[0]=True
+                            print("Token-bound stop requested; waiting for module-owned cleanup",
+                                  file=sys.stderr,flush=True)
+                    previous=signal.getsignal(signal.SIGINT)
+                    signal.signal(signal.SIGINT,request_cancel)
+                    try:
+                        opts.update(cancel_after=a.cancel_after,should_cancel=lambda:stop[0])
+                        result=runner(a.slot,**opts)
+                    finally:
+                        signal.signal(signal.SIGINT,previous)
+                else:
+                    result=runner(a.slot,**opts)
+                print(json.dumps(result,indent=2))
                 if not result["returned"]:
-                    p.exit(1, "Module did not execute to completion\n")
+                    p.exit(1,"Module did not execute to completion\n")
             elif a.cmd == "tune":
                 print(json.dumps(link.tune(a.hz), indent=2))
             else:

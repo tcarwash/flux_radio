@@ -234,6 +234,13 @@ typedef struct k6_api {
      n=1..128 FIFO words; config=baud | (gain<<16), baud 1200/2400.
      Buffer must be in module scratch/arena. Caller supplies CRC/framing. */
   int (*fsk_configured)(uint32_t op, uint16_t *words, uint32_t n, uint32_t config);
+  /* Level 25: cooperative cancellation for a live, token-bound foreground
+     launch. Returns -1 when not launched with a cancellation token, 0
+     while active, or 1 after a valid stop request. The host cannot
+     interrupt native execution or bypass this module-owned check. A
+     module should return cleanly (typically -125) when it sees 1.
+     Do not use concurrently with level-14 exclusive KISS serial mode. */
+  int (*cancel_poll)(void);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

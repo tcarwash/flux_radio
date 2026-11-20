@@ -657,3 +657,128 @@ A post-update actual Hamlib 4.6.5 rigctl NET smoke test also passed
 `f/m/v/t/l STRENGTH` on the streaming build: 147790000 Hz,
 FM 15000, VFOA, RX/PTT 0 and S-meter +6 dB relative to nominal S9,
 with unchanged radio status before/after. No TX command was sent.
+
+## Cooperative foreground cancellation (API 25, experimental)
+
+**Scope:** The new `run-coop` launch is opt-in and serial-cable-only.
+It does not interrupt arbitrary native code, reset the MCU, retune,
+key the transmitter, or change the existing `run` and `run-ram`
+interfaces. **A module must explicitly call `api->cancel_poll()`
+and return by itself.** Module completion, not an on-wire request or
+a timeout, is the definitive evidence that module code has stopped.
+
+### API
+
+The append-only C `k6_api_t` adds
+`int (*cancel_poll)(void)` at level 25. The module must check
+`api->level >= 25` before calling it. Returns:
+
+- `-1`: not an opt-in live launch, or exclusive KISS UART ownership.
+- `0`: active, no verified cancellation request.
+- `1`: exact active token accepted; latched until module completion.
+
+A module should voluntarily unwind its own state, call TX-off if
+applicable, and return (our strictly RX-only smoke module returns
+`-125`). **The host does not automatically call TX-off for a
+noncooperating module, nor is this a substitute for local hardware
+TX/power watchdogs.** An application using level-14 raw KISS mode
+must not simultaneously use this polling interface.
+
+### Cable protocol
+
+Bit 17 `coop_cancel` in FLCP advertises support; K6CP module API
+ceiling reports 25 for live+SPI-library builds. Existing V1 opcode
+`0x66` is unchanged.
+
+- `0x7e RUN_COOP` is normal V2 with arg bits 0–4 library slot,
+  bit 8 explicitly allowing a higher module API, all others zero;
+  payload is an 8-byte nonzero cryptographically random run token.
+  The normal idle, module-signature, level and library guards run
+  before the token is armed. Accepted status is an empty success
+  payload. The familiar RUN_EVENT 0x67 reports and completion still
+  use the original launch request's 8-bit sequence.
+- `0x7f RUN_CANCEL` uses the **same 8-bit launch sequence**, arg 0,
+  and the exact 8-byte run token, in one canonical V2-framed command.
+  While a live module is running, normal serial dispatch is unavailable;
+  instead `cancel_poll()` incrementally reads at most 64 buffered
+  UART bytes per call, checks framing, canonical padding, length,
+  sequence, token, argument and CRC, then latches the request.
+  A matching request produces a one-byte status-0 acknowledgment on
+  0x7f; wrong tokens and malformed frames are ignored. Ordinary
+  main-loop dispatch cannot cancel a running native module.
+- The host sends a cancellation **once**, without changing the
+  request sequence, never falling back to the legacy loader or
+  retrying a mutation. It reports `cancel_requested` separately
+  from `cancel_acknowledged`. Only a normal completion with
+  acknowledgment and module return `-125` is marked
+  `cancelled=true`. If a deadline expires, the native execution
+  state is unknown; do not relaunch blindly.
+
+The token is a session-scoped 64-bit bearer capability on the
+**physically exclusive programming cable**, not a proof of the
+firmware signing key or a network authentication mechanism. It is
+cleared at module completion, and each new launch uses a new random
+value. Remote PTT remains disabled.
+
+For a cooperative already-installed module:
+
+    python3 tools/k6_live.py --port /dev/ttyUSB0 run-coop 26 --allow-higher-api --cancel-after 0.5 --timeout 10
+
+The `--allow-higher-api` switch is mandatory for a level-25
+module; it is a separate acknowledgment that higher-level module
+APIs may include RF/TX and persistent writes. Never use this switch
+on untrusted module code. The test-only
+`c/k6/mod/live_cancel_demo.c` is level 25, sends brief status lines,
+does **no RF or SPI writes**, checks PTT/power-off through its
+existing keys and polls cancellation every 10 ms. It returns 42 on
+its natural 3-second completion, -125 on cancellation.
+
+### Physical acceptance — 2026-11-20
+
+The bounded cancellation implementation was exercised with the
+physical radio on the PL2303 cable and current KUL2 packed library.
+RX-only candidate build ID ce46aac935c96e97, 115008 firmware
+bytes, 11776-byte arena, 6256-byte main stack and 280 RAM0 bytes
+free. The prior verified live-stream build 807d1b7f53286cbc
+and complete private physical SPI snapshot were preserved before
+flashing. Capability API ceiling 25, calibration and original
+26-object directory checks passed.
+
+The API-25 demo compiled to 186 bytes (210-byte cable-only
+envelope) and installed in confirmed empty slot 26 with live readback:
+- Token-bound stop requested after 500 ms: completed in 0.635 s,
+  returned -125, with cancel_requested, cancel_acknowledged and
+  cancelled all true. Reports: COOP: started, COOP: cancelled.
+- Second fresh-token run with no cancellation returned 42 after
+  3.201 s (COOP: completed), cancelled=false, confirming no stale
+  cancellation latch.
+- The module was removed. All 26 original library objects matched
+  the pre-test SPI snapshot byte-for-byte. Factory calibration
+  and VFOs remained unchanged; final state idle RX, no intentional TX.
+- No reboot between install, two runs and removal. Replay watermark
+  ended at the removal serial 1795211529.
+
+The CLI first Ctrl+C requests a token-bound cooperative stop, not
+a forced unwind or serial abandonment. It distinguishes requested,
+acknowledged and module-completed states; timeouts mean unknown
+execution. Ctrl+C UI was unit-tested; the physical run used
+--cancel-after. Source: c/k6/mod/live_cancel_demo.c. Private test
+envelopes and report: ~/flux-bench/live-coop-20261120/.
+
+### Reproducible build gating
+
+The default C module loader remains at API ceiling 23. The C build
+enables ceiling 24 for the dedicated raw-FSK build and 25 only when
+K6_LIVE_SERIAL=1. The generated Aura overlay's level initializer
+is normalized before reapplying the older API overlays on repeated
+builds; this avoids incorrectly broadening non-live module acceptance.
+
+A clean repeated build after these gating corrections reported
+build ID 21a68dd562c601bd. It is exactly 115008 bytes like the
+physically tested ce46aac935c96e97 image; a byte-by-byte comparison
+found **only the eight embedded build-ID bytes** differ, at
+0x1c0e0–0x1c0e7. The runtime machine code is identical. The
+new build passed the compiled-FW cooperative cancellation test.
+The physical radio was deliberately left on the fully tested
+ce46aac935c96e97 build rather than flashed again just to change
+its self-reported ID.

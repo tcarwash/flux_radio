@@ -353,3 +353,45 @@ def test_compiled_live_library_mutation(simulated_radio,monkeypatch):
     assert bytes(port.board.flash_data[:BASE])+bytes(port.board.flash_data[END:])==outside
     assert link.status()["vfos"]==state["vfos"]
     assert not link.status()["transmitting"]
+
+
+def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:pytest.skip("set K6_SIM_LIVE_IMAGE")
+    from modem import k6mod
+    from k6_live_v2 import RUN_COOP, RUN_CANCEL, decode_request, request_bytes_v2
+    from k6_user_store_migrate import compact,BASE,END,objects
+    from k6_install import InstallError
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(
+        monotonic=port.monotonic,sleep=port.sleep))
+    port.baudrate=115200
+    link=LiveLink(port,timeout=3.0,initial_seq=0)
+    if "coop_cancel" not in link.capabilities()["features"]:
+        pytest.skip("requires new cooperative cancellation feature")
+    assert link.module_capabilities()["module_api_max"]==25
+    code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/
+                                  "c/k6/mod/live_cancel_demo.c"))
+    env=k6mod.image(code,entry,100,None,level=25,lib=26)
+    port.board.flash_data[BASE:END]=compact({26:env})[0]
+    before=bytes(port.board.flash_data)
+    initial=link.status()
+    assert initial["standby_idle"] and not initial["transmitting"]
+    wrong=[False]
+    def send_invalid(line):
+        if "COOP: started" in line:
+            start=next(decode_request(w) for w in port.requests
+                       if w.startswith(b"FLXLV2") and decode_request(w)[0]==RUN_COOP)
+            seq=start[1];token=start[3]
+            port.write(request_bytes_v2(RUN_CANCEL,seq,0,
+                       bytes([token[0]^1])+token[1:]))
+            wrong[0]=True
+    result=link.run_module_cooperative(26,timeout=6,cancel_after=.15,
+                                      allow_higher_api=True,on_report=send_invalid)
+    assert wrong[0] and result["cancelled"] and result["result"]==-125,result
+    assert result["cancel_acknowledged"] and result["cancel_requested"]
+    assert "COOP: started" in result["reports"] and "COOP: cancelled" in result["reports"]
+    assert link.status()["vfos"]==initial["vfos"]
+    assert not link.status()["transmitting"]
+    assert bytes(port.board.flash_data)==before
+    assert objects(port.board.flash_data[BASE:END])=={26:env}

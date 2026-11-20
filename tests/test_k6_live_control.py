@@ -640,3 +640,68 @@ def test_bench_compare_download_mode_and_data(tmp_path):
     with pytest.raises(InstallError,match="Extended read differs"):
         validate(bad,tmp_path,{"steps":[]},compare_download=True)
     assert bad._stream_enabled
+
+
+def test_token_bound_coop_launch_and_ack(monkeypatch):
+    import k6_live
+    from k6_live_v2 import decode_request, RUN_COOP, RUN_CANCEL
+    class CooperativePort(Port):
+        def __init__(self, decline=False):
+            super().__init__();self.decline=decline
+            self.launch=None
+        def write(self, data):
+            self.writes.append(bytes(data))
+            if data.startswith(b"FLXLV1"):
+                if data[6] == k6_live.CAPS:
+                    self.buf += cps_frame(data[6],data[7],b"\0FLCP\1"+
+                                          struct.pack("<I",1<<17))
+            elif data.startswith(b"FLXLV2"):
+                cmd,seq,arg,token=decode_request(data)
+                if cmd==RUN_COOP:
+                    assert 0<=arg&31<32
+                    assert len(token)==8 and any(token)
+                    self.launch=(seq,token)
+                    self.buf+=cps_frame(cmd,seq,b"\0")
+                elif cmd==RUN_CANCEL:
+                    assert self.launch is not None and seq==self.launch[0]
+                    assert token==self.launch[1] and arg==0
+                    if not self.decline:
+                        self.buf+=cps_frame(cmd,seq,b"\0")
+                        self.buf+=cps_frame(k6_live.RUN_EVENT,seq,
+                            b"\1"+struct.pack("<BiBi",24,186,1,-125))
+    p=CooperativePort()
+    link=LiveLink(p,initial_seq=0,timeout=.1)
+    result=link.run_module_cooperative(24,timeout=.1,cancel_after=0,
+                                        allow_higher_api=True)
+    assert result["cancel_requested"] and result["cancel_acknowledged"]
+    assert result["cancelled"] and result["result"]==-125
+    assert [decode_request(w)[0] for w in p.writes if w.startswith(b"FLXLV2")]==[
+        RUN_COOP,RUN_CANCEL]
+    assert not any(w.startswith(b"PROGRAM") for w in p.writes)
+
+    p=CooperativePort(decline=True)
+    with pytest.raises(LiveUnavailable,match="may still be running"):
+        LiveLink(p,initial_seq=0,timeout=.02).run_module_cooperative(
+            24,timeout=.02,cancel_after=0,allow_higher_api=True)
+    assert len([w for w in p.writes if w.startswith(b"FLXLV2")])==2
+
+    # A caller-owned cancellation event is also supported (e.g. the CLI's
+    # first Ctrl+C). A timeout is never automatically converted to cancel.
+    p=CooperativePort()
+    assert LiveLink(p,initial_seq=0,timeout=.1).run_module_cooperative(
+        24,timeout=.1,should_cancel=lambda:True,
+        allow_higher_api=True)["cancelled"]
+    assert len([w for w in p.writes if w.startswith(b"FLXLV2")])==2
+
+
+def test_coop_is_feature_gated_and_input_validated():
+    import k6_live
+    p=Port(lambda d:cps_frame(k6_live.CAPS,d[7],b"\0FLCP\1"+struct.pack("<I",0)))
+    link=LiveLink(p,initial_seq=0)
+    with pytest.raises(InstallError,match="lacks token-bound"):
+        link.run_module_cooperative(24)
+    with pytest.raises(ValueError,match="delay"):
+        link.run_module_cooperative(24,timeout=1,cancel_after=1)
+    with pytest.raises(ValueError,match="slot"):
+        link.run_module_cooperative(32)
+    assert len(p.writes)==1

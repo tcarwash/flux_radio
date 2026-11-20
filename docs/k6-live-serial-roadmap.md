@@ -162,3 +162,32 @@ stop protocol must involve an explicit module yield/check API, an
 authenticated per-job cancellation token and an independently verified
 hardware watchdog for physical PTT and power-off; timeout by itself
 must never be described as cancellation.
+
+### Token-bound cooperative module exit
+
+Added optional V2 0x7e run launch and 0x7f stop request with a random
+8-byte bearer token scoped to the launch sequence. The append-only
+module API level 25 exposes `cancel_poll()`: only the native module
+can decide to return. Wrong tokens/CRC never set the stop flag;
+cancellation ACK and returned -125 are tracked separately from request
+intent. No RX/TX transceiver forced halt, loader call, reset, or
+automatic retry. Standard V1 installed launch and API 1–2 temporary
+RAM launching are unchanged. Do not confuse this cooperative contract
+with preemptive or safety-critical cancellation. Test with a
+no-RF 3-second module before any experiment with TX code.
+
+Physical validation 2026-11-20: RX-only API-25 smoke module
+installed into empty KUL2 slot 26 and returned -125 with an
+acknowledged matching token in 0.635 s (stop requested at 0.5 s).
+A second fresh-token launch ran its full 3.201 s and returned 42,
+demonstrating a cleared stop state. Live removal verified; all 26
+original library objects and factory calibration matched the
+snapshot, and radio remained idle RX with original VFOs.
+No RF transmission intentionally generated. Details:
+~/flux-bench/live-coop-20261120/.
+
+Build compatibility gate: default C verifier ceiling remains 23,
+raw-FSK non-live remains 24, live serial + SPI module ABI is 25.
+The reproducibility build changes only eight build-ID metadata bytes
+relative to the physical acceptance image. No unnecessary second
+flash was performed.

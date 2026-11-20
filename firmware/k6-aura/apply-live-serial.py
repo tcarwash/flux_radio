@@ -329,3 +329,30 @@ for name,signature in [
     insert(pager,signature,signature+'''
     #[cfg(all(k6_live_serial,feature="spilib",k6_ram0_stack,k6_user_store))]
     if LIVE_LIB_WRITE && !live_lib_write_allowed() {return -1;}''')
+
+# New foreground API level 25 is appended to the existing ABI and only
+# available on live-enabled SPI-library firmware. An older module API table
+# is not changed in-place, and modules must feature-test api->level.
+api_field = '        pub fsk_configured: unsafe extern "C" fn(u32, *mut u16, u32, u32) -> i32,'
+insert(pager,api_field,
+       api_field+'\n        // level 25: token-bound cooperative cancellation; RX-only callback\n'
+       '        pub cancel_poll: unsafe extern "C" fn() -> i32,')
+api_init = '    fsk_configured: mod_fsk_configured,'
+insert(pager,api_init,api_init+'\n    cancel_poll: mod_cancel_poll,')
+api_level = 'level: if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} else if cfg!(feature = "fd6818b") { 23 } else { 9 },'
+if 'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 }' not in pager.read_text():
+    insert(pager,api_level,
+           'level: if cfg!(all(k6_live_serial, feature = "spilib")) { 25 } '
+           'else if cfg!(all(k6_config_fsk, not(k6_no_fsk_rx), feature = "fd6818b")) {24} '
+           'else if cfg!(feature = "fd6818b") { 23 } else { 9 },')
+insert(pager, '/// Enter Aura\'s sideloaded-module picker from the normal launcher.',
+       '''// A synchronous module can sample the live UART only at checkpoints it
+// chooses. No interrupts, stack manipulation, or implicit TX controls.
+unsafe extern "C" fn mod_cancel_poll() -> i32 {
+    #[cfg(all(k6_live_serial,feature="spilib"))]
+    {return crate::cps::live::cancel_poll();}
+    #[cfg(not(all(k6_live_serial,feature="spilib")))]
+    {-1}
+}
+
+/// Enter Aura's sideloaded-module picker from the normal launcher.''')

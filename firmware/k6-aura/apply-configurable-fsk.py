@@ -5,7 +5,7 @@ root=Path(__file__).parent/'build/aura-fd6818b-port/src'
 p=root/'app/pager.rs';s=p.read_text()
 import sys,re
 if '--reset-level' in sys.argv:
- s=re.sub(r'level: if cfg!\(all\(k6_config_fsk,.*?\n', 'level: if cfg!(feature = "fd6818b") { 23 } else { 9 },\n',s)
+ s=re.sub(r'level: if cfg!\(all\((?:k6_config_fsk|k6_live_serial),.*?\n', 'level: if cfg!(feature = "fd6818b") { 23 } else { 9 },\n',s)
  p.write_text(s);sys.exit(0)
 if 'pub fsk_configured:' not in s:
  s=s.replace('        pub aprs_position_set: unsafe extern "C" fn(i32, i32) -> i32,','        pub aprs_position_set: unsafe extern "C" fn(i32, i32) -> i32,\n        pub fsk_configured: unsafe extern "C" fn(u32, *mut u16, u32, u32) -> i32,')
