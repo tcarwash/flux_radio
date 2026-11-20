@@ -425,6 +425,9 @@ class Cable(CpsLink):
         self.__dict__.pop('_info', None)
 
     def read(self, addr, n, window=8, progress=None):
+        # Virtual/fixed-rate transports may implement byte I/O but not baud switching.
+        if getattr(self.port, "baudrate", None) != 115200 or not callable(getattr(self.port, "flush", None)):
+            return super().read(addr,n,window,progress)
         if addr % 64 or n < 4096 or addr < 0 or addr+n > CHIP_BYTES or getattr(self, '_fast_rate', None) == 0:
             return super().read(addr,n,window,progress)
         if not hasattr(self, '_fast_rate'):

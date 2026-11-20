@@ -604,3 +604,21 @@ def test_flash_pack_uses_verified_image_and_bootloader(tmp_path, monkeypatch):
         assert not any(radio.flashed[len(expected):])
     finally:
         radio.shutdown()
+
+
+def test_fast_read_fixed_rate_backend(monkeypatch):
+    from k6_install import Cable, CpsLink
+    class FixedRatePort:
+        pass
+    class BaudOnlyPort:
+        baudrate = 115200
+    expected = bytes(8192)
+    def baseline(self, addr, n, window=8, progress=None):
+        assert (addr, n) == (0x110000, 8192)
+        return expected
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not probe fast transport on fixed-rate backend")
+    monkeypatch.setattr(CpsLink, "read", baseline)
+    monkeypatch.setattr(Cable, "calls", forbidden)
+    for port in (FixedRatePort(), BaudOnlyPort()):
+        assert Cable(port).read(0x110000, 8192) == expected
