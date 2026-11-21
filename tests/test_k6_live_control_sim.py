@@ -367,8 +367,13 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
         monotonic=port.monotonic,sleep=port.sleep))
     port.baudrate=115200
     link=LiveLink(port,timeout=3.0,initial_seq=0)
-    if "coop_cancel" not in link.capabilities()["features"]:
-        pytest.skip("requires new cooperative cancellation feature")
+    features=set(link.capabilities()["features"])
+    if "coop_cancel" not in features:
+        pytest.skip("requires cooperative cancellation feature")
+    # This test writes a *packed* module store and must not run against the
+    # ordinary non-packed host image, whose same slot is deliberately invalid.
+    if "lib_large" not in features:
+        pytest.skip("requires packed user store (K6_USER_STORE=1)")
     assert link.module_capabilities()["module_api_max"]==25
     code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/
                                   "c/k6/mod/live_cancel_demo.c"))
