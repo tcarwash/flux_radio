@@ -87,13 +87,15 @@ future speech codec will need hundreds of bits/s to perhaps
 modem and coding policy. The end-to-end bitrate must be measured,
 not assumed from the symbol count.
 
-The existing Sotto 1200 encoder performance numbers mainly
-concern upstream original FD6818/M0 and selected Cortex-M4
-optimizations, not a proven real-time encoder fitting the
-FD6818B's available SRAM/CPU while running PA11 sampling and
-a modulator. Codec2 ultra-low-rate modes and lightweight
-fixed-phrase/data-plus-vocoder designs are alternative research
-leads; a quality/speed/memory comparison is required first.
+The upstream Sotto slim 1200 encoder is a strong candidate:
+our short Cortex-M0 benchmark measured 23.16 MHz mean,
+25.85 MHz worst, with 3,148 B of state. Its external
+codebook and IVF/DCT hooks are major improvements. It
+does not yet fit Flux's 11,776-byte module arena unchanged,
+or establish real-time coexistence with PA11 audio sampling.
+See docs/k6-sotto-slim-feasibility.md. Sotto 600/400 could
+fit lower-rate modems, but no slim encoder exists for them yet.
+Codec 2 remains a fallback, not the preferred choice.
 
 Possible architecture:
  microphone -> RF-chip TX audio ADC -> PA11 software ADC
