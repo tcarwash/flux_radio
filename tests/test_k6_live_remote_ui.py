@@ -118,8 +118,22 @@ def test_optin_overlay_and_old_protocol_unchanged():
     app_overlay=(ROOT/"firmware/k6-aura/apply-remote-ui.py").read_text()
     assert "#[cfg(k6_remote_ui)]" in src
     assert "MODULE_PAGE_BUFFER_STORAGE" in src
-    assert "page*140+half*64" in src
+    assert "page*140+12+half*64" in src
     assert "K6_REMOTE_UI" in builder
     assert "apply-remote-ui.py" in builder
     assert "self.keypad.queue_virtual_key" in app_overlay
     assert "self.radio.ptt_asserted()" in app_overlay
+
+
+def test_lcd_page_prefix_does_not_shift_or_clip_rightmost_column():
+    # A 32-bit repr(Rust) BufferPage has 12 bytes of dirty bookkeeping
+    # followed by the complete 128-pixel-wide graphics payload.
+    pages=bytearray(8*140)
+    for page in range(8):
+        pages[page*140:page*140+12]=bytes([0xa5])*12
+        pages[page*140+12:page*140+140]=bytes([0xff])*128
+    captured=b"".join(bytes(pages[page*140+12:page*140+140]) for page in range(8))
+    assert len(captured)==1024
+    assert captured==bytes([0xff])*1024
+    assert captured[:12]!=bytes([0xa5])*12
+    assert captured[127]==255 and captured[1023]==255

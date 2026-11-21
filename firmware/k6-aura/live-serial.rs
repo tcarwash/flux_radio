@@ -142,8 +142,11 @@ pub fn decode(data: &[u8]) -> Option<Request> {
 
 // The 32-bit st7565 0.6.0 graphics buffer owns 8 x 140-byte pages,
 // with an existing 1,152-byte static allocation (32 bytes spare).
-// Each begins with 128 actual LCD pixel bytes, bit0 = top pixel of its page;
-// the following 16 bytes are dirty bookkeeping. No second framebuffer.
+// Rust's repr(Rust) places the Option<(usize,usize)> dirty bookkeeping
+// FIRST: 12 bytes, then 128 actual LCD pixel bytes. The previous attempt
+// used offset 0 and shifted all pixels right by 12, clipping the right edge.
+// Every pixel byte is page*140 + 12 + x, bit0 = top pixel in its page.
+// No second framebuffer is allocated.
 // This is an intentionally pinned, compile-time-checked firmware layout:
 // reject any future ST7565 representation change until revalidated.
 #[cfg(k6_remote_ui)]
@@ -161,7 +164,7 @@ fn screen_capture(req: &Request) {
     for page in 0..8usize {
         for half in 0..2usize {
             let chunk=page*2+half;
-            let pixels=unsafe {core::slice::from_raw_parts(base.add(page*140+half*64),64)};
+            let pixels=unsafe {core::slice::from_raw_parts(base.add(page*140+12+half*64),64)};
             let mut packet=[0u8;72];
             let n=frame::encode(&mut packet,SCREEN_PAGE,
                 ((req.seq as u16)<<8)|(chunk as u16),pixels);

@@ -47,8 +47,11 @@ or `shared_lcd`) uses ST7565 v0.6.0
 `MODULE_PAGE_BUFFER_STORAGE` allocation is **1,152 bytes**;
 on the 32-bit ARM target the actual graphics structure is
 **1,120 bytes**, consisting of eight 140-byte pages.
-Each begins with 128 pixel data bytes. The remaining 12 bytes
-of each page are dirty bookkeeping. The extra 32 allocated
+On the pinned 32-bit Rust compiler, the 12-byte Option-based dirty
+bookkeeping comes **first**, then the 128 pixel bytes. The original
+screenshot prototype assumed the opposite order and erroneously shifted
+each page 12 columns right, clipping the final 12 pixels. The capture
+reads bytes `page*140 + 12 ... page*140 + 139`. The extra 32 allocated
 bytes are unused headroom.
 
 The build asserts the exact 1,120-byte structure size.
@@ -140,6 +143,25 @@ changed 37,312 vs first menu screen; **EXIT**
 returned to standby with only 96 changed pixels
 (blinking/dynamic UI). Radio was idle RX and
 not transmitting after each test.
+
+### 12-pixel crop bugfix, physical confirmation
+
+The first screenshot release incorrectly began each page at offset 0,
+reading the 12-byte dirty flags as pixels and omitting the last 12 real
+pixels. Its selected MENU row had no black pixels at column 0 for
+rows 10–19, although column 127 was black. Fixed firmware begins at
+`page*140+12`, verified on physical K6 image build
+**`f5c33782022b4016`** (SHA256
+`aed8c389a3ec8820b9981a36bb1428367e7d3a19938c059ba9d1810c461d2411`).
+On the new screenshot, the same row has black pixels at **both**
+columns 0 and 127 for all ten rows, proving 128-pixel edge-to-edge
+capture. Full-width frequency labels, battery indicator and mode
+status are now visible. No protocol/host CLI change was needed.
+The radio was left at 146.560 MHz FM, idle RX, battery 7.66 V.
+
+Corrected images: `standby-fixed.png` and `menu-fixed.png` in
+`~/flux-bench/live-remote-ui-20261121/`. The previous images remain
+for regression comparison; both firmware images are saved in that folder.
 
 The four PNGs are stored on the developer PC:
 
