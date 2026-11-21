@@ -122,3 +122,28 @@ Do not feed this raw bit file to a firmware/module uploader.
 Aim for a menu of characterized transmit backends, not a single claimed
 general-purpose SDR mode. The independent TX timeout, RF filtering and power
 measurements are release gates, not reasons to stop the bench research.
+
+## External architecture lead: bypass the voice path (2026-11-21)
+
+The original FD6818 programming-guide discussion of DMR/dPMR describes a
+**MICIN shaped 4FSK input** with transmit DC-cancellation bypass, and an
+alternative **TCXO control / two-point modulation** arrangement. The
+RadioFoundry Retevis RT10 hardware notes document a working FD6818 +
+separate HR_C7000 modem in which the modem feeds TX modulation via the TCXO
+MOD1 pin, and describe its bypass RX/TX setup. See:
+
+- https://www.scribd.com/document/824197904/Document (FD6818 guide text)
+- https://radiofoundry.org/docs/spec/hardware-rt10 (observed hardware)
+- https://radiofoundry.org/docs/spec/hardware-db25d (two-point modulation notes)
+
+**This does NOT establish the mapping for our FD6818B 0x4829, or that the
+K6 board provides an accessible TCXO modulation input.** It changes the
+research ranking: a reversible, AC-/bias-safe test using filtered MCU PWM
+(or an external audio DAC) into the real MICIN analog chain, with receiver
+SDR measurement, may be a better route to directly shaped continuous-phase
+4FSK than one-bit high-rate native-FSK dithering. Test subaudio/DC response,
+pre-emphasis disable, deviation, symbol shape and RF spectral purity. If the
+B chip has a similarly useful DC-coupled bypass, arbitrary instantaneous
+frequency trajectories become practical; if it removes DC, only audio-band
+frequency trajectories work and ultra-narrow FT8/WSPR remain unavailable.
+Do not write original-chip 0x4819/FD6818 register sequences to the B chip.
