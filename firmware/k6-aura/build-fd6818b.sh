@@ -17,6 +17,9 @@ PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import va
 PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import validate_tx_profile; validate_tx_profile(sys.argv[1])' "$K6_TX_PROFILE"
 K6_OTA_SERVICE=${K6_OTA_SERVICE:-0}
 K6_SOTTO_SERVICE=${K6_SOTTO_SERVICE:-0}
+# Screenshots and logical UI keys are part of the standard live serial
+# interface; an explicit K6_REMOTE_UI=0 still disables them for tiny builds.
+K6_REMOTE_UI=${K6_REMOTE_UI:-${K6_LIVE_SERIAL:-0}}
 # Remote PTT is baseline live-serial CAT, not an optional addon. A crashed
 # foreground loop must not hold RF indefinitely: require the independent
 # TIM14 transmitter watchdog for every live-serial firmware build.

@@ -123,6 +123,11 @@ python tools/k6.py catalog
 Open <http://127.0.0.1:5055>. Choose feature packs, build firmware,
 edit themes, and manage installed modules. The Catalog runs on your
 computer, not on a cloud service. See the [Catalog guide](docs/module-store.md).
+
+When using a live-serial-enabled Flux image, you can also [capture the radio's
+128×64 screen and send navigation keys over the programming cable](docs/k6-live-remote-ui.md)
+without resetting the radio. These commands are available through
+`tools/k6_live.py` and are independent of the separately leased remote PTT.
 Install only trusted native modules; they are not sandboxed.
 Starter downloads include the matching starter modules in the Catalog.
 For a source checkout, populate the local Catalog with

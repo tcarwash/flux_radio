@@ -1,16 +1,17 @@
 # Flux K6 live serial screenshot and virtual keypad
 
 **Status:** tested on a physical Baofeng FD6818B (0x4829) K6,
-November 21, 2026. Experimental, opt-in `K6_REMOTE_UI=1` firmware.
-Research branch `research/live-radio-remote-ui`, separate from CW
-and modulation work; not merged into main.
+November 21, 2026. Integrated into Flux main (live serial).
+`K6_REMOTE_UI=1` is enabled automatically in standard `K6_LIVE_SERIAL=1`
+builds; opt out with `K6_REMOTE_UI=0`. No MICIN or CW experiments
+are included in this integration.
 
 ## Quick use
 
 With a live-serial radio on the programming cable:
 
 ```sh
-cd /storage5/dev/flux-radio-remote-ui
+cd /storage5/dev/ag7su-blowfang
 python3 tools/k6_live.py --port /dev/ttyUSB0 screenshot --out /tmp/k6.png
 python3 tools/k6_live.py --port /dev/ttyUSB0 key MENU
 python3 tools/k6_live.py --port /dev/ttyUSB0 key DOWN
@@ -104,14 +105,11 @@ must use its own authorization and CSRF protections.
 ## Building and testing
 
 ```sh
-# From the research worktree; settings below retain the MICIN
-# feasibility image and 60-ms FM tail already on the test radio.
-K6_REMOTE_UI=1 K6_LIVE_SERIAL=1 K6_MICIN_TX=1 \
-K6_LAB_RAM_API26=1 K6_LEAN_TXDOG=1 K6_OTA_SERVICE=0 \
-K6_RAM0=stack K6_SERIAL_TRANSPORT=1 K6_SCAN_SERVICE=0 \
-K6_FM_TAIL_MS=60 K6_CW_FULL_HANG_MS=60 \
-K6_CW_SEMI_HANG_MS=300 \
-K6_OUT=/tmp/flux-remote-ui-build2-20261121 \
+# Standard live-serial build: remote LCD/keypad and remote-PTT lease
+# are included; no MICIN/CW lab or high-API RAM privileges required.
+K6_LIVE_SERIAL=1 K6_LEAN_TXDOG=1 \
+K6_RAM0=stack K6_SERIAL_TRANSPORT=1 \
+K6_OUT=/tmp/flux-main-live-remote-ui \
 sh firmware/k6-aura/build-fd6818b.sh
 
 python3 -m pytest -q \
@@ -120,11 +118,16 @@ python3 -m pytest -q \
   tests/test_k6_tx_tail_timing.py
 
 K6_SIM_REMOTE_UI=1 \
-K6_SIM_LIVE_IMAGE=/tmp/flux-remote-ui-build2-20261121/flux-fd6818b.bin \
+K6_SIM_LIVE_IMAGE=/tmp/flux-main-live-remote-ui/flux-fd6818b.bin \
 python3 -m pytest -q tests/test_k6_live_remote_ui_sim.py
 ```
 
-### Actual device checkpoint
+### Physical device checkpoint (research firmware)
+
+The real-radio test below was performed before integration on the
+remote-UI research build, not on a main build. It established the
+hardware framebuffer offset and the MENU/DOWN/EXIT behavior; the main
+image is additionally checked with the compiled-firmware emulator.
 
 New image SHA256:
 `532f57ad9ffc4c91e3c96431ef97ce77272dab7e937d888d97971d137b1c713c`.
