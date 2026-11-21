@@ -8,6 +8,58 @@ pub const MAGIC: &[u8; 6] = b"FLXLV1";
 pub const MAGIC_V2: &[u8; 6] = b"FLXLV2";
 const V2_MAX: usize = 128;
 const V2_ECHO: u8 = 0x70;
+// A leased, token-bound PTT control. Never accept a latched, unbounded TX.
+// Standard live-serial feature; bounded leases and existing TX policy apply.
+#[cfg(k6_live_serial)]
+const PTT_LEASE:u8=0x80;
+#[cfg(k6_live_serial)]
+const PTT_RELEASE:u8=0x81;
+#[cfg(k6_live_serial)]
+const PTT_LEASE_TICKS:u16=8_000; // 800 ms at 100 us/tick
+// Never make a remotely keyed transmitter depend solely on main-loop polling.
+// In the standard live build, a failed TIM14/vector-table installation blocks
+// remote key-up even though ordinary RX and live serial remain available.
+#[cfg(k6_live_serial)]
+fn ptt_watchdog_ready()->bool {
+    #[cfg(k6_lean_txdog)]
+    {crate::hal::txdog::ready()}
+    #[cfg(not(k6_lean_txdog))]
+    {false}
+}
+
+#[cfg(k6_live_serial)]
+static mut PTT_ACTIVE:Option<([u8;8],u16)>=None;
+
+#[cfg(k6_live_serial)]
+fn ptt_expired(since:u16, now:u16)->bool {
+    now.wrapping_sub(since)>=PTT_LEASE_TICKS
+}
+
+// Called from the foreground main loop independently of serial traffic.
+// A host disappearing, invalid renewals, or a held PTT cannot extend this lease.
+#[cfg(k6_live_serial)]
+pub fn poll_ptt(app:&mut App,syst:&mut SYST) {
+    let active=unsafe{PTT_ACTIVE};
+    if let Some((_,since))=active {
+        if ptt_expired(since,crate::hal::uptime::now())
+            || crate::board::power_switch_off(unsafe{&*kd32f328_pac::Gpioa::ptr()})
+            || app.mode()!=Mode::Standby || !app.is_transmitting() {
+            unsafe{PTT_ACTIVE=None;}
+            // Even on an abnormal state, release the radio TX path.
+            app.set_ptt(syst,false);
+        }
+    }
+}
+
+// A debounced physical PTT transition overrides the serial transmitter.
+// The next lease renewal must fail, not re-key after the operator releases.
+#[cfg(k6_live_serial)]
+pub fn physical_ptt_override(app:&mut App,syst:&mut SYST)->bool {
+    let was=unsafe{core::ptr::replace(core::ptr::addr_of_mut!(PTT_ACTIVE),None).is_some()};
+    if was {app.set_ptt(syst,false);}
+    was
+}
+
 #[cfg(all(feature="spilib",k6_ram0_stack))]
 const RAM_BEGIN:u8=0x71;
 #[cfg(all(feature="spilib",k6_ram0_stack))]
@@ -495,13 +547,58 @@ fn upload_probe(app:&mut App,req:&Request,payload:&[u8]) {
     uart::set_binary_mode(false);
 }
 
-struct V2Args {app:*mut App,job:Option<(u8,i32)>}
+struct V2Args {app:*mut App,syst:*mut SYST,job:Option<(u8,i32)>}
 unsafe extern "C" fn dispatch_v2_on_stack(raw: *mut core::ffi::c_void) {
     let Some(f)=receive_v2() else {return;};
     let req=f.req();
     let args=unsafe{&mut *raw.cast::<V2Args>()};
     match req.cmd {
         V2_ECHO if req.arg==0 => reply_v2(&req,f.payload()),
+        #[cfg(k6_live_serial)]
+        PTT_LEASE if req.arg==800 && f.payload().len()==8
+            && f.payload().iter().any(|&b|b!=0)=>{
+            let app=unsafe{&mut *args.app};
+            let mut token=[0u8;8];token.copy_from_slice(f.payload());
+            let state=unsafe{PTT_ACTIVE};
+            let now=crate::hal::uptime::now();
+            let status=if let Some((owner,since))=state {
+                if ptt_expired(since,now) || owner!=token || !app.is_transmitting() {
+                    BUSY
+                } else {
+                    unsafe{PTT_ACTIVE=Some((owner,now));}
+                    OK
+                }
+            } else if !ptt_watchdog_ready() || !app.live_cat_idle() || app.power_save_is_asleep()
+                || app.side_is_channel_mode(app.master_index())
+                || app.live_modulation(app.master_index())!=0 {
+                BUSY
+            } else {
+                app.set_ptt(unsafe{&mut *args.syst},true);
+                if app.is_transmitting() {
+                    // Independent RF watchdog in addition to 800 ms main-loop lease.
+                    // Existing keyed() arms it before this point.
+                    crate::hal::txdog::limit(1_500);
+                    unsafe{PTT_ACTIVE=Some((token,now));}
+                    OK
+                } else {BUSY}
+            };
+            reply(&req,&[status]);
+        }
+        #[cfg(k6_live_serial)]
+        PTT_RELEASE if req.arg==0 && f.payload().len()==8 => {
+            let app=unsafe{&mut *args.app};
+            let state=unsafe{PTT_ACTIVE};
+            let status=if let Some((owner,_))=state {
+                if owner!=f.payload() {BUSY}
+                else {
+                    unsafe{PTT_ACTIVE=None;}
+                    app.set_ptt(unsafe{&mut *args.syst},false);
+                    if app.is_transmitting(){IO}else{OK}
+                }
+            } else {OK}; // already released (idempotent de-key)
+            reply(&req,&[status]);
+        }
+
         #[cfg(all(feature="spilib",k6_ram0_stack))]
         RAM_BEGIN=>{args.job=ram_upload(unsafe{&mut *args.app},&req,f.payload(),false,false);}
         #[cfg(all(feature="spilib",k6_ram0_stack,k6_serial_transport))]
@@ -552,7 +649,7 @@ pub fn dispatch_v2(app:&mut App,syst:&mut SYST) {
     unsafe extern "C" {
         fn km_call_on_stack(top:*mut u8,f:unsafe extern "C" fn(*mut core::ffi::c_void),arg:*mut core::ffi::c_void);
     }
-    let mut args=V2Args{app,job:None};
+    let mut args=V2Args{app,syst,job:None};
     unsafe {km_call_on_stack(crate::hal::arena::end() as *mut u8,dispatch_v2_on_stack,(&mut args as *mut V2Args).cast());}
     // Switch back to the audited main stack BEFORE calling the normal
     // runner. Its LCD callbacks borrow the arena top as their own stack.
@@ -667,7 +764,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(all(feature="spilib",k6_ram0_stack,k6_user_store)) {8192 | 32768} else {0}
                 | if cfg!(feature="spilib") {16384} else {0}
                 | if cfg!(k6_serial_transport) {65536} else {0}
-                | if cfg!(feature="spilib") {131072} else {0};
+                | if cfg!(feature="spilib") {131072} else {0}
+                | if cfg!(all(k6_live_serial,k6_lean_txdog)) {262144} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;

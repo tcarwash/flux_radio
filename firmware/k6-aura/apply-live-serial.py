@@ -405,3 +405,39 @@ unsafe extern "C" fn mod_cancel_poll() -> i32 {
 }
 
 /// Enter Aura's sideloaded-module picker from the normal launcher.''')
+
+
+# Remote PTT is part of the live serial firmware profile; all remote key-downs have
+# an independent main-loop expiry and local debounced PTT override. Keep these
+# outside serial dispatch so a disconnected host cannot hold TX forever.
+main = src / "main.rs"
+if "cps::live::poll_ptt(" not in main.read_text():
+    insert(main, '''        let due = scheduler.tick();
+        #[cfg(any(not(feature = "lean"), k6_lean_txdog))]
+        hal::txdog::poll(); // TIM14's wraps while the backstop is at rest''',
+           '''        let due = scheduler.tick();
+        #[cfg(k6_live_serial)]
+        cps::live::poll_ptt(&mut app,&mut cp.SYST);
+        #[cfg(any(not(feature = "lean"), k6_lean_txdog))]
+        hal::txdog::poll(); // TIM14's wraps while the backstop is at rest''')
+# blowfang-host branch only, retaining real local PTT behavior when remote TX is not active
+old='''            } else if let Some(level) = app.radio_mut().poll_ptt() {
+                app.set_ptt(&mut cp.SYST, !level);
+            }
+        }
+'''
+new='''            } else if let Some(level) = app.radio_mut().poll_ptt() {
+                #[cfg(k6_live_serial)]
+                let remote_was_active=cps::live::physical_ptt_override(&mut app,&mut cp.SYST);
+                #[cfg(not(k6_live_serial))]
+                let remote_was_active=false;
+                // Physical key-down may take over; physical key-up must not
+                // extend or reassert a serial PTT lease.
+                if !remote_was_active || !level { app.set_ptt(&mut cp.SYST, !level); }
+            }
+        }
+'''
+if new not in main.read_text():
+    if main.read_text().count(old)!=1:
+        raise SystemExit('remote PTT: host physical PTT anchor not unique')
+    main.write_text(main.read_text().replace(old,new,1))

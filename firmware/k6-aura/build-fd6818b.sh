@@ -17,6 +17,20 @@ PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import va
 PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import validate_tx_profile; validate_tx_profile(sys.argv[1])' "$K6_TX_PROFILE"
 K6_OTA_SERVICE=${K6_OTA_SERVICE:-0}
 K6_SOTTO_SERVICE=${K6_SOTTO_SERVICE:-0}
+# Remote PTT is baseline live-serial CAT, not an optional addon. A crashed
+# foreground loop must not hold RF indefinitely: require the independent
+# TIM14 transmitter watchdog for every live-serial firmware build.
+if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
+  if [ "${K6_LEAN_TXDOG:-1}" != 1 ]; then
+    echo "Live serial remote PTT requires the independent TX watchdog" >&2
+    exit 1
+  fi
+  case ",$FEATURES," in
+    *,txdog,*|*,txdog-quiet,*) ;;
+    *) echo "Live serial remote PTT requires the txdog Cargo feature" >&2; exit 1 ;;
+  esac
+  K6_LEAN_TXDOG=1
+fi
 export K6_THEME K6_TX_PROFILE K6_OTA_SERVICE K6_SOTTO_SERVICE
 
 case "$FEATURES" in

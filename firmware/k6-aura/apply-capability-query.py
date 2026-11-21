@@ -91,6 +91,11 @@ constant = 'const CMD_CABLE_INFO: u8 = 0x56;'
 if text.count(constant) != 1:
     raise SystemExit('could not locate Blowfang cable command definitions')
 # Without this declaration Rust treats the match identifier as a catch-all binding.
+# Old overlaid AURA checkouts may already contain both variants of the
+# same constant; remove the unguarded duplicate before compiling.
+old_caps = 'const CMD_CABLE_CAPS: u8 = 0x49; // read-only capabilities'
+if text.count('const CMD_CABLE_CAPS: u8 = 0x49;') > 1 and old_caps in text:
+    text = text.replace(old_caps + '\n', '', 1)
 caps_constant = 'const CMD_CABLE_CAPS: u8 = 0x49; // read-only capabilities'
 if 'const CMD_CABLE_CAPS: u8 = 0x49;' not in text:
     text = text.replace(constant, caps_constant + "\n" + constant, 1)

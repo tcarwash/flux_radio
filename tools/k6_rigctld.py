@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Loopback-only Hamlib NET rigctl bridge for Flux (RX/status and CAT tuning)."""
+"""Loopback-only Hamlib NET rigctl bridge for Flux with optional leased PTT."""
 import argparse
 import math
+import secrets
 import socketserver
 import threading
 from types import SimpleNamespace
@@ -10,7 +11,7 @@ from k6_install import InstallError, open_port
 from k6_live import LiveLink
 from k6_port_lock import serial_lock
 
-# Hamlib dump_state v1. RX ranges only; no advertised TX capabilities.
+# Hamlib dump_state v1. TX is advertised only for opt-in PTT-capable firmware.
 # Mode bits AM=1 CW=2 USB=4 FM=32. CWF is represented as CW (FM carrier with tone).
 # Only expose the negotiated live tune ranges, not the entire RFIC range.
 DUMP_STATE = """1
@@ -68,10 +69,55 @@ ALIASES = {
 }
 
 class Rig:
-    def __init__(self, link, features=("status", "tune")):
+    def __init__(self, link, features=("status", "tune"), *, enable_ptt=None):
         self.link = link
         self.features = set(features)
+        self.ptt_enabled = "ptt" in self.features if enable_ptt is None else enable_ptt and "ptt" in self.features
         self.lock = threading.Lock()
+        self.ptt_token = None
+        self.ptt_owner = None
+        self.ptt_stop = threading.Event()
+        self.ptt_worker = None
+
+    def _ptt_keeper(self):
+        # Foreground client may be asleep or waiting on Hamlib; the host
+        # renews its device lease separately. Never retry after uncertainty.
+        while not self.ptt_stop.wait(0.20):
+            with self.lock:
+                if self.ptt_token is None:
+                    continue
+                try:
+                    self.link.ptt_hold(self.ptt_token)
+                except (InstallError, OSError, ValueError):
+                    self.ptt_token = None
+                    self.ptt_owner = None
+                    # The radio's own lease is the last backstop.
+
+    def _ptt_release(self):
+        token = self.ptt_token
+        self.ptt_token = None
+        self.ptt_owner = None
+        if token is not None:
+            self.link.ptt_release(token)
+
+    def disconnect(self, session):
+        with self.lock:
+            if self.ptt_owner == session and self.ptt_token is not None:
+                try:
+                    self._ptt_release()
+                except (InstallError, OSError):
+                    pass  # TTL expires independently of host socket state
+
+    def close(self):
+        self.ptt_stop.set()
+        with self.lock:
+            try:
+                self._ptt_release()
+            except (InstallError, OSError):
+                pass
+        if self.ptt_worker:
+            self.ptt_worker.join(timeout=1.0)
+
 
     @staticmethod
     def mode(vfo):
@@ -81,7 +127,7 @@ class Rig:
                  "AM": 8000 if vfo["wide"] else 4000,
                  "USB": 2400, "CW": 500, "CWF": 500}[mode])
 
-    def execute(self, line):
+    def execute(self, line, session=None):
         parts = line.split()
         if not parts:
             return "RPRT -1\n"
@@ -89,17 +135,18 @@ class Rig:
         args = parts[1:]
         try:
             with self.lock:
-                return self._execute(op, args)
+                return self._execute(op, args, session)
         except (InstallError, OSError):
             return "RPRT -5\n"
         except (ValueError, KeyError, IndexError, OverflowError):
             return "RPRT -1\n"
 
-    def _execute(self, op, args):
+    def _execute(self, op, args, session=None):
         if op == r"\dump_state" and not args:
             return (DUMP_STATE
                     .replace("has_set_vfo=0", "has_set_vfo=" + str(int("vfo" in self.features)))
-                    .replace("has_set_freq=1", "has_set_freq=" + str(int("tune" in self.features))))
+                    .replace("has_set_freq=1", "has_set_freq=" + str(int("tune" in self.features)))
+                    .replace("ptt_type=0x0", "ptt_type=0x1" if self.ptt_enabled else "ptt_type=0x0"))
         if op == r"\chk_vfo" and not args:
             return "0\n"
         # NET backend checks CAT lock before changing mode. This bridge does
@@ -110,7 +157,7 @@ class Rig:
             self.link.status()
             return "1\n"
         if op == "_":
-            return "Flux live serial bridge (RX/CAT; remote TX disabled)\n"
+            return "Flux live serial bridge (leased remote PTT enabled)\n" if self.ptt_enabled else "Flux live serial bridge (RX/CAT; remote TX disabled)\n"
         if op == "l" and args == ["?"]:
             return "STRENGTH\n"
         if (op == "l" and args == ["STRENGTH"]) or (op == "dcd" and not args):
@@ -126,6 +173,28 @@ class Rig:
                 # The underlying raw-to-dBm conversion is not yet calibrated.
                 return f"{s['rssi_dbm'] + 93}\n"
             return f"{int(s['squelch_open'])}\n"
+        if op == "T" and len(args) == 1:
+            if not self.ptt_enabled:
+                return "RPRT -11\n"
+            if args[0] not in ("0", "1"):
+                return "RPRT -1\n"
+            if args[0] == "0":
+                self._ptt_release()
+                return "RPRT 0\n"
+            if self.ptt_token is not None:
+                # Never silently transfer an active RF lease across clients.
+                return "RPRT 0\n" if self.ptt_owner == session else "RPRT -9\n"
+            token = secrets.token_bytes(8)
+            while not any(token):
+                token = secrets.token_bytes(8)
+            self.link.ptt_hold(token)
+            self.ptt_token = token
+            self.ptt_owner = session
+            if self.ptt_worker is None:
+                self.ptt_worker = threading.Thread(target=self._ptt_keeper,daemon=True,
+                                                   name="flux-ptt-lease")
+                self.ptt_worker.start()
+            return "RPRT 0\n"
         if op == "M" and len(args) == 2 and "mode" in self.features:
             mode, width = args[0], int(args[1])
             widths = {"FM": (8000,15000), "AM": (4000,8000), "USB": (2400,), "CW": (500,)}
@@ -172,6 +241,7 @@ class Rig:
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         self.request.settimeout(60)
+        session=id(self)
         try:
             while True:
                 raw = self.rfile.readline(1025)
@@ -180,10 +250,12 @@ class Handler(socketserver.StreamRequestHandler):
                 line = raw.decode("ascii").strip()
                 if line in ("q", "Q", r"\quit"):
                     return
-                self.wfile.write(self.server.rig.execute(line).encode("ascii"))
+                self.wfile.write(self.server.rig.execute(line,session=session).encode("ascii"))
                 self.wfile.flush()
         except (OSError, UnicodeError):
             return
+        finally:
+            self.server.rig.disconnect(session)
 
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
@@ -196,6 +268,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--port", required=True, help="K6 serial device")
     p.add_argument("--listen-port", type=int, default=4532)
+    p.add_argument("--disable-ptt", action="store_true", help="disable PTT on this local Hamlib bridge even when the radio supports it")
     a = p.parse_args()
     try:
         with serial_lock(a.port), open_port(SimpleNamespace(port=a.port)) as port:
@@ -209,9 +282,14 @@ def main():
                 if str(exc) != "Unsupported command, address or frequency.":
                     raise
                 features = ("status", "tune")
-            with Server(("127.0.0.1", a.listen_port), Rig(link, features)) as server:
-                print(f"Flux NET rigctl on 127.0.0.1:{server.server_address[1]} (TX disabled)", flush=True)
-                server.serve_forever()
+            rig=Rig(link,features,enable_ptt=not a.disable_ptt)
+            try:
+                with Server(("127.0.0.1", a.listen_port), rig) as server:
+                    label="PTT leased" if rig.ptt_enabled else "TX disabled"
+                    print(f"Flux NET rigctl on 127.0.0.1:{server.server_address[1]} ({label})", flush=True)
+                    server.serve_forever()
+            finally:
+                rig.close()
     except KeyboardInterrupt:
         pass
     except (InstallError, OSError) as exc:

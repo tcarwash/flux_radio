@@ -46,7 +46,9 @@ guarantees that code is safe, RX-only, or polls for cancellation.
   retroactively prove a successful module cleanup.
 - Never run untrusted native code. The module API includes transmitter,
   hardware-register and storage operations even though the live serial
-  protocol has **no remote PTT command**. No RF capability is implied.
+  protocol had **no remote PTT command in the initial 2026-11-20 release**.
+  New source builds include a leased PTT protocol, but native-code modules
+  and physical RF capability require their own acceptance evidence.
 
 ### Hamlib
 
@@ -55,9 +57,11 @@ guarantees that code is safe, RX-only, or polls for cancellation.
 rigctl)**. Status, RX meter/squelch, VFO, mode and constrained frequency
 tuning are supported subject to live feature bits and radio standby guards.
 No Hamlib source patches are required; this is **not** an upstream Hamlib
-radio model. Remote PTT, TX power, CW send and memory writes are deliberately
-unsupported. Unsupported CAT setters return an error and are not advertised
-as supported in the `dump_state` discovery.
+radio model. Newer live-serial firmware advertises token-bound leased remote
+PTT automatically when the independent TX watchdog is compiled and ready;
+older firmware continues to refuse PTT. TX power, CW send and memory writes
+remain unsupported. Unsupported CAT setters return an error and are not
+advertised in `dump_state`. See [Remote PTT](k6-live-remote-ptt.md).
 
 ### Physical radio evidence (2026-11-20)
 
@@ -117,7 +121,9 @@ power, or flash the unit automatically merely to complete this checklist.
 7. Repeat with a keyed firmware image and verified signing-key recovery
    procedure before advertising keyed workflows as physically accepted.
 
-Until these pass, keep **remote PTT disabled** and the Catalog foreground
+Until these pass, **do not regard remote PTT as physically accepted for
+unattended transmission**; newly built firmware may include leased PTT, but
+this checklist does not certify on-air operation. Keep the Catalog foreground
 runner labeled experimental. Do not call cancellation a hardware kill switch.
 
 ## Automated regression entry points

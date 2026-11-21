@@ -22,7 +22,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -95,6 +95,54 @@ class LiveLink(CpsLink):
 
     def status(self):
         return decode_status(self.request(STATUS))
+
+    def ptt_hold(self, token):
+        """Key or renew the same bounded 800 ms firmware PTT lease.
+
+        Only the lease token can renew or release a keyed transmitter; never
+        retry a lost acknowledgment as a fresh key-up.
+        """
+        from k6_live_v2 import PTT_LEASE, PTT_LEASE_MS
+        self._validate_ptt_token(token)
+        if "ptt" not in self.capabilities()["features"]:
+            raise InstallError("Firmware does not advertise remote PTT support")
+        if self.request_v2(PTT_LEASE, PTT_LEASE_MS, token):
+            raise InstallError("Malformed remote PTT lease acknowledgement")
+
+    def ptt_release(self, token):
+        """Request a matching de-key; the firmware also independently expires leases."""
+        from k6_live_v2 import PTT_RELEASE
+        self._validate_ptt_token(token)
+        if self.request_v2(PTT_RELEASE, 0, token):
+            raise InstallError("Malformed remote PTT release acknowledgement")
+
+    @staticmethod
+    def _validate_ptt_token(token):
+        if not isinstance(token, bytes) or len(token) != 8 or not any(token):
+            raise ValueError("Remote PTT token must be a nonzero 8-byte capability")
+
+    def ptt_burst(self, seconds):
+        """Bounded CLI smoke TX: renew while held, de-key even on interruption."""
+        if isinstance(seconds, bool) or not isinstance(seconds, (float, int)) or not .1 <= seconds <= 10:
+            raise ValueError("PTT duration must be from 0.1 to 10 seconds")
+        token = secrets.token_bytes(8)
+        while not any(token):
+            token = secrets.token_bytes(8)
+        start = time.monotonic()
+        try:
+            self.ptt_hold(token)
+            while time.monotonic() - start < seconds:
+                time.sleep(min(0.20, max(0, seconds - (time.monotonic()-start))))
+                if time.monotonic() - start < seconds:
+                    self.ptt_hold(token)
+        finally:
+            # Release attempt is safe even if initial ACK was lost. An error
+            # here is NOT proof of de-key; device-local TTL remains active.
+            self.ptt_release(token)
+        s = self.status()
+        if s["transmitting"]:
+            raise InstallError("PTT release not observed; do not retry TX")
+        return s
 
     def tune(self, hz):
         if not (136_000_000 <= hz <= 174_000_000 or 400_000_000 <= hz <= 480_000_000) or hz % 10:
@@ -667,6 +715,8 @@ def main():
     mode.add_argument("--wide", action="store_true")
     vfo = sub.add_parser("vfo")
     vfo.add_argument("index", type=int, choices=(0,1))
+    ptt = sub.add_parser("ptt-burst", help="explicit bounded TX (requires opt-in PTT firmware)")
+    ptt.add_argument("--seconds", type=float, default=1.0)
     tune = sub.add_parser("tune")
     tune.add_argument("hz", type=int)
     run = sub.add_parser("run", help="launch an installed foreground module; wait for reports and completion")
@@ -727,6 +777,8 @@ def main():
                 rate=link.negotiate_upload(features)
                 print(json.dumps(dict(baud=rate, fast_upload_supported="fast_upload" in features,
                                       probe_seconds=round(time.monotonic()-start,3)),indent=2))
+            elif a.cmd == "ptt-burst":
+                print(json.dumps(link.ptt_burst(a.seconds), indent=2))
             elif a.cmd == "mode":
                 print(json.dumps(link.set_mode(a.mode,a.wide), indent=2))
             elif a.cmd == "vfo":
