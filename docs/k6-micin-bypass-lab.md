@@ -89,25 +89,18 @@ shaping could survive AC coupling, but long plateaus and fine, slow
 frequency trajectories may not. Sample value `0.03` means 3% *WAV
 full scale*, not 30 mV or a calibrated RF deviation.
 
-## TX register-bypass prototype (NOT authorized for live use yet)
+## Legacy filter-only TX probe retired
 
-`c/k6/mod/txbp4.c` is intentionally **inert** when compiled normally.
-The separately opt-in bench build requires both `TXBP_ENABLE=1` and
-`TXBP_FIXTURE_ACK=1`, and refuses incorrect chip, frequency, busy
-channel or key held. It requests a bounded TX window, immediately
-disables PA, sets only 0x2B TX-filter bypass bits, waits 200 ms,
-restores 0x2B and calls `tx_off`. The Cortex-M0 emulator tests verify
-normal path and abort/refusal cleanup. The module itself has **no
-PCM playback path**, and the B-chip bypass is **unvalidated**.
+The earlier c/k6/mod/txbp4.c bypass probe was shown to be **incapable
+of testing MICIN**, because the normal module TX path turns its ADC OFF.
+The module remains inert by default, and a TXBP_ENABLE=1 build now
+**fails compilation**. Do not use it to key the radio. Its replacement
+is the separately gated level-26 c/k6/mod/txmic4.c experiment.
 
-PA disabled does **not** mean zero RF leakage; `tx_on` can initially
-enable PA before `tx_pa(0)`. Do **not** run the enabled build
-without a properly rated 50-ohm dummy load, attenuated SDR/coupler
-and verified independent TX timeout. A prior lean firmware TX
-watchdog was a no-op; software polling is not a hang recovery.
-The current 200 ms hold also needs controlled host audio playout
-synchronization for a meaningful test. No module in this branch
-attempts TX automatically.
+PA-off is not RF-off: the initial guarded tx_on() can briefly enable
+the PA before a module disables it. Both TX-capable prototypes are
+bench-only, require a rated dummy load and an isolated RF pickoff, and
+are not approved for open-air testing.
 
 ## Next integrated hardware experiment
 
@@ -153,3 +146,89 @@ attempts TX automatically.
 **All new source and tests are on `research/native-fsk-pdm`.**
 Do not merge a TX bypass mode into release firmware without actual
 RF and independent-timeout verification.
+
+## Receive-only TX-filter validation — November 21, 2026
+
+The 606-byte API-level-2 module c/k6/mod/txbprxcheck.c ran successfully on
+the physical FD6818B (0x4829). It refuses key-held, wrong frequency, wrong
+RX state, and wrong baseline. At 146.560 MHz FM it performed exactly two
+REG_2B writes, changing 0x0300 to 0x0307 and back, verified each readback,
+and verified that RX state REG_30 and DC candidate REG_7E did not change.
+It did not key, enable PA, flash firmware, touch GPIO or alter frequency.
+Report: /tmp/flux-txbprx-20261121.json. Final status remained RX,
+transmitting=false, battery 7.21V. This proves writable/restorable filters,
+NOT the TX audio response.
+
+## Critical finding: default module TX disconnects MICIN
+
+The real generated B-chip module host uses MOD_TX_STATE=0xC1FA, with
+REG_30 bit 2 (MICIN ADC) OFF. Thus the older txbp4.c filter-bypass probe
+cannot itself transmit a waveform from the microphone connector. The
+ordinary Aura transmit state with MICIN enabled is 0xC1FE. To exercise
+external shaped 4-FSK, Flux needs an explicit dedicated MICIN path.
+
+The experimental opt-in firmware patch apply-micin-tx-api.py appends API
+level 26 callback micin_tx(enable), gated by K6_MICIN_TX=1. The build
+requires live serial and the independent TX watchdog. The callback
+refuses unless a guarded module TX is already active, watchdog ready,
+FD6818B verified, and REG_30 in a known TX state. Enabling MICIN also
+requires a confirmed PA-disabled REG_36 value. It changes only REG_30
+bit 2 and reads back the exact result. The ordinary module API and
+normal build remain unchanged. This is unflashed research software.
+
+For real RF work we still need a verified adapter into MICIN, analog
+bias and coupling measurements, load + coupler + SDR attenuation,
+measured emissions, a synchronized waveform, and hardware-safe timeout.
+
+Useful related work: Mobilinkd's Quansheng UV-K6 BK4819 (0x4819) flat
+digital mode used bypassed TX AF/DC/ALC/AGC filters and modified the
+analog board for low-frequency flat baseband, plus handled MICIN bias.
+It is precedent, NOT a proven B-chip (0x4829) register/board mapping.
+References:
+https://github.com/egzumer/uv-k5-firmware-custom/pull/583/files
+https://github.com/mobilinkd/uv-k6-digital-mod
+https://hackaday.com/2024/07/05/hacking-a-quansheng-handheld-to-transmit-digital-modes/
+
+
+## Offline compiled MICIN firmware — November 21, 2026
+
+The experimental opt-in firmware has now **compiled successfully**, without
+flashing, radio access, or creating a transmit waveform on-air. Its build
+uses K6_LIVE_SERIAL=1, K6_LEAN_TXDOG=1, K6_RAM0=stack,
+K6_SERIAL_TRANSPORT=1, K6_SCAN_SERVICE=0, and K6_MICIN_TX=1.
+Image: /tmp/flux-micin-lab-firmware/flux-fd6818b.bin. It is NOT a release
+image and should not be flashed without matching baseline/fixture validation.
+The independent TXDOG Rust code is compiled in; this does not prove the
+actual board can recover from every fault or that the MICIN test signal
+reaches the RF chip.
+
+The new c/k6/mod/txmic4.c RAM module is intentionally inert when built
+normally. The enabled bench-only build separately requires TXMIC_ENABLE=1,
+TXMIC_FIXTURE_ACK=1 and TXMIC_WATCHDOG_ACK=1; it declares API level 26.
+It refuses wrong silicon/frequency/busy channel/key-held, requests bounded
+TX, immediately turns PA off, enables MICIN ADC through the firmware-owned
+callback, sets TX voice-filter disable bits, allows 250ms for possible MIC
+bias settling, briefly enables PA for 100ms (under 750ms module TX limit),
+then disables PA, restores the filter, disables MICIN and calls tx_off.
+This has only compiler and emulator-inert/guard test evidence so far.
+It is not a complete synchronized live waveform-transmit harness: an
+external properly conditioned source, coupled SDR measurements and a
+fixture are still needed before the enabled version is run physically.
+
+**Important:** normal module TX uses MICIN-off REG_30=0xC1FA; only the
+separate level-26 path may request MICIN-on 0xC1FE, and its callback
+requires PA disabled at the moment MICIN is enabled. The new callback
+is not exposed by the radio's current firmware.
+
+
+## Compiled-image emulator acceptance (same research configuration)
+
+With K6_SIM_LIVE_IMAGE pointing at the compiled 99KiB MICIN-enabled
+image, tests/test_k6_live_control_sim.py completed: **7 passed,
+1 skipped, 1 failed**. The failed
+test_compiled_live_coop_cancel_token received an unsupported-command
+error from the compiled-image emulator. This may be a pre-existing
+configuration/feature interaction; **it has not been isolated or
+resolved**. Do not treat the experimental firmware as release-ready.
+All MICIN-specific host ABI patch checks and inert-module compile gates
+passed, but no on-radio MICIN callback or transmitted 4-FSK was tested.

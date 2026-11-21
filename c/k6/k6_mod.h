@@ -54,7 +54,7 @@ extern "C" {
 #define KM_TAG 8
 #define KM_ABI 1
 #ifndef KM_LEVEL
-#define KM_LEVEL 23
+#define KM_LEVEL 26
 #endif
 
 struct km_explore_frame;
@@ -241,6 +241,13 @@ typedef struct k6_api {
      module should return cleanly (typically -125) when it sees 1.
      Do not use concurrently with level-14 exclusive KISS serial mode. */
   int (*cancel_poll)(void);
+  /* Level 26 (opt-in bench firmware only): enable the MICIN ADC while
+     a module is already transmitting, the PA is disabled and the independent
+     TX watchdog is armed. 1=connect the MICIN ADC, 0=disconnect it.
+     Refuses non-B chips/unsupported images, missing TX, PA on, and incorrect
+     RF state; returns 0 after register readback or -1/-2. This is NOT a
+     generic RF register write and does not transmit PCM by itself. */
+  int (*micin_tx)(int enable);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

@@ -158,6 +158,13 @@ python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
 python3 "$HERE/apply-live-serial.py"
+if [ "${K6_MICIN_TX:-0}" = 1 ]; then
+  [ "${K6_LIVE_SERIAL:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || {
+    echo "Experimental MICIN TX requires live serial + independent TX watchdog" >&2
+    exit 1
+  }
+  python3 "$HERE/apply-micin-tx-api.py"
+fi
 grep -q 'FD6818B FSK TBD' "$WORK/src/ui/pager.rs" || {
   echo "FD6818B overlay is missing from $WORK; inspect that checkout before building" >&2
   exit 1
@@ -210,6 +217,7 @@ if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
 fi
 if [ "${K6_EL_POWER:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_el_power"; fi
+if [ "${K6_MICIN_TX:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_micin_tx"; fi
 if [ "${K6_LEAN_TXDOG:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_lean_txdog"; fi
 if [ "${K6_HEALTH_TELEMETRY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_health_telemetry"; fi
 if [ "${K6_NATIVE_FM:-1}" = 0 ]; then PACK_CFG="$PACK_CFG --cfg k6_no_native_fm"; fi

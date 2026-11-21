@@ -1,4 +1,6 @@
-/* txbp4: guarded FD6818B MICIN TX audio-filter bypass *bench* probe.
+/* txbp4: DEPRECATED filter-only TX audio probe. Do not enable.
+   The existing module tx_on deliberately disables MICIN ADC, so this module
+   cannot validate a MICIN waveform. Use txmic4 and the level-26 API instead.
    Source file is inert unless explicitly compiled with two independent flags.
    It does NOT create audio: a separately isolated, level-limited MICIN stimulus
    is required. PA-off can leak RF; always use a rated dummy load + pickoff.
@@ -18,6 +20,9 @@
 #endif
 #if TXBP_ENABLE && !TXBP_FIXTURE_ACK
 #error "TXBP requires explicit bench load and attenuator acknowledgment"
+#endif
+#if TXBP_ENABLE
+#error "Legacy TXBP has MICIN ADC disabled; use txmic4 with level-26 firmware"
 #endif
 #define REG_TX_AF_FILTER 0x2Bu
 #define BYPASS_MASK 0x0007u
