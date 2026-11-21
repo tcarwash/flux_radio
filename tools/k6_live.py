@@ -18,11 +18,15 @@ RUN, RUN_EVENT = 0x66, 0x67
 CAPS, MODE, VFO = 0x68, 0x69, 0x6a
 BURST, BURST_DATA, BURST_END, INFO = 0x6b, 0x6c, 0x6d, 0x6e
 BURST_LONG = 0x7d
+SCREENSHOT, VIRTUAL_KEY, SCREEN_PAGE, SCREEN_END = 0x82, 0x83, 0x84, 0x85
+KEY_NAMES = tuple(str(i) for i in range(10)) + (
+    "STAR", "POUND", "MENU", "EXIT", "UP", "DOWN", "VM", "AB",
+    "BAND", "SIDE1", "SIDE2")
 WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt", "screenshot", "virtual_keys")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -143,6 +147,61 @@ class LiveLink(CpsLink):
         if s["transmitting"]:
             raise InstallError("PTT release not observed; do not retry TX")
         return s
+
+    def screenshot(self):
+        """Capture last-rendered LCD pixels in 8 x 128-byte pages.
+
+        One request returns a single ordered sixteen-frame stream; no
+        automatic retry, SPI writes, PTT or reboot. A partial capture fails.
+        """
+        if "screenshot" not in self.capabilities()["features"]:
+            raise InstallError("Firmware lacks live screenshot support")
+        header=self.request(SCREENSHOT)
+        if header != b"FLSC\x01\x80\x40\x08\x40":
+            raise InstallError("Unknown screenshot size or pixel encoding")
+        seq=self.seq
+        deadline=time.monotonic()+max(self.timeout,3.0)
+        pixels=bytearray(1024)
+        seen=set()
+        prior_crc=self.bad_response_crcs
+        while time.monotonic()<deadline:
+            frame=self._frame(deadline)
+            if frame is None:
+                break
+            cmd,addr,data=frame
+            if cmd == SCREEN_PAGE:
+                if (addr>>8)!=seq or (addr&255)>=16 or len(data)!=64:
+                    raise InstallError("Malformed screenshot pixel chunk")
+                index=addr&255
+                if index in seen:
+                    raise InstallError("Duplicate screenshot chunk")
+                seen.add(index)
+                pixels[index*64:(index+1)*64]=data
+            elif cmd==SCREEN_END:
+                if addr!=seq or data!=b"\0\x10" or len(seen)!=16:
+                    raise InstallError("Incomplete screenshot stream")
+                if self.bad_response_crcs != prior_crc:
+                    raise InstallError("Screenshot CRC failure")
+                return bytes(pixels)
+            else:
+                raise InstallError("Unexpected frame during screenshot")
+        raise LiveUnavailable("Screenshot incomplete; no retry or reboot requested")
+
+    def virtual_key(self, key, *, long=False):
+        """Queue a validated logical UI gesture, never PTT GPIO."""
+        key=str(key).upper().replace("-", "").replace("/", "")
+        key={"*":"STAR", "#":"POUND", "ASTERISK":"STAR",
+             "HASH":"POUND", "VFO":"VM"}.get(key,key)
+        if key not in KEY_NAMES:
+            raise ValueError("Unknown UI key: " + ", ".join(KEY_NAMES))
+        if not isinstance(long,bool):
+            raise ValueError("long must be a bool")
+        if "virtual_keys" not in self.capabilities()["features"]:
+            raise InstallError("Firmware lacks virtual-key support")
+        arg=KEY_NAMES.index(key) | (0x100 if long else 0)
+        if self.request(VIRTUAL_KEY,arg):
+            raise InstallError("Unexpected virtual-key acknowledgement")
+        return dict(key=key,gesture="long" if long else "short",queued=True)
 
     def tune(self, hz):
         if not (136_000_000 <= hz <= 174_000_000 or 400_000_000 <= hz <= 480_000_000) or hz % 10:
@@ -715,6 +774,13 @@ def main():
     mode.add_argument("--wide", action="store_true")
     vfo = sub.add_parser("vfo")
     vfo.add_argument("index", type=int, choices=(0,1))
+    shot=sub.add_parser("screenshot", help="capture 128x64 LCD screen to PNG")
+    shot.add_argument("--out",type=Path,required=True)
+    shot.add_argument("--scale",type=int,default=4)
+    shot.add_argument("--invert",action="store_true",help="white glyphs on dark background")
+    key=sub.add_parser("key",help="inject one logical UI key (not PTT)")
+    key.add_argument("name",choices=KEY_NAMES)
+    key.add_argument("--long",action="store_true")
     ptt = sub.add_parser("ptt-burst", help="explicit bounded TX (requires opt-in PTT firmware)")
     ptt.add_argument("--seconds", type=float, default=1.0)
     tune = sub.add_parser("tune")
@@ -777,6 +843,28 @@ def main():
                 rate=link.negotiate_upload(features)
                 print(json.dumps(dict(baud=rate, fast_upload_supported="fast_upload" in features,
                                       probe_seconds=round(time.monotonic()-start,3)),indent=2))
+            elif a.cmd == "screenshot":
+                if not 1<=a.scale<=12:
+                    raise ValueError("Screenshot scale must be from 1 to 12")
+                if a.out.exists():
+                    raise ValueError("Refusing to overwrite existing screenshot")
+                from PIL import Image
+                data=link.screenshot()
+                px=bytearray(128*64)
+                for page in range(8):
+                    for x in range(128):
+                        v=data[page*128+x]
+                        for bit in range(8):
+                            lit=bool(v&(1<<bit))
+                            px[(page*8+bit)*128+x] = (255 if lit else 0) if a.invert else (0 if lit else 255)
+                image=Image.frombytes("L",(128,64),bytes(px))
+                if a.scale>1:
+                    image=image.resize((128*a.scale,64*a.scale),Image.Resampling.NEAREST)
+                a.out.parent.mkdir(parents=True,exist_ok=True)
+                image.save(a.out,format="PNG")
+                print(json.dumps(dict(path=str(a.out),width=128,height=64,scale=a.scale,bytes=len(data))))
+            elif a.cmd == "key":
+                print(json.dumps(link.virtual_key(a.name,long=a.long),indent=2))
             elif a.cmd == "ptt-burst":
                 print(json.dumps(link.ptt_burst(a.seconds), indent=2))
             elif a.cmd == "mode":

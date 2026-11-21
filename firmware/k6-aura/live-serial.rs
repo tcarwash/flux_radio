@@ -14,6 +14,16 @@ const V2_ECHO: u8 = 0x70;
 const PTT_LEASE:u8=0x80;
 #[cfg(k6_live_serial)]
 const PTT_RELEASE:u8=0x81;
+// 128x64 page-major screen readout and logical navigation gestures.
+// No GPIO manipulation and no PTT: ordinary remote PTT is a separate API.
+#[cfg(k6_remote_ui)]
+const SCREENSHOT:u8=0x82;
+#[cfg(k6_remote_ui)]
+const VIRTUAL_KEY:u8=0x83;
+#[cfg(k6_remote_ui)]
+const SCREEN_PAGE:u8=0x84;
+#[cfg(k6_remote_ui)]
+const SCREEN_END:u8=0x85;
 #[cfg(k6_live_serial)]
 const PTT_LEASE_TICKS:u16=8_000; // 800 ms at 100 us/tick
 // Never make a remotely keyed transmitter depend solely on main-loop polling.
@@ -128,6 +138,39 @@ pub fn decode(data: &[u8]) -> Option<Request> {
     }
     Some(Request { cmd: data[6], seq: data[7],
         arg: u32::from_le_bytes([data[8], data[9], data[10], data[11]]) })
+}
+
+// The 32-bit st7565 0.6.0 graphics buffer owns 8 x 140-byte pages,
+// with an existing 1,152-byte static allocation (32 bytes spare).
+// Each begins with 128 actual LCD pixel bytes, bit0 = top pixel of its page;
+// the following 16 bytes are dirty bookkeeping. No second framebuffer.
+// This is an intentionally pinned, compile-time-checked firmware layout:
+// reject any future ST7565 representation change until revalidated.
+#[cfg(k6_remote_ui)]
+const _: () = assert!(core::mem::size_of::<st7565::GraphicsPageBuffer<128,8>>() == 1120);
+
+#[cfg(k6_remote_ui)]
+fn screen_capture(req: &Request) {
+    // Fixed 64-byte chunks are below CPS's 96-byte frame limit.
+    // Reading is serialized with the normal UI draw/flush main loop;
+    // no framebuffer is modified and no SPI/MMIO read is performed.
+    reply(req,&[OK,b'F',b'L',b'S',b'C',1,128,64,8,64]);
+    uart::flush();
+    uart::set_binary_mode(true);
+    let base=core::ptr::addr_of!(crate::MODULE_PAGE_BUFFER_STORAGE).cast::<u8>();
+    for page in 0..8usize {
+        for half in 0..2usize {
+            let chunk=page*2+half;
+            let pixels=unsafe {core::slice::from_raw_parts(base.add(page*140+half*64),64)};
+            let mut packet=[0u8;72];
+            let n=frame::encode(&mut packet,SCREEN_PAGE,
+                ((req.seq as u16)<<8)|(chunk as u16),pixels);
+            for &byte in &packet[..n] {uart::send_byte(byte);}
+        }
+    }
+    uart::flush();
+    uart::set_binary_mode(false);
+    reply(&Request{cmd:SCREEN_END,seq:req.seq,arg:0},&[OK,16]);
 }
 
 fn reply(req: &Request, data: &[u8]) {
@@ -765,7 +808,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(feature="spilib") {16384} else {0}
                 | if cfg!(k6_serial_transport) {65536} else {0}
                 | if cfg!(feature="spilib") {131072} else {0}
-                | if cfg!(all(k6_live_serial,k6_lean_txdog)) {262144} else {0};
+                | if cfg!(all(k6_live_serial,k6_lean_txdog)) {262144} else {0}
+                | if cfg!(k6_remote_ui) {524288 | 1048576} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;
@@ -819,6 +863,16 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
             }
             reply(req,&d);
         }
+        #[cfg(k6_remote_ui)]
+        SCREENSHOT if req.arg==0 => {
+            // Screenshot is passive and works inside menus, unlike CAT tune.
+            if app.is_transmitting() || app.power_save_is_asleep()
+                || crate::board::power_switch_off(unsafe{&*kd32f328_pac::Gpioa::ptr()}) {
+                reply(req,&[BUSY]);
+            } else {screen_capture(req);}
+        }
+        #[cfg(k6_remote_ui)]
+        VIRTUAL_KEY => {let r=app.live_virtual_key(syst,req.arg);reply(req,&[r]);}
         MODE => {let r=app.live_set_mode(syst,req.arg);reply(req,&[r]);}
         VFO => {let r=app.live_select_vfo(syst,req.arg);reply(req,&[r]);}
         TUNE => {
