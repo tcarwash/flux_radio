@@ -125,7 +125,7 @@ not proof of interoperable transmitted MSK.
 | FSK-06 | Distinguish startup and symbol-clock recovery from steady native-bit errors | Four 4800-bit/s RF captures independently acquired from 320-bit known pilot: [0/1,792 heldout chip errors](k6-fsk-pdm-repeats-and-phase-20261122.md) | **Observed with fixed payload; variable sequences, SNR and blind synchronization remain open** |
 | FSK-07 | Compare physical 300-symbol/s PDM 8-FSK and underlying 4800-chip/s modem | [Four RF captures](k6-fsk-pdm-repeats-and-phase-20261122.md): 107/112 direct frequency-level symbols; 112/112 via chip popcount; transition-aware FIR improves heldout phase predictions | **8-level encoded information established; waveform RF EVM/OBW and other symbol rates remain open** |
 | FSK-08 | Try MSK/GMSK, shaped FSK, chirps and phase pulses; reject if fidelity/adjacent RF energy fails | Receiver decode and emission measurements, not only model | Conditional |
-| FSK-09 | Investigate transparent FSK mode, FIFO refill/chaining and preambleless operation | Continuous phase and clock across FIFO boundaries, no silent gaps | Research |
+| FSK-09 | Investigate transparent FSK mode, FIFO refill/chaining and preambleless operation | [Physical two-frame and negative FIFO-IRQ bench](k6-fsk-09-fifo-boundary.md): two 64-word frames decode 0/1,024 heldout bit errors with one TX lease but insert **46.719 ms** of extra modulation; 128-word AE-refill test safely aborted twice with REG_02=0x0800 rather than expected 0x4000 | **Frame boundary characterized; transparent streaming NOT established; B-specific FIFO IRQ mapping remains open** |
 
 **Decision:** A narrower ideal RF spectrum does not imply correct RF
 phase. If silicon deviation cannot be reduced or phase continuity/

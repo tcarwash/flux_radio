@@ -20,6 +20,14 @@ and 0/1,792 heldout binary-chip errors, 0/112 popcount-reconstructed
 8-level symbol errors, and a heldout transition-aware phase-response model.
 These are not proof of arbitrary coherent RF I/Q generation.
 
+The subsequent [FSK-09 FIFO boundary experiments](k6-fsk-09-fifo-boundary.md)
+measured **46.719 ms of extra framing/rearm modulation** between two
+fixed 64-word frames while RF amplitude remained high. An initial
+128-word FIFO-refill attempt safely aborted because the older-FD6818
+almost-empty interrupt hypothesis **did not hold on the B chip**.
+Therefore gapless streaming and phase-accurate arbitrary waveforms
+remain open research milestones.
+
 
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
 control, flash, PA operation or firmware changes.** This is a simulation
