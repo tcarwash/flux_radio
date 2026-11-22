@@ -5,13 +5,15 @@ Updated 2026-11-22. Research branch: **research/native-fsk-pdm** at
 research queue**. Preserve experimental alternatives even if a particular
 native-FSK approach fails.
 
-**Scope and safety:** Everything implemented in this pass is offline,
-host-side simulation. No RF transmission, PTT, firmware flash, live
-register writes, radio control, or new hardware configuration. Hardware
-experiments below are proposals and require an attended conducted RF fixture,
-verified independent TX timeout and explicit operator approval.
+**Scope and safety:** Earlier milestones were host-only. As of 2026-11-22,
+the user-confirmed dummy-load/air-coupled SDR bench has supported real,
+firmware-bounded 433.500-MHz native FSK transmissions and offline analysis.
+The newest repeated-capture work performed **three additional short
+native-FSK transmissions** and restored both VFOs after each one.
+The SDR is not a calibrated spectrum analyzer; no unrestricted on-air
+or spectral-mask claim follows. No firmware was flashed in this pass.
 
-**Latest physical evidence:** [2026-11-22 native-FSK gain sweep and 300-symbol/s 8-FSK capture review](k6-tx-injection-live-evidence-20261122.md). Six independently reanalyzed RF recordings show gain-dependent FSK plateau separation; a separate saved PDM capture reports 26/28 held-out 8-FSK symbols correct. Another live firmware workflow was active, so the review did not flash or transmit.
+**Latest physical evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
 
 ## What has been established
 
@@ -24,14 +26,17 @@ verified independent TX timeout and explicit operator approval.
   preamble/acquisition rather than sustained data failure is a hypothesis.
 - Flux's B driver uses REG_3F for modem mode, REG_59 for FSK TX enable,
   REG_5F for the FIFO, REG_72 for FSK timing and REG_70 for tone/FSK gain.
-  REG_40 is also used for FM deviation. **Which settings alter actual
-  native-FSK deviation on this specific B silicon remains unverified.**
+  REG_40 is also used for FM deviation. **REG_70 gain now has measured
+  native-FSK separation data for six codes**, while REG_40's exact
+  native-FSK effect on this B silicon remains unverified.
 - The original non-B chip's REG_3B/REG_38 tuning writes were observed to
   latch until RXON/TXON. This rules them out as fast phase-continuous RF
   modulation on that tested radio; the B chip must not be assumed identical.
-- A live RX-only B-chip check verified that REG_2B TX filter-disable bits
-  can be written and restored, not whether they provide flat TX modulation.
-  A lab-only MICIN-on API level 26 compiled but was not flashed.
+- An independent API-26 MICIN hardware investigation confirmed bounded
+  module TX can enable MICIN ADC (REG_30 0xC1FA to 0xC1FE) with PA off
+  and toggle/restore REG_2B TX filter bypass. **No external shaped MICIN
+  analog waveform has yet been injected**; an isolated jack adapter is
+  still needed for real analog 4-FSK.
 - The FD6818 programming guide's suggested I2S register layout conflicts
   with the tested 0x4819 and 0x4829 maps. Its I2S/MCBSP and DMR examples
   remain architectural leads, not a safe B-chip register recipe.
@@ -114,11 +119,11 @@ not proof of interoperable transmitted MSK.
 |---|---|---|---|
 | FSK-01 | Sweep modeled deviations, native clocks and desired waveforms; compare complex-IQ reference, not just mean frequency | Seeded vectors, coherence/EVM, occupancy and bandwidth | Implemented offline |
 | FSK-02 | Reanalyze archived SDR IQ for phase continuity, edge settling, frequency separation, clock drift and startup errors | [Offline FSK-02 report](k6-fsk-02-archived-iq.md): receiver I/Q filtering improves 4800 baud from 28 to 6 assisted-timing errors; phase reset unproven | Initial archive analysis complete; physical validation remains |
-| FSK-03 | Compare BK4829/FD6818B register sources and live B driver for gain/deviation: REG_70, REG_40, REG_59, REG_72 | Source triage in [FSK-02/03 findings](k6-fsk-02-archived-iq.md): REG_40 controls nominal FM deviation, REG_70 is tone/FSK gain; B physical effects unproven | Partial source review; further B bench gated |
-| FSK-04 | Test long 000/111 runs and 0101 transitions, measuring instantaneous RF deviation and cumulative carrier phase | Calibrated conducted IQ and no phase reset across transitions | Hardware gated |
-| FSK-05 | Design a guarded arbitrary FIFO-word lab API, with explicit bit/word order and startup preamble, preserving independent watchdog | [Known-vector lab](k6-fsk-05-known-vector-lab.md): 64-word payload, generated truth manifest, inert-by-default C module, 20 passing Unicorn tests and RX-only chip fingerprint | **[Live 2026-11-22 checkpoint](k6-fsk-05-live-rf-checkpoint.md): 400-ms conducted-load FM carrier received strongly; native FSK module RUN refused on current firmware; offline FSK-capable candidate built but not flashed. FSK RF characterization remains open.** |
-| FSK-06 | Retry 2400/4800 with sacrificial preamble; distinguish physical settling from assisted-decoder acquisition | Blind sync/CRC where possible, repeated recordings and confidence bounds | Hardware gated |
-| FSK-07 | Run one bounded real PDM 4/8-FSK sequence with measured minimal D | RF complex-IQ EVM/coherence, OBW, spurs, BER, cleanup | Conditional |
+| FSK-03 | Characterize gain/deviation REG_70, REG_40 and FSK control/clock | [Physical RF gain sweep](k6-tx-injection-live-evidence-20261122.md) confirmed ±1,050 to ±2,100 Hz at gain16–48; pilot-hold deviation around ±1,200 Hz at gain21 | **REG_70 characterized on this 0x4829; REG_40 native-mode effect still unverified** |
+| FSK-04 | Test long 000/111 runs and 0101 transitions, measuring instantaneous RF deviation and cumulative carrier phase | [Repeatable pilot holds and transition](k6-fsk-pdm-repeats-and-phase-20261122.md) show ±1.2 kHz, ~156–172 µs receiver-filtered edge, small extrapolated phase bridge | **Initial real-IQ edge test; full phase continuity and calibrated instrumentation remain open** |
+| FSK-05 | Design guarded known-vector FSK laboratory module | [Known-vector lab](k6-fsk-05-known-vector-lab.md) compiled/emulator-tested; a later FSK-capable build runs the guarded 64-word module with confirmed cleanup; [repeat capture evidence](k6-fsk-pdm-repeats-and-phase-20261122.md) | **Real hardware verified for finite 64-word frames; continuous streaming unresolved** |
+| FSK-06 | Distinguish startup and symbol-clock recovery from steady native-bit errors | Four 4800-bit/s RF captures independently acquired from 320-bit known pilot: [0/1,792 heldout chip errors](k6-fsk-pdm-repeats-and-phase-20261122.md) | **Observed with fixed payload; variable sequences, SNR and blind synchronization remain open** |
+| FSK-07 | Compare physical 300-symbol/s PDM 8-FSK and underlying 4800-chip/s modem | [Four RF captures](k6-fsk-pdm-repeats-and-phase-20261122.md): 107/112 direct frequency-level symbols; 112/112 via chip popcount; transition-aware FIR improves heldout phase predictions | **8-level encoded information established; waveform RF EVM/OBW and other symbol rates remain open** |
 | FSK-08 | Try MSK/GMSK, shaped FSK, chirps and phase pulses; reject if fidelity/adjacent RF energy fails | Receiver decode and emission measurements, not only model | Conditional |
 | FSK-09 | Investigate transparent FSK mode, FIFO refill/chaining and preambleless operation | Continuous phase and clock across FIFO boundaries, no silent gaps | Research |
 
@@ -134,7 +139,7 @@ These are **independent hypotheses**, not variations of one implementation.
 |---|---|---|---|
 | TX-10 | Native **ordinary direct 2-FSK** | Already functional baseline for packet modes, no frequency dithering needed | Characterize rate/deviation, frame overhead, repeatability, power |
 | TX-11 | Native **4-FSK/DMR/dPMR/transparent modem** in B/BK4829 | Potentially much cleaner multilevel RF; possible M17-style modulation | Compare B drivers and stock firmware disassembly; prove actual four levels, not just a DMR marketing term |
-| TX-12 | **MICIN baseband** with TX pre-emphasis, 300-Hz HPF, LPF bypass | Shaped real FM/FSK input potentially cleaner than PDM | Validate API-26 MICIN-enabled TX, REG_2B, actual mic levels/coupling/DC response |
+| TX-12 | **MICIN baseband** with TX pre-emphasis, 300-Hz HPF, LPF bypass | API-26 B-chip enable/restore already tested on hardware in another worktree; potentially cleaner Gaussian 4-FSK | Build isolated mic-jack signal adapter, verify bias/amplitude, transmit 1-kHz calibration tone and shaped 4-FSK |
 | TX-13 | **Filtered MCU PWM or external DAC physically connected to MICIN** | Software-generated analog frequency-control waveform; alternate to chip modem | Map actual K6 mic jack and bias; safe reversible adapter. **PA11 currently drives speaker path, not MICIN** |
 | TX-14 | **TCXO/reference modulation and two-point FM modulation** | Could enable slow direct-offset trajectories beyond AC-coupled MICIN | Identify K6 board oscillator and accessible modulation pad; bench-only reversible electrical validation |
 | TX-15 | **Tone oscillator REG_70/71, dual-tone/AFSK** | Existing Bell 202/APRS and possible 600-symbol/s eight-tone over-FM | Measure tone step latency and continuity, distortion and spectral behavior. **Audio over FM, not a pure narrow RF tone** |

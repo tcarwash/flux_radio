@@ -9,15 +9,16 @@ vectors and complex-IQ fidelity comparisons live in
 The next archive-analysis step is documented in [FSK-02/03](k6-fsk-02-archived-iq.md):
 `tools/k6_fsk_iq_edges.py` and `tests/test_k6_fsk_iq_edges.py` measure
 receiver filtering effects and nonconclusive transition/phase diagnostics.
-The guarded, deliberately inert native-FSK known-vector generator and
-Cortex-M0 emulator transaction test are documented in
-[FSK-05](k6-fsk-05-known-vector-lab.md); **no hardware TX has yet been run**
-with that generated vector. Receiver baseline and held-out-data archive
-verification are in [FSK-05 preflight](k6-fsk-05-rx-preflight.md).
-The later [physical RF pickup checkpoint](k6-fsk-05-live-rf-checkpoint.md)
-validated a 400-ms **FM carrier** into a user-confirmed dummy load with an
-air-coupled SDR. It **did not** transmit the generated native-FSK vector:
-the current firmware refused the installed FSK module RUN request.
+The guarded native-FSK known-vector generator and Cortex-M0 emulator
+transaction test are documented in [FSK-05](k6-fsk-05-known-vector-lab.md).
+The earlier [RF pickup checkpoint](k6-fsk-05-live-rf-checkpoint.md)
+validated a 400-ms FM carrier under the previous firmware, which refused
+native-FSK module execution. A subsequent firmware image added the
+FSK service: the latest [repeated physical 300-symbol/s 8-FSK PDM study]
+(k6-fsk-pdm-repeats-and-phase-20261122.md) includes **four RF captures**
+and 0/1,792 heldout binary-chip errors, 0/112 popcount-reconstructed
+8-level symbol errors, and a heldout transition-aware phase-response model.
+These are not proof of arbitrary coherent RF I/Q generation.
 
 
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
