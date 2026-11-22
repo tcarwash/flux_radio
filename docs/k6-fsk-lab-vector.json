@@ -1,0 +1,59 @@
+{
+  "project": "Flux",
+  "purpose": "known native 2-FSK FIFO payload",
+  "offline_generated": true,
+  "transmitted": false,
+  "physical_hardware_validated": false,
+  "chip_id_required": "0x4829",
+  "frequency_hz": 433500000,
+  "native_baud": 4800,
+  "baud_register_72": 49556,
+  "tone_fsk_gain_register_70": 176,
+  "reg_40": "unchanged; no unverified deviation override",
+  "payload_words": 64,
+  "payload_bits": 1024,
+  "payload_duration_ms_nominal": 213.333,
+  "payload_bytes_hex": "55555555555555555555555555555555555555555555555555555555555555550000000000000000ffffffffffffffff0f0f0f0f0f0f0f0ff0f0f0f0f0f0f0f0b5f9e2bc9ffe8111deb969d3a02293f711413cc5d36e4ba3cf603df21182c32cd499ff2e1508f48fcc2b9ebaa57318fd32035b3173b673c4bab996141c426221",
+  "payload_bits_msb_each_byte_lower_byte_first": "0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101000000000000000000000000000000000000000000000000000000000000000011111111111111111111111111111111111111111111111111111111111111110000111100001111000011110000111100001111000011110000111100001111111100001111000011110000111100001111000011110000111100001111000010110101111110011110001010111100100111111111111010000001000100011101111010111001011010011101001110100000001000101001001111110111000100010100000100111100110001011101001101101110010010111010001111001111011000000011110111110010000100011000001011000011001011001101010010011001111111110010111000010101000010001111010010001111110011000010101110011110101110101010010101110011000110001111110100110010000000110101101100110001011100111011011001110011110001001011101010111001100101100001010000011100010000100110001000100001",
+  "payload_sha256_le_words": "41a8c14cc0be749f1af3b31c13bd67bf6644a1aff7d5643e9d11de8da24f7b3e",
+  "seed": 44257,
+  "segments": [
+    {
+      "name": "sacrificial_alternating_payload",
+      "start_bit": 0,
+      "bits": 256
+    },
+    {
+      "name": "zero_hold",
+      "start_bit": 256,
+      "bits": 64
+    },
+    {
+      "name": "one_hold",
+      "start_bit": 320,
+      "bits": 64
+    },
+    {
+      "name": "repeating_nibbles_0f",
+      "start_bit": 384,
+      "bits": 64
+    },
+    {
+      "name": "repeating_nibbles_f0",
+      "start_bit": 448,
+      "bits": 64
+    },
+    {
+      "name": "seeded_tail",
+      "start_bit": 512,
+      "bits": 512
+    }
+  ],
+  "chip_generated_preamble_and_sync": "uncharacterized; not included in payload_bits",
+  "caveats": [
+    "A benchmark header is NOT a valid or authorized transmitter by itself.",
+    "Default C module refuses TX without explicit fixture, watchdog and enabled build.",
+    "The PDM frequency trajectory and RF phase are NOT established by bit ordering alone.",
+    "Actual deviation depends on undocumented FD6818B behavior; REG_40 is not altered."
+  ]
+}
