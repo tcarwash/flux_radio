@@ -81,6 +81,7 @@ analysis in `native-fsk-pdm300-analysis.json`:
 - Held-out nearest-tone decisions: **26/28 correct** (2 errors).
 - Held-out frequency RMSE: **74.914 Hz**; correlation: **0.996699**.
 - The training-only affine frequency slope was 0.983155.
+- A separate saved phase-realignment report gives **0.791603 training-native complex coherence** after an additional 675 µs alignment shift. That is a pilot-aligned phase metric, not independent coherent EVM validation.
 - These are **known-training aligned** results, not a blind decoder,
   RF complex-EVM result or emission-mask measurement.
 
