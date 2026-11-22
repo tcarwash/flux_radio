@@ -1,5 +1,12 @@
 # Flux native RF 2-FSK as a one-bit frequency DAC
 
+**2026-11-22 follow-up:** [TX next experiments](k6-tx-next-experiments.md) is the
+persistent roadmap for the current RF-frequency-DAC work **and all alternative
+TX entry points** (native 4-FSK, MICIN, TCXO, tone oscillator, subaudio,
+digital ports, PA envelope, external hardware). New host-only waveform
+vectors and complex-IQ fidelity comparisons live in
+`tools/k6_fsk_waveform_bench.py` and `tests/test_k6_fsk_waveform_bench.py`.
+
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
 control, flash, PA operation or firmware changes.** This is a simulation
 and bit-vector builder, not an approved over-the-air waveform.

@@ -14,6 +14,30 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt, welch
 
 
+def pdm_encode_frequency_samples(frequency_offsets_hz, *, deviation_hz=4000):
+    """First-order phase-error PDM for one desired RF offset per native FSK bit.
+
+    The accumulator is NEVER reset at a symbol/chip boundary. Samples may
+    describe 2/4/8-FSK, a Gaussian-shaped trajectory, or a frequency chirp.
+    This models an ideal phase-continuous FSK source, not actual silicon.
+    """
+    targets = np.asarray(frequency_offsets_hz, dtype=float)
+    if targets.ndim != 1 or not targets.size or not np.isfinite(targets).all():
+        raise ValueError("need finite nonempty 1-D frequency trajectory")
+    if not np.isfinite(deviation_hz) or deviation_hz <= 0:
+        raise ValueError("deviation must be finite and positive")
+    if np.any(np.abs(targets) > deviation_hz):
+        raise ValueError("frequency target exceeds native +/- deviation")
+    bits = np.empty(len(targets), dtype=np.uint8)
+    error = 0.0
+    for i, hz in enumerate(targets):
+        error += (hz / deviation_hz + 1.0) / 2.0
+        bit = int(error >= .5)
+        error -= bit
+        bits[i] = bit
+    return bits
+
+
 def pdm_encode(symbol_offsets_hz, *, native_baud=2400, symbol_baud=75,
                deviation_hz=4000):
     """Error-feedback conversion from target RF offsets to binary native FSK.
@@ -33,16 +57,8 @@ def pdm_encode(symbol_offsets_hz, *, native_baud=2400, symbol_baud=75,
         raise ValueError("need finite nonempty 1-D target frequency sequence")
     if np.any(np.abs(values) > deviation_hz):
         raise ValueError("frequency target exceeds native +/- deviation")
-    output = np.empty(values.size * chips, dtype=np.uint8)
-    error = 0.0
-    for i, hz in enumerate(values):
-        duty = (hz / deviation_hz + 1.) / 2.
-        for j in range(chips):
-            error += duty
-            bit = int(error >= .5)
-            error -= bit
-            output[i * chips + j] = bit
-    return output
+    return pdm_encode_frequency_samples(np.repeat(values, chips),
+                                        deviation_hz=deviation_hz)
 
 
 def average_offsets(bits, *, native_baud=2400, symbol_baud=75,
