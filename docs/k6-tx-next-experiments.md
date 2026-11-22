@@ -11,6 +11,8 @@ register writes, radio control, or new hardware configuration. Hardware
 experiments below are proposals and require an attended conducted RF fixture,
 verified independent TX timeout and explicit operator approval.
 
+**Latest physical evidence:** [2026-11-22 native-FSK gain sweep and 300-symbol/s 8-FSK capture review](k6-tx-injection-live-evidence-20261122.md). Six independently reanalyzed RF recordings show gain-dependent FSK plateau separation; a separate saved PDM capture reports 26/28 held-out 8-FSK symbols correct. Another live firmware workflow was active, so the review did not flash or transmit.
+
 ## What has been established
 
 - The FD6818B chip on the tested K6 identifies as **0x4829**. The existing
