@@ -3,7 +3,10 @@
 Date: 2026-11-22; branch research/native-fsk-pdm. Companion to
 [k6-fsk-05-known-vector-lab.md](k6-fsk-05-known-vector-lab.md) and
 [k6-tx-next-experiments.md](k6-tx-next-experiments.md).
-**RX-only checkpoint; no physical RF TX or firmware flash.**
+**This section records the earlier RX-only checkpoint.** A later
+[2026-11-22 physical RF pickup](k6-fsk-05-live-rf-checkpoint.md) successfully
+captured one short FM carrier into the user-confirmed dummy load.
+No native-FSK packet was transmitted and no firmware was flashed.
 
 ## Actual connected equipment
 

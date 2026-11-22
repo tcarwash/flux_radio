@@ -14,6 +14,10 @@ Cortex-M0 emulator transaction test are documented in
 [FSK-05](k6-fsk-05-known-vector-lab.md); **no hardware TX has yet been run**
 with that generated vector. Receiver baseline and held-out-data archive
 verification are in [FSK-05 preflight](k6-fsk-05-rx-preflight.md).
+The later [physical RF pickup checkpoint](k6-fsk-05-live-rf-checkpoint.md)
+validated a 400-ms **FM carrier** into a user-confirmed dummy load with an
+air-coupled SDR. It **did not** transmit the generated native-FSK vector:
+the current firmware refused the installed FSK module RUN request.
 
 
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
