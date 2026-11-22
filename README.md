@@ -128,6 +128,9 @@ When using a live-serial-enabled Flux image, you can also [capture the radio's
 128×64 screen and send navigation keys over the programming cable](docs/k6-live-remote-ui.md)
 without resetting the radio. These commands are available through
 `tools/k6_live.py` and are independent of the separately leased remote PTT.
+For a physical-radio-style browser controller with the live LCD and all 21
+virtual keys, run `python3 tools/k6_companion.py --device /dev/ttyUSB0` and open
+<http://localhost:8776>. See the [K6 Companion guide](docs/k6-companion.md).
 Install only trusted native modules; they are not sandboxed.
 Starter downloads include the matching starter modules in the Catalog.
 For a source checkout, populate the local Catalog with

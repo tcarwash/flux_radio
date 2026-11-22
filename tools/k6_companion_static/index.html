@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c1215">
+  <title>Flux K6 — Companion</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div><div class="eyebrow">AG7SU / FLUX LAB</div><div class="brand-name">K6 <span>COMPANION</span></div></div>
+      </div>
+      <div class="header-right">
+        <span class="pill muted"><span class="tiny-led"></span> SERIAL LINK</span>
+        <span class="pill safety"><span aria-hidden="true">◈</span> RX CONTROL ONLY</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div class="radio-stage">
+        <div class="stage-heading">
+          <div class="eyebrow">REMOTE FRONT PANEL <span class="divider-bullet">//</span> 01</div>
+          <h1>Right there on your desk.</h1>
+          <p>Real display. Real button events. No cable juggling.</p>
+        </div>
+
+        <div class="radio-layout">
+          <div class="radio-top-hardware" aria-hidden="true">
+            <div class="antenna"><div class="antenna-tip"></div><div class="antenna-shaft"></div><div class="antenna-foot"></div></div>
+            <div class="top-name">UV-K6 <small>FLUX</small></div>
+            <div class="rotary"><div class="rotary-grooves"></div><div class="rotary-cap"></div></div>
+          </div>
+
+          <div class="radio-unit">
+            <div class="side-controls" role="group" aria-label="Side programmable buttons">
+              <div class="side-label">SIDE KEYS</div>
+              <button type="button" class="side-key" data-key="SIDE1" title="Side 1 — tap or hold"><span>1</span></button>
+              <button type="button" class="side-key" data-key="SIDE2" title="Side 2 — tap or hold"><span>2</span></button>
+              <div class="side-ptt" title="Transmit intentionally unavailable in this companion"><span>PTT</span><small>DISABLED</small></div>
+            </div>
+
+            <div class="radio-case">
+              <div class="body-top">
+                <div class="case-brand"><span class="case-flux">FLUX</span><span class="case-k6">K6 / MK.I</span></div>
+                <div class="speaker-wrap" aria-hidden="true"><div class="speaker-grille"></div><div class="grille-caption">MULTIBAND TRANSCEIVER</div></div>
+              </div>
+
+              <div class="lcd-surround">
+                <div class="lcd-title"><span>ACTIVE DISPLAY</span><span id="screen-state">ACQUIRING...</span></div>
+                <div class="lcd-glass" id="lcd-glass">
+                  <img id="lcd-image" alt="Live 128 by 64 pixel radio LCD" draggable="false">
+                  <div class="lcd-placeholder" id="lcd-placeholder"><span class="lcd-signal">▥</span><span id="lcd-message">CONNECTING TO K6</span><small>AWAITING LCD FRAME</small></div>
+                </div>
+                <div class="lcd-footer"><span>128 × 64 MONOCHROME</span><span class="live-indicator"><i></i> LIVE FEED</span></div>
+              </div>
+
+              <div class="control-area">
+                <div class="nav-section">
+                  <div class="key-pair">
+                    <button type="button" class="function-key" data-key="MENU"><span>MENU</span><small>CONFIRM</small></button>
+                    <button type="button" class="function-key" data-key="EXIT"><span>EXIT</span><small>BACK</small></button>
+                  </div>
+                  <div class="nav-dpad" role="group" aria-label="Directional keys">
+                    <button type="button" class="nav-key nav-up" data-key="UP" aria-label="Up">▲</button>
+                    <div class="nav-center" aria-hidden="true"><i></i></div>
+                    <button type="button" class="nav-key nav-down" data-key="DOWN" aria-label="Down">▼</button>
+                  </div>
+                  <div class="key-pair">
+                    <button type="button" class="function-key" data-key="AB"><span>A/B</span><small>VFO SWAP</small></button>
+                    <button type="button" class="function-key" data-key="VM"><span>V/M</span><small>MODE</small></button>
+                  </div>
+                </div>
+                <button type="button" class="band-key" data-key="BAND"><span class="band-icon">↝</span> BAND <span class="band-help">CHANGE BAND</span></button>
+                <div class="keypad" role="group" aria-label="Numeric radio keypad">
+                  <button type="button" class="num-key" data-key="1"><strong>1</strong><small>SCAN</small></button>
+                  <button type="button" class="num-key" data-key="2"><strong>2</strong><small>A</small></button>
+                  <button type="button" class="num-key" data-key="3"><strong>3</strong><small>B</small></button>
+                  <button type="button" class="num-key" data-key="4"><strong>4</strong><small>C</small></button>
+                  <button type="button" class="num-key" data-key="5"><strong>5</strong><small>D</small></button>
+                  <button type="button" class="num-key" data-key="6"><strong>6</strong><small>E</small></button>
+                  <button type="button" class="num-key" data-key="7"><strong>7</strong><small>F</small></button>
+                  <button type="button" class="num-key" data-key="8"><strong>8</strong><small>G</small></button>
+                  <button type="button" class="num-key" data-key="9"><strong>9</strong><small>H</small></button>
+                  <button type="button" class="num-key symbol-key" data-key="STAR"><strong>＊</strong><small>STAR</small></button>
+                  <button type="button" class="num-key" data-key="0"><strong>0</strong><small>ZERO</small></button>
+                  <button type="button" class="num-key symbol-key" data-key="POUND"><strong>＃</strong><small>POUND</small></button>
+                </div>
+                <div class="body-bottom"><span>AG7SU RADIO SYSTEMS</span><span>DESIGNED FOR FLUX</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="sidebar" aria-label="Radio diagnostics and settings">
+        <div class="panel status-panel">
+          <div class="panel-heading"><span>01 / LINK STATUS</span><span class="panel-dots">•••</span></div>
+          <div class="link-overview">
+            <span id="status-dot" class="status-dot"></span>
+            <div><h2 id="link-title">Connecting</h2><p id="link-detail">Checking live serial interface...</p></div>
+          </div>
+          <div class="port-row"><span>DEVICE</span><code id="device-path">—</code></div>
+          <div class="metric-grid">
+            <div class="metric"><span>BATTERY</span><strong id="battery">—</strong><small>VOLTS</small></div>
+            <div class="metric"><span>RSSI</span><strong id="rssi">—</strong><small>dBm</small></div>
+          </div>
+          <div class="vfo-item"><span>VFO A</span><strong id="vfo-a">—</strong><small id="vfo-a-mode">—</small></div>
+          <div class="vfo-item"><span>VFO B</span><strong id="vfo-b">—</strong><small id="vfo-b-mode">—</small></div>
+          <div class="status-foot"><span id="activity-text" role="status" aria-live="polite">Ready to connect.</span><span id="last-refresh">—</span></div>
+        </div>
+
+        <div class="panel actions-panel">
+          <div class="panel-heading"><span>02 / CONTROLS</span><span>LOCAL INPUT</span></div>
+          <button type="button" class="wide-action" id="refresh-btn"><span>↻</span> Capture screen now <small>R</small></button>
+          <button type="button" class="wide-action dark" id="save-btn"><span>↓</span> Save LCD snapshot <small>PNG</small></button>
+          <label class="toggle-row" for="long-mode"><span><b>Long-press modifier</b><small>Applies to your next key press</small></span><input type="checkbox" id="long-mode" role="switch"><span class="switch"></span></label>
+          <div class="panel-tip"><span>◎</span><p>Hold a radio button for 600ms to send a long press, or use <kbd>Shift</kbd> + click. Numeric keys 1–9 are short-press only.</p></div>
+        </div>
+
+        <div class="panel shortcuts-panel">
+          <div class="panel-heading"><span>03 / KEYBOARD SHORTCUTS</span></div>
+          <div class="shortcut"><span>Navigate</span><div><kbd>↑</kbd><kbd>↓</kbd></div></div>
+          <div class="shortcut"><span>Menu / Exit</span><div><kbd>Enter</kbd><kbd>Esc</kbd></div></div>
+          <div class="shortcut"><span>A/B · V/M · Band</span><div><kbd>A</kbd><kbd>V</kbd><kbd>B</kbd></div></div>
+          <div class="shortcut"><span>Side keys</span><div><kbd>[</kbd><kbd>]</kbd></div></div>
+          <div class="shortcut"><span>Numbers / Symbols</span><div><kbd>0–9</kbd><kbd>*</kbd><kbd>#</kbd></div></div>
+        </div>
+
+        <div class="security-note"><span class="security-icon">⌁</span><p>Physical PTT, power and volume are not controllable here. Your radio remains in charge of transmission safety.</p></div>
+      </aside>
+    </main>
+
+    <footer class="footer"><span>FLUX K6 COMPANION <span class="sep">/</span> LIVE SERIAL V1</span><span>BUILT FOR THE BENCH, NOT THE CLOUD</span></footer>
+  </div>
+
+  <div id="auth-overlay" class="auth-overlay" hidden>
+    <form id="auth-form" class="auth-card">
+      <div class="eyebrow">PRIVATE DEVICE ACCESS</div>
+      <h2>Unlock the companion</h2>
+      <p>This controller is listening beyond localhost. Enter the access token set when starting the server.</p>
+      <input type="password" id="auth-token" name="token" placeholder="Access token" required autocomplete="off">
+      <button type="submit">Connect to radio</button>
+      <span id="auth-error" role="alert"></span>
+    </form>
+  </div>
+</body>
+</html>
