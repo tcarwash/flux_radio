@@ -56,7 +56,10 @@ def fingerprint(img):
 
 
 def run_transaction(port_path: str, prefix: Path, source: Path,
-                    original_envelope: Path, *, armed=False) -> dict:
+                    original_envelope: Path, *, armed=False,
+                    expected_result: int=128,
+                    experiment: str="Flux FSK-09 two-frame native FSK boundary",
+                    watchdog_ms: int=TX_TIMEOUT_MS) -> dict:
     if not armed:
         raise ValueError("TX and SPI mutation require --dummy-load-confirmed")
     if any(prefix.with_suffix(x).exists() for x in (".npy",".json")):
@@ -68,7 +71,7 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
     if not 0<len(test_code)<4096 or entry!=0:
         raise ValueError("invalid compiled boundary module")
     report={
-        "experiment":"Flux two-frame native FSK boundary rearm",
+        "experiment":experiment,
         "dummy_load_operator_confirmed":True,
         "rf_air_coupled_uncalibrated":True,
         "target_hz":LAB_HZ,"module_slot":SLOT,
@@ -76,7 +79,8 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
         "original_radio_frequency_restored":False,
         "expected_firmware_build_id":EXPECTED_BUILD,
         "new_test_code_sha256":hashlib.sha256(test_code).hexdigest(),
-        "active_tx_watchdog_timeout_ms":TX_TIMEOUT_MS,
+        "active_tx_watchdog_timeout_ms":watchdog_ms,
+        "expected_module_result":expected_result,
         "no_automatic_retry":True,
         "not_true_fifo_streaming":True,
     }
@@ -214,7 +218,7 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
 
     report["transmission_confirmed_by_firmware"]=bool(
         report.get("module_completion",{}).get("returned") and
-        report.get("module_completion",{}).get("result")==128)
+        report.get("module_completion",{}).get("result")==expected_result)
     if raw is not None:
         rf=summarize_raw_iq(raw)
         rf["hardware_lab_transaction"]=report
@@ -236,9 +240,14 @@ def main():
     p.add_argument("--enabled-source",required=True,type=Path)
     p.add_argument("--slot-backup",required=True,type=Path)
     p.add_argument("--dummy-load-confirmed",action="store_true")
+    p.add_argument("--expected-result",type=int,choices=(64,128),default=128)
+    p.add_argument("--experiment",default="Flux FSK-09 two-frame native FSK boundary")
+    p.add_argument("--watchdog-ms",type=int,choices=(1800,1900),default=1900)
     args=p.parse_args()
     r=run_transaction(args.port,args.prefix,args.enabled_source,
-                      args.slot_backup,armed=args.dummy_load_confirmed)
+                      args.slot_backup,armed=args.dummy_load_confirmed,
+                      expected_result=args.expected_result,
+                      experiment=args.experiment,watchdog_ms=args.watchdog_ms)
     print("Restored:",r["original_module_restored"],r["original_radio_frequency_restored"],
           "TX confirmed:",r["transmission_confirmed_by_firmware"])
 

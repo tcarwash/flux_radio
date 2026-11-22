@@ -16,6 +16,31 @@
 #ifndef TX8_GAIN
 #define TX8_GAIN 48u
 #endif
+/* Optional conducted-load RF calibration. Unlike the original
+ * PA-off write-timing probe, this explicitly keys RF during the 64
+ * tone events. The two independent acknowledgments must be supplied
+ * by a wrapper outside the repository's inert/default build. */
+#ifndef TX8_RF_ENABLE
+#define TX8_RF_ENABLE 0
+#endif
+#ifndef TX8_RF_FIXTURE_ACK
+#define TX8_RF_FIXTURE_ACK 0
+#endif
+#ifndef TX8_RF_WATCHDOG_ACK
+#define TX8_RF_WATCHDOG_ACK 0
+#endif
+#ifndef TX8_SYMBOL_RATE
+#define TX8_SYMBOL_RATE 600u
+#endif
+#if TX8_RF_ENABLE && (!TX8_BENCH_ENABLE || !TX8_RF_FIXTURE_ACK || !TX8_RF_WATCHDOG_ACK)
+#error "TX8 RF needs enabled bench, dummy-load acknowledgement and independent watchdog"
+#endif
+#if TX8_RF_ENABLE && TX8_HZ != 433500000u
+#error "TX8 RF research confined to the tested 433.500-MHz conducted fixture"
+#endif
+#if TX8_SYMBOL_RATE < 100u || TX8_SYMBOL_RATE > 600u
+#error "TX8 RF symbol rate outside bounded test"
+#endif
 
 #define RCC_APB2ENR 0x40021018u
 #define TIM14_CNT 0x40002024u
@@ -26,10 +51,10 @@
 #define TIM17_ARR (TIM17+0x2cu)
 #define TIM17_EGR (TIM17+0x14u)
 #define TIM17EN (1u << 18)
-#define CYCLES_PER_SYMBOL 160000u  /* 96 MHz / 600 baud */
+#define CYCLES_PER_SYMBOL (96000000u / TX8_SYMBOL_RATE)  /* 96-MHz MCU clock */
 #define LEAD_US 100000u
 #define EARLY_CYCLES 16000u       /* 167us ahead of expected symbol edge */
-#define TX_LIMIT_MS 4000u
+#define TX_LIMIT_MS (TX8_RF_ENABLE ? 1800u : 4000u)
 #define TONE_ON ((uint16_t)(0x8000u|((TX8_GAIN&0x7fu)<<8)))
 
 #if TX8_BENCH_ENABLE
@@ -104,6 +129,7 @@ int k6_main(const k6_api_t *api) {
   uint32_t i, late=0, worst=0, span;
   int ret=(int)TX8_NS;
   int keyed=0, clocked=0;
+  uint16_t previous_tone=0, previous_gain=0;
   if(api->rx_hz()!=TX8_HZ){api->say("tx8 wrong frequency");return -2;}
   if(api->key_down()){api->say("tx8 key held");return -4;}
   if((rd(RCC_APB2ENR)&TIM17EN) && (rd(TIM17_CR1)&1u))
@@ -117,10 +143,15 @@ int k6_main(const k6_api_t *api) {
   if(api->tx_on(TX_LIMIT_MS)!=0) return -5;
   keyed=1;
   (void)api->tx_pa(0);  /* PA OFF IS NOT ZERO RF: dummy-load bench only */
+  previous_gain=api->fd_read(0x70);
+  previous_tone=api->fd_read(0x71);
   api->delay_us(LEAD_US);
   if(api->key_down()){ret=-4;goto done;}
   if(api->fd_write(0x71,tx8_words[tx8_symbols[0]])!=0){ret=-12;goto done;}
   if(api->fd_write(0x70,TONE_ON)!=0){ret=-12;goto done;}
+#if TX8_RF_ENABLE
+  if(api->tx_pa(1)!=0){ret=-12;goto done;}
+#endif
   clk_start(&clk);clocked=1;
   for(i=1;i<TX8_NS;i++){
     uint32_t target=i*CYCLES_PER_SYMBOL-EARLY_CYCLES;
@@ -128,7 +159,10 @@ int k6_main(const k6_api_t *api) {
     uint32_t dl=now>target ? now-target:0;
     if(dl>worst)worst=dl;
     if(dl>CYCLES_PER_SYMBOL/4u)late++;
-    if(api->key_down() || api->tx_pa(0)<0) {ret=-4;break;}
+    if(api->key_down()) {ret=-4;break;}
+#if !TX8_RF_ENABLE
+    if(api->tx_pa(0)<0) {ret=-4;break;}
+#endif
     if(api->fd_write(0x71,tx8_words[tx8_symbols[i]])<0){ret=-12;break;}
   }
   if(ret==(int)TX8_NS) wait_cycle(&clk,TX8_NS*CYCLES_PER_SYMBOL);
@@ -141,8 +175,9 @@ int k6_main(const k6_api_t *api) {
 done:
   if(clocked)clk_restore(&clk);
   if(keyed){
-    (void)api->fd_write(0x70,0);
-    (void)api->fd_write(0x71,0);
+    (void)api->tx_pa(0);
+    (void)api->fd_write(0x70,previous_gain);
+    (void)api->fd_write(0x71,previous_tone);
     api->tx_off();
   }
   if(ret==(int)TX8_NS) api->say(line);

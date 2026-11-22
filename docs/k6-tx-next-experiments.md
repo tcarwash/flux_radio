@@ -5,7 +5,7 @@ Updated 2026-11-22. Research branch: **research/native-fsk-pdm** at
 research queue**. Preserve experimental alternatives even if a particular
 native-FSK approach fails.
 
-**Scope and safety:** Earlier milestones were host-only. As of 2026-11-22,
+**Program objective:** [arbitrary complex RF waveform engine](k6-arbitrary-rf-waveform-engine.md) with separate phase/frequency and envelope paths; FSK is **one source of modulation control**, not the entire objective. The new polar-IQ workbench models arbitrary complex targets and explicitly identifies missing RF envelope and phase-rate capabilities.\n\n**Scope and safety:** Earlier milestones were host-only. As of 2026-11-22,
 the user-confirmed dummy-load/air-coupled SDR bench has supported real,
 firmware-bounded 433.500-MHz native FSK transmissions and offline analysis.
 The newest repeated-capture work performed **three additional short
@@ -13,7 +13,7 @@ native-FSK transmissions** and restored both VFOs after each one.
 The SDR is not a calibrated spectrum analyzer; no unrestricted on-air
 or spectral-mask claim follows. No firmware was flashed in this pass.
 
-**Latest physical evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
+**Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.\n\n**Latest native-FSK evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
 
 ## What has been established
 
@@ -47,7 +47,7 @@ Sources within this repository: [native FSK research](k6-native-fsk-pdm.md),
 [FD6818 audio](k6-fd6818-audio.md). Original known-payload IQ files:
 **/storage5/dev/flux-serial-throughput/serial-test-output/tx-matrix/**.
 
-## Primary track: binary native 2-FSK as an RF frequency DAC
+## One investigated route: binary native 2-FSK as an RF frequency DAC
 
 Given two instantaneous RF offsets -D and +D at the native bit rate,
 a carried first-order error accumulator selects binary states whose
@@ -142,14 +142,14 @@ These are **independent hypotheses**, not variations of one implementation.
 | TX-12 | **MICIN baseband** with TX pre-emphasis, 300-Hz HPF, LPF bypass | API-26 B-chip enable/restore already tested on hardware in another worktree; potentially cleaner Gaussian 4-FSK | Build isolated mic-jack signal adapter, verify bias/amplitude, transmit 1-kHz calibration tone and shaped 4-FSK |
 | TX-13 | **Filtered MCU PWM or external DAC physically connected to MICIN** | Software-generated analog frequency-control waveform; alternate to chip modem | Map actual K6 mic jack and bias; safe reversible adapter. **PA11 currently drives speaker path, not MICIN** |
 | TX-14 | **TCXO/reference modulation and two-point FM modulation** | Could enable slow direct-offset trajectories beyond AC-coupled MICIN | Identify K6 board oscillator and accessible modulation pad; bench-only reversible electrical validation |
-| TX-15 | **Tone oscillator REG_70/71, dual-tone/AFSK** | Existing Bell 202/APRS and a 600-symbol/s eight-tone scheduler already emulator-tested | Current image rejected an inert API-3 RAM probe (verification -3); test by a safe library launch or approved lab RAM image before RF timing/spectrum work. **Audio over FM, not direct narrow RF 8-FSK** |
+| TX-15 | **Tone oscillator REG_70/71, dual-tone/AFSK** | [Measured in live B-chip RF](k6-arbitrary-rf-waveform-engine.md): 64 timed tone updates, 47/48 held-out IDs at 150/s, no FSK FIFO | **Working audio-FM modulation source.** Next test oscillator phase, tone transition filter and achievable continuous frequency trajectories. Not direct narrow RF 8-FSK |
 | TX-16 | **CTCSS/DCS/subaudio modulation source** | Potential slow signed FM injection or separate programmable path | Trace summing point, control clock, gain, deviation and achievable polarity |
 | TX-17 | Undocumented **direct FM offset / synthesizer DAC** | Best possible per-symbol frequency-control register if it exists | Read-only source/register audit; no working candidate established |
 | TX-18 | **I2S/MCBSP or digital baseband / GPIO** | Maybe RX PCM or TX data stream without analog mic | Old FD6818 register addresses mismatch B; only GP0/PB1 wired to MCU in known board; confirm map and direction |
 | TX-19 | **REG_3B/38/39 static LO/xtal tuning** | Carrier trim and maybe very slow hops | Proven latched on original non-B; determine B behavior before considering anything beyond static calibration |
-| TX-20 | **PA/APC envelope and true CW gating** | Clean CW/QRSS, amplitude shaping and polar-modulation exploration | Existing click/tail issues, off-state carrier leakage, nonlinear PA; measure ramp and true RF off gate |
+| TX-20 | **PA/APC envelope and true CW gating** | [B-chip driver](k6-arbitrary-rf-waveform-engine.md) writes calibrated REG_36[15:8] APC target; PA stage saturates for FM; binary gating already works | **Priority:** guarded firmware-owned APC target step bench, readback and RF amplitude response; source modules must NOT directly override REG_36 |
 | TX-21 | **Polar TX / phase-pulse PSK plus independent RF amplitude** | Might access QPSK/BPSK-like trajectories | Phase pulses alone are NOT conventional BPSK; true envelope control must be independently verified |
-| TX-22 | **First-party pluggable TX backend contract** | One RF-mode API selecting native FSK, MICIN, oscillator, or external modem | Explicit frequency/reference, sample/symbol clocks, spectral budget, cleanup, watchdog and capability gates |
+| TX-22 | **First-party pluggable TX backend contract** | [Generic arbitrary-IQ polar workbench](k6-arbitrary-rf-waveform-engine.md) compiles complex targets to amplitude + instantaneous-frequency control and compares idealized actuator capabilities | Define actual B-chip backend capability gates and RF I/Q reconciliation; do not mistake ideal continuous envelope model for hardware |
 | TX-23 | **External DAC/daughterboard/transverter/SDR gateway** | Honest fallback for real I/Q, conventional SSB/QAM, narrow FT8/WSPR, or high-fidelity phase modulation | Board access, RF filtering and independent conducted validation |
 
 Possible protocol families for whichever physical entry point succeeds:
