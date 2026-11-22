@@ -111,8 +111,8 @@ not proof of interoperable transmitted MSK.
 | ID | Experiment | Evidence required | State |
 |---|---|---|---|
 | FSK-01 | Sweep modeled deviations, native clocks and desired waveforms; compare complex-IQ reference, not just mean frequency | Seeded vectors, coherence/EVM, occupancy and bandwidth | Implemented offline |
-| FSK-02 | Reanalyze archived SDR IQ for phase continuity, edge settling, frequency separation, clock drift and startup errors | Original IQ, exact sample clock/offset, known bits; uncertainty report | Next, RX-only offline |
-| FSK-03 | Compare BK4829/FD6818B register sources and live B driver for gain/deviation: REG_70, REG_40, REG_59, REG_72 | Target-specific evidence; no guessed cross-chip writes | Source-only next |
+| FSK-02 | Reanalyze archived SDR IQ for phase continuity, edge settling, frequency separation, clock drift and startup errors | [Offline FSK-02 report](k6-fsk-02-archived-iq.md): receiver I/Q filtering improves 4800 baud from 28 to 6 assisted-timing errors; phase reset unproven | Initial archive analysis complete; physical validation remains |
+| FSK-03 | Compare BK4829/FD6818B register sources and live B driver for gain/deviation: REG_70, REG_40, REG_59, REG_72 | Source triage in [FSK-02/03 findings](k6-fsk-02-archived-iq.md): REG_40 controls nominal FM deviation, REG_70 is tone/FSK gain; B physical effects unproven | Partial source review; further B bench gated |
 | FSK-04 | Test long 000/111 runs and 0101 transitions, measuring instantaneous RF deviation and cumulative carrier phase | Calibrated conducted IQ and no phase reset across transitions | Hardware gated |
 | FSK-05 | Design a guarded arbitrary FIFO-word lab API, with explicit bit/word order and startup preamble, preserving independent watchdog | Emulator tests; documented maximum length; no live TX before fixture | Not implemented |
 | FSK-06 | Retry 2400/4800 with sacrificial preamble; distinguish physical settling from assisted-decoder acquisition | Blind sync/CRC where possible, repeated recordings and confidence bounds | Hardware gated |
@@ -190,7 +190,9 @@ produce arbitrary amplitude-varying SSB/QAM/OFDM.**
 - **M0:** offline frequency-per-chip PDM and complex waveform bench,
   tests and preserved TX roadmap (current).
 - **M1:** archived IQ phase/settling and long-run analysis, source-only
-  B-chip register/deviation audit.
+  B-chip register/deviation audit. Initial archival results and filter comparison
+  now documented in [FSK-02](k6-fsk-02-archived-iq.md); native-B phase
+  continuity, exact deviation and true hardware startup remain open.
 - **M2:** guarded arbitrary-FSK FIFO API in emulator, with tight bounds
   and independent timeout proof.
 - **M3:** attended conducted short-pattern test **only after** all safety

@@ -6,6 +6,10 @@ TX entry points** (native 4-FSK, MICIN, TCXO, tone oscillator, subaudio,
 digital ports, PA envelope, external hardware). New host-only waveform
 vectors and complex-IQ fidelity comparisons live in
 `tools/k6_fsk_waveform_bench.py` and `tests/test_k6_fsk_waveform_bench.py`.
+The next archive-analysis step is documented in [FSK-02/03](k6-fsk-02-archived-iq.md):
+`tools/k6_fsk_iq_edges.py` and `tests/test_k6_fsk_iq_edges.py` measure
+receiver filtering effects and nonconclusive transition/phase diagnostics.
+
 
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
 control, flash, PA operation or firmware changes.** This is a simulation
