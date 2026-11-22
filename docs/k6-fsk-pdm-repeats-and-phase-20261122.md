@@ -219,6 +219,47 @@ Actual saved phase report:
 The script checks each source capture's SHA-256 against the native
 chip-decoder record before fitting.
 
+## Relative RF occupied-spectrum comparison
+
+The saved RF captures were also compared with the same payload-interval
+Welch spectrum procedure in
+[tools/k6_fsk_spectrum_replay.py](../tools/k6_fsk_spectrum_replay.py).
+The receiver center and tuning correction were fixed for all trials.
+The script subtracts a local median PSD noise estimate over 7.5–15
+kHz offsets, integrates only a ±15-kHz baseband window, and reports
+the 0.5–99.5% power span. It uses `detrend=False` explicitly so a
+carrier at baseband DC is **not** inadvertently removed.
+
+| Signal, 433.500 MHz nominal | Relative 99% span | Relative power outside ±3 kHz |
+|---|---:|---:|
+| Baseline gain-21 binary 2-FSK | 4,720 Hz | 0.188% |
+| 8-FSK/PDM original | 4,918 Hz | 0.163% |
+| 8-FSK/PDM repeat 01 | 4,917 Hz | 0.161% |
+| 8-FSK/PDM repeat 02 | 4,918 Hz | 0.166% |
+| 8-FSK/PDM repeat 03 | 4,949 Hz | 0.176% |
+
+The 8-level PDM waveform is ~200 Hz wider in the measured 99%-power
+span than the conventional binary baseline. The fraction outside
+±3 kHz was small in the SDR's relative, noise-subtracted received
+spectrum, but the measurements **do not constitute emission-mask
+compliance, calibrated occupied bandwidth, adjacent-channel power,
+harmonic suppression or radiated power**. In particular, low-level
+noise, front-end response and omitted frequencies outside ±15 kHz
+can bias these estimates.
+
+~~~sh
+python3 tools/k6_fsk_spectrum_replay.py \
+  --iq /home/tyler/flux-bench/tx-injection-20261122/native-fsk-gain21-slot30.npy \
+       /home/tyler/flux-bench/tx-injection-20261122/native-fsk-pdm300-slot30.npy \
+       /home/tyler/flux-bench/tx-injection-20261122/phase-repeat/pdm300-repeat-01.npy \
+       /home/tyler/flux-bench/tx-injection-20261122/phase-repeat/pdm300-repeat-02.npy \
+       /home/tyler/flux-bench/tx-injection-20261122/phase-repeat/pdm300-repeat-03.npy \
+  --out /tmp/flux-fsk-relative-spectrum-review.json
+~~~
+
+The actual checked physical replay was saved outside Git at
+`~/flux-bench/tx-injection-20261122/phase-repeat/relative-spectrum-v2.json`.
+
 ## Alternative transmit paths remain active
 
 The [full all-path TX queue](k6-tx-next-experiments.md) still
@@ -226,6 +267,17 @@ includes MICIN analog baseband, filtered MCU DAC/PWM physical injection,
 native DMR/4-FSK or transparent modem, tone oscillator, subaudio,
 reference/TCXO modulation, synthesizer static offsets, I2S, PA/APC
 amplitude and external arbitrary IQ.
+
+A separate, **nontransmitting** attempt to exercise the existing
+inert API-level-3 tone-oscillator module through the high-API RAM
+runner was rejected by the current firmware with **RAM verification
+-3** (the local host runner allowed high API, but the device did not).
+The radio stayed RX-idle at 144.390 MHz. We did **not** install or
+overwrite a library slot, flash a firmware variant, or claim that the
+eight-tone RF path was tested. The existing `tx8probe.c` source and
+Cortex-M0 emulator tests provide the software starting point for
+TX-15, but a separately verified library-module or compatible RAM
+execution method is still required for hardware measurement.
 
 The independent MICIN hardware investigation in
 `/storage5/dev/flux-tx-waveform-superset/docs/k6-micin-70cm-api26-rf-feasibility-20261121.md`
