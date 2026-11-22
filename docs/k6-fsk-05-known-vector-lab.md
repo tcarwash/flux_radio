@@ -2,6 +2,9 @@
 
 Date: 2026-11-22. Branch: **research/native-fsk-pdm**.
 Part of the [complete TX research queue](k6-tx-next-experiments.md).
+The subsequent [RX-only 433.500-MHz baseline and held-out archive verification]
+(k6-fsk-05-rx-preflight.md) documents the prepared capture/decoder tools
+and remaining physical TX gates.
 
 **Status:** offline vector generation, inert module and emulator-qualified
 bench implementation are complete. **No physical RF transmission, firmware

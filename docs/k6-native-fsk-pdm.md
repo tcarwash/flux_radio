@@ -12,7 +12,8 @@ receiver filtering effects and nonconclusive transition/phase diagnostics.
 The guarded, deliberately inert native-FSK known-vector generator and
 Cortex-M0 emulator transaction test are documented in
 [FSK-05](k6-fsk-05-known-vector-lab.md); **no hardware TX has yet been run**
-with that generated vector.
+with that generated vector. Receiver baseline and held-out-data archive
+verification are in [FSK-05 preflight](k6-fsk-05-rx-preflight.md).
 
 
 Experimental research branch: `research/native-fsk-pdm`. **No live transmit, serial
