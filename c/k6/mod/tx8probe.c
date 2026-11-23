@@ -14,10 +14,25 @@
 #ifndef TX8_PHASE_VECTOR_V4
 #define TX8_PHASE_VECTOR_V4 0
 #endif
-#if TX8_PHASE_VECTOR_V2 + TX8_PHASE_VECTOR_V3 + TX8_PHASE_VECTOR_V4 > 1
+#ifndef TX8_PHASE_VECTOR_V5
+#define TX8_PHASE_VECTOR_V5 0
+#endif
+#ifndef TX8_STEER_VARIANT
+#define TX8_STEER_VARIANT 0
+#endif
+#if TX8_PHASE_VECTOR_V2 + TX8_PHASE_VECTOR_V3 + TX8_PHASE_VECTOR_V4 + TX8_PHASE_VECTOR_V5 > 1
 #error "TX8 cannot select more than one phase-vector payload"
 #endif
-#if TX8_PHASE_VECTOR_V4
+#if TX8_PHASE_VECTOR_V5 && TX8_STEER_VARIANT != 0 && TX8_STEER_VARIANT != 1
+#error "TX-15T steering variant must be 0/control or 1/phase pulse"
+#endif
+#if TX8_PHASE_VECTOR_V5
+#if TX8_STEER_VARIANT == 1
+#include "tx8_steer_phase_probe.h"
+#else
+#include "tx8_distributed_phase_probe.h"
+#endif
+#elif TX8_PHASE_VECTOR_V4
 #include "tx8_distributed_phase_probe.h"
 #elif TX8_PHASE_VECTOR_V3
 #include "tx8_long_phase_probe.h"
@@ -61,14 +76,14 @@
 #if TX8_SYMBOL_RATE < 100u || TX8_SYMBOL_RATE > 600u
 #error "TX8 RF symbol rate outside bounded test"
 #endif
-#if (TX8_PHASE_VECTOR_V2 || TX8_PHASE_VECTOR_V3 || TX8_PHASE_VECTOR_V4) && TX8_SYMBOL_RATE != 150u
-#error "TX-15P/R/S non-commensurate vectors qualified only at 150 Hz schedule"
+#if (TX8_PHASE_VECTOR_V2 || TX8_PHASE_VECTOR_V3 || TX8_PHASE_VECTOR_V4 || TX8_PHASE_VECTOR_V5) && TX8_SYMBOL_RATE != 150u
+#error "TX-15P/R/S/T non-commensurate vectors qualified only at 150 Hz schedule"
 #endif
-#if (TX8_PHASE_VECTOR_V3 || TX8_PHASE_VECTOR_V4) && TX8_NS != 192u
-#error "TX-15R/S fixed-length 192-event safety budget"
+#if (TX8_PHASE_VECTOR_V3 || TX8_PHASE_VECTOR_V4 || TX8_PHASE_VECTOR_V5) && TX8_NS != 192u
+#error "TX-15R/S/T fixed-length 192-event safety budget"
 #endif
-#if TX8_PHASE_VECTOR_V4 && (TX8_PILOT_SLOTS != 72u || TX8_TAIL_GUARD != 6u)
-#error "TX-15S fixed pilot/guard count"
+#if (TX8_PHASE_VECTOR_V4 || TX8_PHASE_VECTOR_V5) && (TX8_PILOT_SLOTS != 72u || TX8_TAIL_GUARD != 6u)
+#error "TX-15S/T fixed pilot/guard count"
 #endif
 
 #define RCC_APB2ENR 0x40021018u
@@ -196,7 +211,13 @@ int k6_main(const k6_api_t *api) {
   }
   if(ret==(int)TX8_NS) wait_cycle(&clk,TX8_NS*CYCLES_PER_SYMBOL);
   span=clk_now(&clk);
-#if TX8_PHASE_VECTOR_V4
+#if TX8_PHASE_VECTOR_V5
+#if TX8_STEER_VARIANT == 1
+  p=put(line,"tx8tB n=");
+#else
+  p=put(line,"tx8tA n=");
+#endif
+#elif TX8_PHASE_VECTOR_V4
   p=put(line,"tx8s n=");
 #elif TX8_PHASE_VECTOR_V3
   p=put(line,"tx8r n=");
