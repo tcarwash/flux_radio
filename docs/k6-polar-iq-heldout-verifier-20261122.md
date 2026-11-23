@@ -72,7 +72,9 @@ FD6818B framing: an independently documented frequency shift, decimation,
 burst selection and nominal pilot boundaries are still necessary to prepare
 actual SDR IQ.
 
-**New archived physical follow-up:** [FSK-24 real FSK-only held-out complex-IQ analysis](k6-fsk-physical-iq-holdout-20261122.md) applies this pilot-frozen method to four previous RF captures and finds ~107-171% full-IQ heldout EVM against the ideal instantaneous binary-FSK reference. These source captures did NOT include APC.\n\n## Known limits
+**New archived physical follow-up:** [FSK-24 real FSK-only held-out complex-IQ analysis](k6-fsk-physical-iq-holdout-20261122.md) applies this pilot-frozen method to four previous RF captures and finds ~107-171% full-IQ heldout EVM against the ideal instantaneous binary-FSK reference. These source captures did NOT include APC.
+
+## Known limits
 
 1. The desired target assumes mathematically instantaneous ±frequency
    switching. The physical B chip has modulation settling and phase

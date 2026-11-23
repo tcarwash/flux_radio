@@ -9,7 +9,9 @@ Updated 2026-11-22. Research branch: **research/native-fsk-pdm** at
 research queue**. Preserve experimental alternatives even if a particular
 native-FSK approach fails.
 
-**Program objective:** [arbitrary complex RF waveform engine](k6-arbitrary-rf-waveform-engine.md) with separate phase/frequency and envelope paths; FSK is **one source of modulation control**, not the entire objective. The new polar-IQ workbench models arbitrary complex targets and explicitly identifies missing RF envelope and phase-rate capabilities.\n\n**Scope and safety:** Earlier milestones were host-only. As of 2026-11-22,
+**Program objective:** [arbitrary complex RF waveform engine](k6-arbitrary-rf-waveform-engine.md) with separate phase/frequency and envelope paths; FSK is **one source of modulation control**, not the entire objective. The new polar-IQ workbench models arbitrary complex targets and explicitly identifies missing RF envelope and phase-rate capabilities.
+
+**Scope and safety:** Earlier milestones were host-only. As of 2026-11-22,
 the user-confirmed dummy-load/air-coupled SDR bench has supported real,
 firmware-bounded 433.500-MHz native FSK transmissions and offline analysis.
 The newest repeated-capture work performed **three additional short
@@ -17,7 +19,9 @@ native-FSK transmissions** and restored both VFOs after each one.
 The SDR is not a calibrated spectrum analyzer; no unrestricted on-air
 or spectral-mask claim follows. No firmware was flashed in this pass.
 
-**Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.\n\n**Latest native-FSK evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
+**Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.
+
+**Latest native-FSK evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
 
 ## What has been established
 
