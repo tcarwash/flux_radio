@@ -1,0 +1,23 @@
+{
+  "description": "FSK-11 precommitted actual Sotto-1200 L packets",
+  "source": "sotto/docs/samples/rates/male_libri3436_15s__1200.bit",
+  "source_sha256": "6c3b4ac8905d287ff4b2e52cc49b7d97b31ed664e4aa69dcb6d2cfe5997b2d02",
+  "codec": "Sotto 1200 48bit/40ms",
+  "packet_profile": "L",
+  "packet_size_bytes": 64,
+  "frames_per_packet": 8,
+  "frame_count": 2,
+  "packet_hex": [
+    "56c0dd9aecf233a7ce0acc7a6e9bdd1a495d1f52bdbb89076b5abae39b1ac89b4cf6a1d1b7ffb7798b71eccfe49545eb1b9edaf7a21b8acde7d14e093217c7b5",
+    "56c0dd9becf268f8c257b6f52e7148ef302373b1f858d479fc882d8c2ba253d39b1d00e80aa94d6ce6b9aaee2f3c4b3721a926aca2948acde7d14e0932175747"
+  ],
+  "packet_sha256": [
+    "9228c7481890b0f8caf21f07fe8d70b978bf5be1b14d3e3ffb71c28de7dd2f4a",
+    "03202f23d9f78ce8af6ed749910087294abd6fc1579d7b7d1e2e8e9ba8bffb7c"
+  ],
+  "module_source_sha256": "08b02d1a437096d3b260e8d7d043ed2d7de5f872e04bab60fae3340823e4a657",
+  "module_code_sha256": "2f042fe965d30f0972b80dc61166d03b887902bc556c7557f0434ac7deeb0224",
+  "compiled_code_bytes": 1080,
+  "entry": 0,
+  "offline_only_provisioning": true
+}
