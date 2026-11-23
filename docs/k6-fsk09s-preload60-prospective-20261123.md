@@ -73,6 +73,28 @@ E/F append runs did. A failed frame shows that **in-flight appending is
 not necessary** for the artifact. Either result provides a useful next
 branch for source investigation.
 
+## Bench preflight revision (after first safe refusal, before first RF)
+
+At 2026-11-23 ~13:59 PT the original, unchanged bench runner
+**refused before slot mutation or TX**, because the actual observed
+radio VFO baseline was **A 440.850 MHz / B 144.390 MHz**, with
+VFO-A watched. The original harness incorrectly assumed both VFOs
+were 144.390 MHz. Firmware identity, cable-only module API3, fsk_rx,
+RX-idle and standby guards all passed. No prior IQ recording,
+temporary module upload, SPI change or TX occurred from this refusal.
+
+The new isolated harness revision freezes the **actually observed**
+operator baseline A=440.850 MHz and B=144.390 MHz (both FM wide and
+not memory; watched=0), declines to run if either value changes,
+and restores **both original values** with explicit final readback.
+The radio still gets retuned temporarily to 433.500 MHz for the
+one controlled RF test. The original frozen C source and 1056-byte
+module hashes are **unchanged**. Baseline regression tests cover
+unexpected VFO, memory, watch and mode changes. The revised harness
+and protocol will be committed **before** the physical retry.
+This is an earlier-safe preflight correction, not a previously failed
+RF trial. No automatic retry on unexpected state.
+
 ## Commands (only after explicit hardware authorization)
 
 Offline preflight only:
