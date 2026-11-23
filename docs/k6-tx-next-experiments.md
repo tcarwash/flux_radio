@@ -59,6 +59,15 @@ at `/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16n-run-v21-2965-long-
 These are bounded conducted binary-FM payload results, not repeater survival,
 spectrum compliance, or arbitrary complex IQ; no repeater was keyed.
 
+Follow-up boundary point **TX16N v23 at 2964 μs** also failed the exact
+payload gate in both independent captures (61/64 and 62/64; same 3.180-ms
+fine-grid fit, recurring errors at bits 24 and 52). This sharpens the current
+repeatable boundary to 2965 μs, without changing the wider arbitrary-IQ goal.
+Full evidence and IQ digests:
+`/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16n-run-v23-2964-long-preamble-physical-20261123.md`.
+Next, pursue a distinct modulation vector from the roadmap rather than more
+repeats at this failed setting; preserve the marked in-progress TX16M work.
+
 **Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.
 
 **Latest native-FSK evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
