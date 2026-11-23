@@ -29,7 +29,7 @@ PATTERNS={
 }
 
 
-def simulate(meta,*,turns=90,buffer_count=2,pattern='even',blocks=100,codebook_reads=None,codec_cycles=None):
+def simulate(meta,*,turns=90,buffer_count=2,pattern='even',blocks=100,codebook_reads=None,codec_cycles=None,adc_cycles_per_sample=None):
     if turns<=0 or buffer_count<2 or blocks<4 or pattern not in PATTERNS:
         raise ValueError('Invalid offline queue simulation parameters')
     if codebook_reads is not None and (len(codebook_reads)<blocks or any(v<0 for v in codebook_reads)):
@@ -38,7 +38,7 @@ def simulate(meta,*,turns=90,buffer_count=2,pattern='even',blocks=100,codebook_r
         raise ValueError('Incomplete/invalid Cortex-M0 cycle trace')
     eq=capture_params(meta)['observed_equivalent_cycles_per_turn']
     period=MCU_HZ/PCM_HZ
-    sample_cycles=turns*eq+ISR_OVERHEAD_CYCLES_PER_SAMPLE
+    sample_cycles=(turns*eq if adc_cycles_per_sample is None else adc_cycles_per_sample)+ISR_OVERHEAD_CYCLES_PER_SAMPLE
     background_cycles_per_10ms=BLOCK_SAMPLES*(period-sample_cycles)-MCU_HZ*OTHER_CPU_RESERVE_FRACTION/100
     # Each weight pattern sums to 4, so 40ms totals are conserved.
     codec_pattern,spi_pattern=PATTERNS[pattern]
@@ -75,6 +75,8 @@ def simulate(meta,*,turns=90,buffer_count=2,pattern='even',blocks=100,codebook_r
         if index<12:events.append(dict(ready_block=index,remaining_tasks=len(tasks),
             remaining_work_cycles=round(backlog),work_added_cycles=round(work)))
     return dict(pattern=pattern,turns=turns,buffer_count=buffer_count,
+       adc_workload_source=('real_pa11_gpio_armv6m_instruction_emulator' if adc_cycles_per_sample is not None else 'real_capture_scaled_equivalent_cycles_per_turn'),
+       adc_cycles_per_sample=round(sample_cycles-ISR_OVERHEAD_CYCLES_PER_SAMPLE),
        codec_workload_source=('real_mic_slim_encode10_cortex_m0_instruction_emulator' if codec_cycles is not None else 'assumed_uniform_or_bursty_29MHz'),
        spi_read_workload_source=('actual_recorded_mic_slim_encode10_read_counts'
             if codebook_reads is not None else 'synthetic_assumed_distribution'),
@@ -104,6 +106,19 @@ def read_counts(path:Path):
     return counts
 
 
+def read_pa11_cycles(path:Path):
+    data=json.loads(path.read_text())
+    if data['proof_level']!='ACTUAL_ARMV6M_PA11ADC_CODE_UNICORN_GPIO_MEMORY_ONLY':
+        raise ValueError('Not a Cortex-M0 PA11 emulator trace')
+    rows={}
+    for r in data['scenarios']:
+        if r['idr_pa11']==0:
+            rows[r['turns']]=r['cycles']
+        elif r['turns'] in rows and rows[r['turns']]!=r['cycles']:
+            raise ValueError('Data-dependent ADC cycles')
+    return rows
+
+
 def read_cm0_trace(path:Path):
     with path.open(newline='') as fd:rows=list(csv.DictReader(fd))
     if not rows:raise ValueError('Empty Cortex-M0 cycle trace')
@@ -122,6 +137,7 @@ def main():
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--reads',type=Path,default=None,help='Optional host-instrumented genuine slim per-call SPI read counts')
     p.add_argument('--cm0-trace',type=Path,default=None,help='Optional real mic slim Cortex-M0 modeled cycles and host read counts')
+    p.add_argument('--pa11-trace',type=Path,default=None,help='Optional actual PA11 C GPIO loop Cortex-M0 emulated cycles')
     a=p.parse_args()
     if a.out.exists():p.error('Refusing overwrite')
     meta=json.loads(a.capture_meta.read_text())
@@ -136,11 +152,18 @@ def main():
         scenarios.extend(simulate(meta,turns=w,buffer_count=n,pattern='even',blocks=len(cycles),
                         codebook_reads=reads,codec_cycles=cycles)
             for w in (90,80,70,60) for n in (2,3,4,5,6))
+    if a.pa11_trace is not None:
+        if a.cm0_trace is None: p.error('--pa11-trace requires --cm0-trace')
+        adc=read_pa11_cycles(a.pa11_trace)
+        scenarios.extend(simulate(meta,turns=w,buffer_count=n,pattern='even',blocks=len(cycles),
+                        codebook_reads=reads,codec_cycles=cycles,adc_cycles_per_sample=adc[w])
+            for w in (80,90,100,120,200) for n in (2,3,4,5,6))
     r=dict(experiment='offline 10ms PA11 slim Sotto double-buffer and burst sensitivity',
       no_hardware_access=True,results=scenarios)
     a.out.write_text(json.dumps(r,indent=2)+'\n')
     for x in scenarios:
-        if (x['codec_workload_source']=='real_mic_slim_encode10_cortex_m0_instruction_emulator'
+        if (x['adc_workload_source']=='real_pa11_gpio_armv6m_instruction_emulator'
+            or x['codec_workload_source']=='real_mic_slim_encode10_cortex_m0_instruction_emulator'
             or x['spi_read_workload_source']=='actual_recorded_mic_slim_encode10_read_counts'
             or x['turns'] in (90,100) and x['buffer_count'] in (2,3)):
             print('W',x['turns'],'buffers',x['buffer_count'],x['pattern'],
