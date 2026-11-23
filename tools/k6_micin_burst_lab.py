@@ -155,7 +155,7 @@ def analyze(*, amplitude=.03, bt=.5, cutoffs=CUTOFFS_HZ,
             "The 12-ms timing margin is before accounting for actual RF attack, startup, shutdown or DAC stalls",
             "WAV amplitude is not MICIN voltage. Do not connect an unmeasured audio output directly to MICIN",
             "Pilot-only affine calibration is a simplified detector, not an RF modulation performance assessment",
-            "Experimental MICIN firmware is not release-ready; one compiled-image emulator test previously failed",
+            "Experimental MICIN firmware remains a bench-only research image; emulator acceptance passed after separate test harness repair",
             "No audio playback, RF TX, flashing or SPI mutations were made",
         ]
     },cycle

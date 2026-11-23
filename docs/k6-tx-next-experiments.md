@@ -1,5 +1,7 @@
 # Flux K6 — TX waveform research: next experiments
 
+**Newest physical-fixture gate and offline observer:** [TX-12D MICIN jack mapping, host audio hardware inventory and saved-IQ receive-only qualifier](k6-micin-physical-fixture-preflight-20261122.md). The unconnected 3.5-mm ring / shared PTT-programming sleeve requires real electrical verification, while an archived PA-off MICIN probe shows a separate 26-ms RF-like spectral transient. The strict 44-ms 4-FSK receiver rejects it as NOT qualified modulation. No new RF TX or flash was attempted.
+
 **Latest independent TX-actuator feasibility:** [TX-12B loopable MICIN voltage pattern and hypothetical AC-coupling bench](k6-micin-loopable-coupling-20261122.md) reduces a 128-symbol stimulus to a 44-ms repeatable cycle inside the 100-ms experimental burst. Simulated 20-Hz first-order HPF causes 18/32 errors on long-plateau stress data, but 0/32 on short-term balanced data. This is NOT measured MICIN RF, and the adapter, synchronization, and firmware emulator gate remain unresolved.
 
 **Latest phase-response transfer evidence:** [FSK-25 leave-one-recording-out finite-memory phase study](k6-fsk-phase-transfer-20261122.md) predicts held-out chip-boundary phase from *other* recorded pilots. Seven-tap coherence is ~0.70–0.83 on three repeats, ~0.24 on fourth; linear drift extrapolated from pilot made results worse. Data decoding is not coherent arbitrary-IQ synthesis.

@@ -9,9 +9,12 @@ Worktree: `/storage5/dev/flux-native-fsk-pdm`, branch `research/native-fsk-pdm`.
 
 No physical adapter was connected, no audio was played into the
 transceiver, no radio or SDR was accessed, and no RF was transmitted.
-**The experimental MICIN API-26 firmware is not installed.** Its
-compiled-image emulator still has one unresolved acceptance failure;
-the preceding safety/tooling block is not bypassed.
+**The experimental MICIN API-26 firmware is not verified installed.** Its
+earlier emulator acceptance failure was resolved as a test-harness
+issue in [TX-12C](k6-micin-api26-emulator-acceptance-20261122.md)
+(8 passed, one optional packed-store test skipped). The **physical**
+MICIN adapter, RF response and independent hardware watchdog are
+still unverified; the earlier safety gate is not bypassed.
 
 The objective is **not limited to FSK**. MICIN is a potential signed
 analog frequency-modulation actuator for a broader waveform backend;
@@ -132,8 +135,8 @@ generator and tests are the source of truth.
    guessed MIC pin or on the older non-B chip datasheet.
 2. Scope the output voltage at the **isolated adapter** and verify
    loop continuity and absolute level without connecting the radio.
-3. Resolve the experimental MICIN image's emulator acceptance
-   failure and validate a real independent TX watchdog/recovery.
+3. The emulator acceptance failure has been resolved; independently
+   validate an actual hardware TX watchdog/recovery before real RF.
 4. Establish a safe external timing/provenance record between
    continuously playing audio, the guarded RF gate, and received IQ.
    Demonstrate total relevant startup/truncation under the modeled
