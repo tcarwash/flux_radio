@@ -232,3 +232,21 @@ configuration/feature interaction; **it has not been isolated or
 resolved**. Do not treat the experimental firmware as release-ready.
 All MICIN-specific host ABI patch checks and inert-module compile gates
 passed, but no on-radio MICIN callback or transmitted 4-FSK was tested.
+
+## Follow-up isolated image acceptance — November 22, 2026
+
+The earlier 7-pass/1-skip/1-failure result above is **superseded
+as an emulator test-harness finding**, not as physical MICIN evidence.
+A fresh pinned-source 100,688-byte API26 image was rebuilt
+(SHA-256 `be95002a7dbe8760df9d3affcee9442564285ad215936051033fb22612b5ebe1`).
+The one failure came from a regression test that asserted API25 exactly
+and always staged its cooperative-cancellation module using the
+packed SPI store, even for a fixed-slot firmware variant.
+After correcting both assumptions, the targeted test passed and
+the full compiled-image suite reported **8 passed, 1 skipped**
+(the optional packed mutation feature is disabled in this build).
+
+[Full offline acceptance and reproducible clean-build recipe](k6-micin-api26-emulator-acceptance-20261122.md).
+No firmware was flashed, no radio accessed, no RF transmitted.
+The electrical adapter, physical independent watchdog and
+actual MICIN-to-RF frequency-response checks remain outstanding.

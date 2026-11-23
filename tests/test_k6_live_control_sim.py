@@ -361,7 +361,7 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     from modem import k6mod
     from k6_live_v2 import RUN_COOP, RUN_CANCEL, decode_request, request_bytes_v2
     from k6_user_store_migrate import compact,BASE,END,objects
-    from k6_install import InstallError
+    from k6_install import InstallError, LIB_BASE, LIB_SLOT
     port=simulated_radio(Path(image).read_bytes(),cable_only=True)
     monkeypatch.setattr(k6_live,"time",SimpleNamespace(
         monotonic=port.monotonic,sleep=port.sleep))
@@ -369,11 +369,20 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     link=LiveLink(port,timeout=3.0,initial_seq=0)
     if "coop_cancel" not in link.capabilities()["features"]:
         pytest.skip("requires new cooperative cancellation feature")
-    assert link.module_capabilities()["module_api_max"]==25
+    # Cooperative cancellation was introduced at API25. An opt-in MICIN
+    # firmware can expose API26 without removing the API25 cancel service.
+    assert link.module_capabilities()["module_api_max"] >= 25
     code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/
                                   "c/k6/mod/live_cancel_demo.c"))
     env=k6mod.image(code,entry,100,None,level=25,lib=26)
-    port.board.flash_data[BASE:END]=compact({26:env})[0]
+    # A packed library exists only with the optional user-store feature.
+    # Older API25/26 live builds use 16-KiB fixed SPI slots instead.
+    packed="lib_mutate" in link.capabilities()["features"]
+    if packed:
+        port.board.flash_data[BASE:END]=compact({26:env})[0]
+    else:
+        address=LIB_BASE+26*LIB_SLOT
+        port.board.flash_data[address:address+len(env)]=env
     before=bytes(port.board.flash_data)
     initial=link.status()
     assert initial["standby_idle"] and not initial["transmitting"]
@@ -394,4 +403,7 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     assert link.status()["vfos"]==initial["vfos"]
     assert not link.status()["transmitting"]
     assert bytes(port.board.flash_data)==before
-    assert objects(port.board.flash_data[BASE:END])=={26:env}
+    if packed:
+        assert objects(port.board.flash_data[BASE:END])=={26:env}
+    else:
+        assert bytes(port.board.flash_data[address:address+len(env)])==env

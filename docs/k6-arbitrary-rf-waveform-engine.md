@@ -1,5 +1,7 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**New MICIN firmware checkpoint:** [TX-12C clean rebuild and compiled-image emulator acceptance](k6-micin-api26-emulator-acceptance-20261122.md) resolved the earlier test-harness failure: API26 needs a minimum API25 cancellation check, and legacy fixed-slot firmware cannot be tested with the packed SPI layout. The full emulator suite now passes 8 with 1 optional packed-library test skipped. This does not validate electrical MICIN input, hardware watchdog or RF transmission.
+
 **New parallel offline leads:** [TX-12B MICIN loopable 4-FSK plus AC coupling models](k6-micin-loopable-coupling-20261122.md) and [FSK-25 cross-capture chip-phase response transfer](k6-fsk-phase-transfer-20261122.md). The first establishes a time-bounded stimulus and shows waveform-content sensitivity to hypothetical HPF; the second shows transferable finite-memory FSK response for three historical RF captures, with a fourth outlier. Neither is physical flat MICIN RF or independent arbitrary-IQ waveform emission.
 
 **New alternative TX source audit:** [TX-11 native multilevel / DMR TX](k6-tx11-multilevel-source-audit-20261122.md) finds existing B-driver binary FIFO controls and separately implemented 4-FSK/DMR receivers, but **no verified native four-level transmitter**. MICIN analog 4-FSK remains a separate candidate, not ruled out.
