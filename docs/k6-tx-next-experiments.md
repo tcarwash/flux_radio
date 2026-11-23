@@ -50,10 +50,11 @@ The SDR is not a calibrated spectrum analyzer; no unrestricted on-air
 or spectral-mask claim follows. No firmware was flashed in this pass.
 
 **TX16N high-rate polarity-FM payload checkpoint (separate worktree):** the
-64-bit `N0CALL73` long-payload source has now passed twice at 2965 μs requested
+64-bit `N0CALL73` long-payload source has passed twice at 2965 μs requested
 dwell (fine preamble fit 3.185 ms) using a 48-symbol alternating timing
-preamble and frozen held-out scorer. A 2960 μs request was mixed (one 64/64,
-one 61/64); 2945 and 2915 μs requests failed. See the local detailed report
+preamble and frozen held-out scorer. A 2962 μs request was mixed (one 64/64,
+one 62/64); 2960 μs was also mixed (one 64/64, one 61/64); 2945 and 2915 μs
+requests failed. See the local detailed report
 at `/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16n-run-v21-2965-long-preamble-physical-20261123.md`.
 These are bounded conducted binary-FM payload results, not repeater survival,
 spectrum compliance, or arbitrary complex IQ; no repeater was keyed.
