@@ -1,5 +1,7 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**New parallel offline leads:** [TX-12B MICIN loopable 4-FSK plus AC coupling models](k6-micin-loopable-coupling-20261122.md) and [FSK-25 cross-capture chip-phase response transfer](k6-fsk-phase-transfer-20261122.md). The first establishes a time-bounded stimulus and shows waveform-content sensitivity to hypothetical HPF; the second shows transferable finite-memory FSK response for three historical RF captures, with a fourth outlier. Neither is physical flat MICIN RF or independent arbitrary-IQ waveform emission.
+
 **New alternative TX source audit:** [TX-11 native multilevel / DMR TX](k6-tx11-multilevel-source-audit-20261122.md) finds existing B-driver binary FIFO controls and separately implemented 4-FSK/DMR receivers, but **no verified native four-level transmitter**. MICIN analog 4-FSK remains a separate candidate, not ruled out.
 
 **New physical fidelity finding:** [FSK-24 archived real-RF holdout](k6-fsk-physical-iq-holdout-20261122.md) scores four real 300-baud 8-level PDM/FSK captures against independently prescribed binary-FSK IQ. Despite reliable chip decoding, heldout complex EVM is ~107–171%; this is FSK-only RF, not simultaneous FSK/APC or a calibrated arbitrary-waveform transmitter.
