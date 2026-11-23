@@ -98,6 +98,19 @@ python3 tools/k6_fsk12_mic_rf.py preflight \
 python3 -m pytest -q tests/test_k6_fsk12_mic_rf.py
 ```
 
+## Operator VFO preservation update (committed before first FSK-12 RF)
+
+The physical FSK-09S-G control was run on the same K6 bench and
+restored its actual operator VFO state, **A=440.850MHz watched** and
+**B=144.390MHz**, both FM/wide/nonmemory. The older generic RF harness
+incorrectly assumed both VFOs were at 144.390MHz and safely aborted
+before modifying the radio. FSK-12's isolated `k6_fsk_boundary_bench.py`
+now refuses any initial VFO state other than this *exact observed*
+baseline, temporarily tunes only the currently watched VFO for the
+433.500MHz conducted RF fixture, and demands exact two-VFO
+restoration/readback before declaring success. This harness change
+does **not** alter the source or 1196-byte compiled TX module hashes.
+
 ## Physical test (BLOCKED until bench lease acknowledged)
 
 **The user's broad authorization for radio flashing/TX does not override

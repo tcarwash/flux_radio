@@ -32,7 +32,16 @@ from modem import k6mod
 
 EXPECTED_BUILD="95d6b260d4122287"
 LAB_HZ=433_500_000
-INITIAL_HZ=144_390_000
+INITIAL_HZ=440_850_000  # verified watched operator VFO-A
+SECONDARY_HZ=144_390_000  # verified original operator VFO-B
+
+def vfo_baseline_matches(state):
+    """Refuse to alter unexpected operator VFO frequencies/modes."""
+    vfos=state.get("vfos",[])
+    return (state.get("watching")==0 and len(vfos)==2 and
+            [v.get("hz") for v in vfos]==[INITIAL_HZ,SECONDARY_HZ] and
+            all(v.get("mode")=="FM" and v.get("wide") is True and
+                v.get("memory") is False for v in vfos))
 SLOT=30
 EXPECT_CODE_SHA256="223d6976090e4d29af70b9ae2c9a76a60dd57aa37720f4fe1950b44061c90a29"
 # The *saved envelope* hash includes the serial and MAC. The known 300-baud
@@ -99,8 +108,7 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
             caps["module_api_max"]<3 or
             initial["transmitting"] or initial["sleeping"] or
             not initial["standby_idle"] or
-            any(v["hz"]!=INITIAL_HZ for v in initial["vfos"]) or
-            not any(v["hz"]==INITIAL_HZ for v in initial["vfos"])):
+            not vfo_baseline_matches(initial)):
             raise RuntimeError("unsafe or unexpected initial radio state/firmware")
         directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
         offset,length=directory[SLOT]
@@ -210,8 +218,8 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
                     raise RuntimeError("slot 30 changed to unknown image; refusing blind overwrite")
                 final=link.tune(INITIAL_HZ)
                 report["final_radio_status"]=final
-                report["original_radio_frequency_restored"]=not final["transmitting"] and all(
-                    v["hz"]==INITIAL_HZ for v in final["vfos"])
+                report["original_radio_frequency_restored"]=(not final["transmitting"] and
+                    vfo_baseline_matches(final))
                 print("Radio restored:",report["original_radio_frequency_restored"],flush=True)
             except Exception as recovery_exc:
                 report["restoration_error"]=type(recovery_exc).__name__+": "+str(recovery_exc)
