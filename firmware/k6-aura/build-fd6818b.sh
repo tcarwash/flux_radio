@@ -135,7 +135,9 @@ python3 "$HERE/apply-vfo-selector.py"
 python3 "$HERE/apply-scheduled-probe.py"
 python3 "$HERE/apply-designer.py"
 python3 "$HERE/apply-theme-selection.py"
-python3 "$HERE/apply-theme-install.py"
+if [ "${K6_APC_TX:-0}" != 1 ] || [ "${K6_DESIGNER_SERVICE:-0}" = 1 ]; then
+  python3 "$HERE/apply-theme-install.py"
+fi
 K6_FLUX_ART_DIR="$K6_FLUX_ART_DIR" python3 "$HERE/apply-flux-art.py"
 K6_AURA_FEATURES="$FEATURES" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" python3 "$HERE/apply-flux-branding.py"
 python3 "$HERE/apply-theme-splash.py"
@@ -164,6 +166,14 @@ if [ "${K6_MICIN_TX:-0}" = 1 ]; then
     exit 1
   }
   python3 "$HERE/apply-micin-tx-api.py"
+fi
+if [ "${K6_APC_TX:-0}" = 1 ]; then
+  [ "${K6_MICIN_TX:-0}" = 1 ] && [ "${K6_LIVE_SERIAL:-0}" = 1 ] &&
+  [ "${K6_LEAN_TXDOG:-0}" = 1 ] && [ "${K6_OTA_SERVICE:-1}" = 0 ] || {
+    echo "Experimental APC TX requires MICIN API26 + cable-only live TX watchdog" >&2
+    exit 1
+  }
+  python3 "$HERE/apply-apc-tx-api.py"
 fi
 grep -q 'FD6818B FSK TBD' "$WORK/src/ui/pager.rs" || {
   echo "FD6818B overlay is missing from $WORK; inspect that checkout before building" >&2
@@ -218,6 +228,7 @@ if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
 fi
 if [ "${K6_EL_POWER:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_el_power"; fi
 if [ "${K6_MICIN_TX:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_micin_tx"; fi
+if [ "${K6_APC_TX:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_apc_tx"; fi
 if [ "${K6_LEAN_TXDOG:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_lean_txdog"; fi
 if [ "${K6_HEALTH_TELEMETRY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_health_telemetry"; fi
 if [ "${K6_NATIVE_FM:-1}" = 0 ]; then PACK_CFG="$PACK_CFG --cfg k6_no_native_fm"; fi

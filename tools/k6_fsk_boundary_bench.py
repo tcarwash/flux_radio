@@ -59,7 +59,8 @@ def run_transaction(port_path: str, prefix: Path, source: Path,
                     original_envelope: Path, *, armed=False,
                     expected_result: int=128,
                     experiment: str="Flux FSK-09 two-frame native FSK boundary",
-                    watchdog_ms: int=TX_TIMEOUT_MS) -> dict:
+                    watchdog_ms: int=TX_TIMEOUT_MS,
+                    expected_build_id: str=EXPECTED_BUILD) -> dict:
     if not armed:
         raise ValueError("TX and SPI mutation require --dummy-load-confirmed")
     if any(prefix.with_suffix(x).exists() for x in (".npy",".json")):
@@ -240,7 +241,7 @@ def main():
     p.add_argument("--enabled-source",required=True,type=Path)
     p.add_argument("--slot-backup",required=True,type=Path)
     p.add_argument("--dummy-load-confirmed",action="store_true")
-    p.add_argument("--expected-result",type=int,choices=(64,128),default=128)
+    p.add_argument("--expected-result",type=int,choices=(1,64,128),default=128)
     p.add_argument("--experiment",default="Flux FSK-09 two-frame native FSK boundary")
     p.add_argument("--watchdog-ms",type=int,choices=(1800,1900),default=1900)
     args=p.parse_args()

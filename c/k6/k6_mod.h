@@ -248,6 +248,12 @@ typedef struct k6_api {
      RF state; returns 0 after register readback or -1/-2. This is NOT a
      generic RF register write and does not transmit PCM by itself. */
   int (*micin_tx)(int enable);
+  /* Level 27, opt-in bench firmware only. Percent 70/80/90/100
+     of the live, calibrated UHF LOW-power APC target. Requires
+     an existing firmware-guarded TX and ready independent watchdog.
+     Never increases calibrated power, never changes PA driver bits.
+     Returns 0 with readback, -1 refused, -2 forced TX-off on mismatch. */
+  int (*apc_set)(uint32_t percent);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u
