@@ -49,6 +49,15 @@ native-FSK transmissions** and restored both VFOs after each one.
 The SDR is not a calibrated spectrum analyzer; no unrestricted on-air
 or spectral-mask claim follows. No firmware was flashed in this pass.
 
+**TX16N high-rate polarity-FM payload checkpoint (separate worktree):** the
+64-bit `N0CALL73` long-payload source has now passed twice at 2965 μs requested
+dwell (fine preamble fit 3.185 ms) using a 48-symbol alternating timing
+preamble and frozen held-out scorer. A 2960 μs request was mixed (one 64/64,
+one 61/64); 2945 and 2915 μs requests failed. See the local detailed report
+at `/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16n-run-v21-2965-long-preamble-physical-20261123.md`.
+These are bounded conducted binary-FM payload results, not repeater survival,
+spectrum compliance, or arbitrary complex IQ; no repeater was keyed.
+
 **Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.
 
 **Latest native-FSK evidence:** [2026-11-22 repeated 8-FSK/PDM captures, binary-chip decoding and phase FIR analysis](k6-fsk-pdm-repeats-and-phase-20261122.md). Four captures have **0/1,792 heldout native-chip errors**, **0/112 popcount-reconstructed symbol errors**, and **5/112 direct analog 8-FSK symbol errors**. A training-only FIR greatly improves heldout chip-boundary phase prediction. The [earlier gain sweep](k6-tx-injection-live-evidence-20261122.md) remains separately reproducible.
