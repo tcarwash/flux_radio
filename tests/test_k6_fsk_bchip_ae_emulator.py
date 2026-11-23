@@ -15,6 +15,7 @@ sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/'tests'))
 sys.path.insert(0,str(ROOT/'tools'))
 from test_k6_fsklab import run_m0,saved_regs,TX_REGS
+from test_k6_i2s import run as run_cortex
 from k6_fsk_lab_vector import make_probe_vector
 from k6_fsk_bchip_ae_analyze import parse_ae_report,assess_ae
 
@@ -106,13 +107,16 @@ class BChipIRQModel:
 
 def emulate(*,encoding='bit14',ae=True,done=True,early=False,stuck=False,
             threshold_layout='upstream',irq_silent=False,
-            keys=(),rx_hz=433500000,chip=0x4829,level=0x3044):
+            keys=(),rx_hz=433500000,chip=0x4829,level=0x3044,
+            write_us=150,power_off_us=None):
     baseline={**saved_regs(),0x02:0,0x5e:level,0x00:chip}
     chip_model=BChipIRQModel(encoding=encoding,ae=ae,done=done,early=early,stuck=stuck,
                              threshold_layout=threshold_layout,irq_silent=irq_silent)
     tx={}
-    ret,lines,after,writes=run_m0(SRC,tx=tx,fsk=chip_model,registers=baseline,
-                                  keys=keys,rx_hz=rx_hz)
+    ret,lines,after,writes=run_cortex(baseline,src=str(SRC),level=3,
+                                  tx=tx,fsk=chip_model,keys=keys,rx_hz=rx_hz,
+                                  write_us=write_us,power_off_us=power_off_us,
+                                  count=40_000_000)
     return ret,lines,after,writes,tx,chip_model,baseline
 
 
@@ -183,3 +187,39 @@ def test_inert_real_binary_emulation_never_keys():
     assert ret==-9
     assert 'inert' in ' '.join(lines)
     assert not tx.get('log') and not writes
+
+
+@pytest.mark.parametrize('spi_write_us', [20, 150, 350, 800])
+@pytest.mark.parametrize('encoding', ['bit14','event14'])
+def test_compiled_binary_irq_threshold_discriminator_under_variable_spi_latency(spi_write_us, encoding):
+    """Real Cortex-M0 instructions, timing model with variable slow RFIC SPI."""
+    pytest.importorskip('unicorn')
+    ret,lines,after,writes,tx,chip,baseline=emulate(
+        encoding=encoding,write_us=spi_write_us)
+    assert ret==98,(spi_write_us,encoding,ret,lines)
+    assert len(chip.frames)==2 and len(chip.unsafe_mid_tx_fifo_writes)==0
+    assessment=assess_ae(lines)
+    assert assessment['provisional_b_ae_present'], (spi_write_us, encoding, lines)
+    assert assessment['not_yet_safe_for_refill']
+    assert tx['log'][-1][0]=='tx_off'
+    assert all(after[reg]==baseline[reg] for reg in (*TX_REGS,0x5e))
+
+
+@pytest.mark.parametrize('key_start_us', [150000, 230000, 330000])
+def test_compiled_module_key_interrupt_always_restores(key_start_us):
+    pytest.importorskip('unicorn')
+    result,lines,after,writes,tx,chip,baseline=emulate(
+        keys=((key_start_us,key_start_us+200000),))
+    assert result==-4,(result,lines,key_start_us)
+    assert tx['log'][-1][0]=='tx_off'
+    assert not chip.unsafe_mid_tx_fifo_writes
+    assert all(after[reg]==baseline[reg] for reg in (*TX_REGS,0x5e))
+
+
+def test_compiled_module_power_switch_interrupt_during_tx_restores():
+    pytest.importorskip('unicorn')
+    ret,lines,after,writes,tx,chip,baseline=emulate(power_off_us=220000)
+    assert ret==-4,(ret,lines)
+    assert tx['log'][-1][0]=='tx_off'
+    assert not chip.unsafe_mid_tx_fifo_writes
+    assert all(after[reg]==baseline[reg] for reg in (*TX_REGS,0x5e))
