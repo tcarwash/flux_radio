@@ -49,6 +49,7 @@ def select_l64(payload: bytes) -> dict:
                 packet_hex=data.hex(),
                 packet_sha256=hashlib.sha256(data).hexdigest(),
                 msg_id=packet['msg_id'],seq=packet['seq'],
+                total_codec_frames=packet['total'],
                 codec_frames=len(packet['frames']))
 
 
