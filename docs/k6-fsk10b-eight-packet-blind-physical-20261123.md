@@ -79,6 +79,21 @@ python3 tools/k6_sotto_fsk_capture_playout.py \
  --decoder /storage5/dev/flux-mic-digital-voice/sotto/c/fixed/sotto_dec_fx
 ```
 
+## Offline frequency offset and additive-IQ-noise replay
+
+A separate offline-only [robustness script](../tools/k6_sotto_fsk_iq_robustness.py) runs the **same already-captured** FSK-10B IQ through digitally injected complex Gaussian noise with amplitude defined relative to the median of the clean capture in a fixed 0.85–1.83s survey window, plus a constant baseband frequency offset. The receiving algorithm remains payload-blind and unchanged. There is **no new RF emission** for this step, and the artificial noise ratios are **not calibrated radio SNR measurements**.
+
+| Injected complex noise amplitude relative to clean IQ | Applied offset −1000Hz | 0Hz | +1000Hz |
+| --- | ---: | ---: | ---: |
+| 0 | 8/8 CRC-valid | 8/8 | 8/8 |
+| 0.25 | **8/8** | **8/8** | **8/8** |
+| 0.50 | 0/8 | 0/8 | 0/8 |
+| 1.00 | 0/8 | 0/8 | 0/8 |
+
+At 0.50 noise ratio the preamble/sync detector still found eight candidate frames, but all contained uncorrected payload bit errors (CRC rejection); at 1.00 no frames were acquired. The observed failure is therefore an **error correction/reliability issue**, not merely a sensitivity to moderate frequency-offset changes. One random realization per noise setting was tested and shared across three offsets; no confidence interval or link-budget claim follows. Full local numeric report: `fsk10b-l8-iq-robustness-v1.json` in the same evidence directory.
+
+**Implication:** FEC/parity, CRC-gated erasure handling, a real receiver jitter buffer and more realistic channel testing remain necessary before calling this an operational digital voice mode.
+
 ## Remaining limitations and recommended next steps
 
 1. **True mid-frame FIFO refill is still not working.** Eight finite native FSK packets require per-frame modem rearm with ~44.5ms nonpayload overhead. Concurrent research's FSK-09S physical register status probes (16/32/48-word read-only captures) did **not** identify a safe occupancy or almost-empty signal, so no appends were attempted. See `research/native-fsk-pdm:docs/k6-fsk09s-status-probe-physical-20261123.md` and shared queue #9.
