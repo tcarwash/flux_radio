@@ -1,6 +1,6 @@
 # Flux live DV — actual PA11 capture timing vs Cortex-M0 slim Sotto instruction cycles and codebook SPI bursts
 
-Date: 2026-11-23. **OFFLINE cycle-model / prior recorded K6 microphone analysis** on `research/offline-sotto-fsk-dv-20261123`. No radio, serial port, GPIO, SDR, PTT, module SPI flash or firmware changes this experiment. The separate FSK-13 guard-word PHY agent has requested the next physical bench lease; this research did **not** claim it or alter that agent's source or RF fixture.
+Date: 2026-11-23. **OFFLINE cycle-model / prior recorded K6 microphone analysis** on `research/offline-sotto-fsk-dv-20261123`. No radio, serial port, GPIO, SDR, PTT, module SPI flash or firmware changes this experiment. The separate FSK-13/14 guarded native-FSK PHY agent independently completed two **strict RF passes** during this offline work. This research did **not** claim its hardware lease or alter its source or RF fixture.
 
 ## New finding: the proven PA11 microphone recorder uses essentially the whole CPU
 
@@ -80,7 +80,7 @@ The actual Cortex-M0 ELF memory audit showed **10,490B** of resident code/tables
 
 Before any live-DV transmit experiment, queue a **separate receive-only, PA-off** K6 microphone timing trial with an exact 8kHz deadline recorder and measured sample-jitter/overrun counters. Compare 200-turn baseline (recorded) to W=90 and perhaps W=80 in a new physical test under the exclusive hardware lease. Verify restored original GPIO/REG30/slot/VFO state, real audio SNR and speech-band quality, and measured simultaneous codebook fetch interrupt safety. Do not claim a working live encoder, an FSK bearer or actual 681ms end-to-end audio latency based on these offline models.
 
-The separate **FSK-13 33-word guard packet** is already queued by another agent and is **not** duplicated here. It is the near-term RF bearer discriminator; #15 remains open until strict physical evidence. This task's hardware status: **FREE / NO RF TRANSACTION**.
+**Parallel physical RF update (independently reported by the other agent after this CPU trace was collected):** [FSK-13 guard33](https://github.com/tcarwash/flux_radio/blob/research/live-dv-fifo-rootcause-20261123/docs/k6-fsk13-guard33-sotto-physical-pass-20261123.md) **STRICT PASS**, 8/8 CRC-valid finite Sotto packets, 0/4096 packet bit errors, offsets 2/0 alternating; [FSK-14 real-K6-microphone guarded packet test](https://github.com/tcarwash/flux_radio/issues/18) **STRICT PASS**, 4/4 CRC-valid real-mic Sotto packets, 0/2048 packet bit errors, offsets 2/0/2/0. The `0x00F8` anomaly is still present but is **successfully contained by the 33rd sacrificial word** in both bounded physical experiments. Each physical run was conducted by the other agent with a separate exclusive lease and verified signed-slot/VFO restoration. **The finite native-FSK voice packet bearer is now physically proven**, not continuous >64-word FIFO streaming and not real-time on-radio codec execution. The source-level cause of the inserted word remains open in #15. Our CPU/sampling branch performed **NO RF TRANSACTION** and holds no hardware lease.
 
 ### Reproduce (private K6 mic files stay on the bench)
 
