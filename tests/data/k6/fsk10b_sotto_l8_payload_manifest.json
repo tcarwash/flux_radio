@@ -1,0 +1,36 @@
+{
+  "description": "FSK-10B prospective unknown female Sotto-1200 L8 packets",
+  "sotto_source": "/storage5/dev/flux-mic-digital-voice/sotto/docs/samples/rates/female_libri198_14s__1200.bit",
+  "sotto_source_sha256": "584cdbd7844052962ad469224812e67ebe1af52a01d008c8628fe11d1a13e4ec",
+  "message_id": 73,
+  "packets": 8,
+  "frames_per_packet": 8,
+  "source_codec_frames": 64,
+  "source_audio_seconds": 2.56,
+  "payloads_hex": [
+    "56a8dd9aecde33a67fb0dd37508c2b1a79bb087b90829f967c43da949dc7d184774d86d0b2fbda54996fda9cf05a0a84725882f4e29c8acde7d14e093217e8e5",
+    "56a8dd9becde28324e68f6a45580ab9a70b11fc42a559eda554f6332ae08ce21e307971ee5b68351ecb9ecc6eef63be861e8f144d7e98acde7d14e0932172449",
+    "56a8dd98ecde44fdeff6879467d4aaee478c20eabb9799874c66dc1ae8e5b37a137af0cbeb0b6f80e9c842eea4b67c5f2c21a9b792358acde7d14e093217ddad",
+    "56a8dd99ecde56fd250c8e38144c308800554b85699929d7ca0f2fdb1b99bbcffec3376121508694ae2df7ac4ec53c3c40f7b98fe40b8acde7d14e0932173d56",
+    "56a8dd9eecde3f10df3bc12e1676bac83afa8c917633ab467e755f6e9da9fc3ae690b484aba39e28ff4a976e211944ab21217a72a58e8acde7d14e093217d835",
+    "56a8dd9fecde93f7235ae6a342b710d7603832ecb4dba8fa288b7d56fa70abcee9acc1eef3bd972dd63b95573afb437c229e6d2da3538acde7d14e0932173746",
+    "56a8dd9cecde52750cb689ab11425081302f4d016d938c45c7962f2b955cf83694ebb4c29adbb0d5a787d5ba0e050d4c72ee63aae9ca8acde7d14e0932175942",
+    "56a8dd9decde0e9a8f2740af1458f62e0825498c0088def2040c9662dbeca94f8180c1b0f6bca58eee559357f66e44322c01155073078acde7d14e09321705d1"
+  ],
+  "packet_sha256": [
+    "d4fafaaa3262e3a047decd09a932e58e971d3896485c8639d6aa8adce913f623",
+    "1fc5f57c68432bccbe543243fcb4480ab89e864353fc8275c1a7011603383d31",
+    "0cfa6fa3fcab722b06053aedf05062e855267fb63662c4186177575b5dff5a2e",
+    "9df79652ca7d16370d9853e71aaa6eb1d1ff6edd9860c6c1f1d9419cfa7ab950",
+    "e2a4982d8c8f151dcb9b38998203a2daed100582a55cc65877a9fb9ba8f8f85e",
+    "32405c71d5cac9d111bb6a67f67b672f57218fd64e67ed6d083ad9557e3e100d",
+    "f0eca836a43d2274687c83817e418219d20c7ec76e500b04fa2388f1e3e56d12",
+    "85905ce1035e9bc48a45b7c0cb8864353662404781e25114bac7ab323a2b9e3a"
+  ],
+  "armed_source_sha256": "3893db74e037edaa4c55229efc19bbdbc3267fd462e344aa4f149e639c38bb83",
+  "compiled_code_sha256": "31ef35b4b7810544835c1ea2e105dd834236ff9cc402863fdfaf5e3a7a825c60",
+  "compiled_code_bytes": 1466,
+  "source_unarmed_sha256": "5edd34ccf604ab6b74965fd8508d9459d59e6dd29c4f2ec67b511cea4c807c18",
+  "armed": false,
+  "notes": "Manifest is TX fixture ONLY. Blind SDR receiver must never read this manifest for synchronization or symbol decisions."
+}
