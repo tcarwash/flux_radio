@@ -5,6 +5,10 @@ Branch: `research/offline-sotto-fsk-dv-20261123`
 Scope: **OFFLINE ONLY**. No serial, SDR, RF transmissions, source firmware flashing, or edits to the active bench worktree.
 Tracking: [Flux #10](https://github.com/tcarwash/flux_radio/issues/10); see also [shared queue #11](https://github.com/tcarwash/flux_radio/issues/11).
 
+## Physical Sotto packet pass (2026-11-23, FSK-11)
+
+**Important new milestone:** Two actual **Sotto 1200 L/64B CRC-protected packet bytes** were transmitted on the dummy-loaded K6's native 4,800-bps FSK modem. The air-coupled SDR decoder recovered both packets bit-exact (0/1024 errors), independently validated both CRCs and sequences, reconstructed 16 genuine Sotto frames, and decoded 640ms of speech to **the exact original PCM** in host software. Read the separate [FSK-11 physical report](k6-fsk11-sotto-over-native-fsk-physical-20261123.md). This does **not** establish blind packet acquisition, long streaming, two-way conversational audio or live on-radio encoder/decoder scheduling.
+
 ## Physical L64 timing correction (2026-11-23)
 
 **FSK-10 physical runs now establish an L64 measured start-to-start interval of 151.042ms**, with 44.375ms nonpayload framing/rearm, **0/256 heldout bit errors per frame in four physically captured 64-byte frames**. The prior L = 153.386ms estimate and ~613ms delay throughout this original offline report are **historical extrapolations**, now superseded. See [FSK-10 physical evidence](k6-fsk10-l64-physical-20261123.md).
