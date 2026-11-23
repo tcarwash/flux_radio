@@ -174,20 +174,95 @@ Measured linked result:
 
 | Resource | Bytes |
 | --- | ---: |
-| ARMv6-M slim + SPI adapter + packetizer + runtime, read-only data | **8,000** |
+| ARMv6-M slim + SPI adapter + packetizer + runtime, read-only data | **8,120** |
 | ELF `.data` + `.bss` | **0** |
 | Codec state (upstream existing model) | 3,148 |
 | Caller-owned bounded packet queue | 204 |
-| ARM emulator stack high-water (prior real-mic trace) | 704 |
+| Combined ARM emulator stack high-water (real mic codec+SPI+queue) | 848 |
 | Three candidate 160B/10ms PCM buffers | 480 |
-| **Remaining from 15,408B Flux module arena** | **2,872** |
+| **Remaining from 15,408B Flux module arena** | **2,608** |
 
-This **2,872B is an optimistic engineering budget**, not measured
+This **2,608B is an optimistic engineering budget**, not measured
 spare RAM on the actual K6. Future ISR state, SPI scratch, context,
 radio register snapshot, PA watchdog, interrupts, alignment,
 return-address stack and per-module runtime still consume memory.
-The source of the real 704B stack/cycle estimate is the distinct
-Unicorn emulator report, not this ROM-size build.
+The revised 848B stack high-water comes from the combined actual ARMv6-M
+Unicorn run, not the older standalone 704B trace. The corrected target
+build uses `-ffreestanding -fno-builtin` for the AEABI runtime helpers;
+without these flags the compiler could accidentally generate a recursive
+`__aeabi_memclr` function. The emulator caught that preflight defect.
+The **8,120B** figure uses the inert NULL-context size-probe ELF; the
+separately linked full memory-map emulator ELF measures **8,144B**.
+
+## Mandatory target-code emulator qualification (user requirement)
+
+The user clarified that Flux **offline-complete** requires actual
+compiled target firmware executed under the emulator, not just static
+C/Python and compiler checks. We therefore added
+`tools/k6_live_dv_guard_unicorn.py` and
+`tools/k6_live_dv_spi_unicorn.py`, using the cached, offline
+Unicorn 2.1.4 Cortex-M0 environment. Neither script drives hardware.
+
+**Packetizer ARM fault injection:** The real compiled ARMv6-M functions
+`dv_arm_begin/push/peek/confirm/finish` executed under Unicorn
+on the same **26 compressed frames**. Produced **4x66B byte-identical
+guarded packets**, SHA256
+`923e1956c18ecfd75cdb5e8778ea6dbff93b55970a95f330054aa4cdf504f537`,
+and passed independent emulator tests for full-queue backpressure,
+acknowledgment, hard TX failure freeze, no silent retry, state reset,
+and ID-epoch refusal. Observed queue-state ABI 204B, model packetizer
+peak call **16,585 cycles** and isolated stack high-water **72B**.
+These are model cycle estimates, not hardware time guarantees.
+
+**Combined real ARM codec + external SPI-table + packetizer:**
+For the emulator build only, the physical K6 SPI flash bytes are
+presented in Unicorn memory at `0x100020` (unchanged 30,720B
+shape codebook extracted from an independently linked ARMv6-M
+Sotto ELF) and `0x148010` (the exact upstream public K6SC
+4182B deck). An **emulator-only** read callback executes as
+Thumb code, copying those flash-model bytes. A fake scratch context
+pointer is used at `0x20003C00`; it **must never run on
+physical hardware**.
+
+The real **compiled** ARMv6-M `slim_encode10`, `dv_flash_*`
+and `dv_arm_*` functions were called together through the
+real emulator. Results:
+
+- **104/104** real K6 microphone 10ms PCM blocks executed in the
+  linked ARMv6-M codec; **26/26** compressed Sotto superframes
+  (including 2 final flush frames), codec SHA256
+  `8c20829a11ce6c3f22162b6dcc15e0f4378bbdccfbdf967a6eb30b0bd4646ba5`,
+  **bit-identical** to the independent host reference.
+- **4/4** guarded L64 physical frames produced by the actual ARM
+  packet scheduler: total **264B**, all 64B L64 bytes and each
+  2B guard exact against prior host and Python packetizer.
+- The emulated **ARM deck-verification code rejected a corrupted
+  K6SC payload**, retained a sticky error, and accepted a restored
+  valid deck before encoding. No malformed deck was used for
+  codec output.
+- Combined model max **380,725 ARM cycles per 10ms codec call**
+  including *emulated in-memory* SPI read loops, modeled stack
+  high-water **848B**. These numbers **DO NOT include actual
+  SPI1 wire-transfer latency, 8kHz PA11 sampling ISR cycles, real
+  interrupt contention or simultaneous native-FSK TX**. They
+  cannot establish 96MHz real-time schedulability.
+- Dedicated firmware emulator entrypoint is deliberately named
+  `NOT-FLASHABLE-live-dv-size-probe.elf` and the report
+  marks `unsafe_to_deploy=true`. No radio hardware was touched.
+
+**Firmware build defect caught by emulator:** The first linked
+ROM-size probe compiled the AEABI `memclr` wrappers without
+`-ffreestanding -fno-builtin`; a native Thumb disassembly revealed
+a recursive `__aeabi_memclr` call, and Unicorn trapped a stack
+underflow. The corrected, verifiably nonrecursive AEABI routines
+were rebuilt from the upstream CM0 sources with freestanding
+flags and the combined ARM emulator run then passed. Original
+8,000B/2,872B size estimates before that correction are **superseded**.
+
+**Offline qualification status:** the codec SPI content, ARM
+packetizer and combined target-code path are **EMULATOR-VERIFIED**;
+the real B-chip SPI GPIO/PA11 concurrency and native-FSK TX
+binding remain **UNPROVEN HARDWARE INTEGRATION**.
 
 ## Critical integration blockers and next physical tests
 
@@ -228,7 +303,8 @@ or a proven >64-word native-FSK FIFO refill.
 ```sh
 python3 -m pytest -q \
   tests/test_k6_live_dv_guard_pipeline.py \
-  tests/test_k6_live_dv_spi_model.py
+  tests/test_k6_live_dv_spi_model.py \\
+  tests/test_k6_live_dv_unicorn.py
 
 python3 tools/k6_live_dv_spi_m0_size_probe.py \
   --out /tmp/flux-live-dv-memory-probe-new

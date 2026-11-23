@@ -19,7 +19,8 @@ ROOT=Path(__file__).resolve().parents[1]
 SOTTO=Path('/storage5/dev/flux-mic-digital-voice/sotto/c/fixed')
 KEEP=('slim_enc_bytes','slim_enc_init','slim_encode10','slim_flush',
       'dv_flash_configure','dv_flash_fault','dv_arm_begin','dv_arm_push',
-      'dv_arm_finish','dv_arm_peek','dv_arm_confirm','dv_arm_state_bytes')
+      'dv_arm_finish','dv_arm_peek','dv_arm_confirm','dv_arm_queue_depth',
+      'dv_arm_state_bytes')
 
 
 def call(args):
@@ -27,7 +28,7 @@ def call(args):
                           capture_output=True,text=True).stdout
 
 
-def build(out:Path,sotto:Path=SOTTO):
+def build(out:Path,sotto:Path=SOTTO,*,emulator_model=False):
     if out.exists():raise FileExistsError('Refuse overwrite of ARM size-probe output directory')
     out.mkdir(parents=True,mode=0o700)
     inc=call(['clang','-print-resource-dir']).strip()
@@ -39,7 +40,22 @@ def build(out:Path,sotto:Path=SOTTO):
            '-DSOTTO_V36','-DSOTTO_PITCH_THIRD','-DFX_NARROW_MUL',
            '-I',str(sotto),'-Oz']
     generated=out/'NOT-FLASHABLE-null-context.c'
-    generated.write_text('''#include <stdint.h>
+    if emulator_model:
+        generated.write_text('''#include <stdint.h>
+#include "dv_live_slim_spi.h"
+/* UNICORN ONLY! No real K6 hardware register/SPI operations. */
+dv_flash_ctx_t *dv_flash_active(void){return (dv_flash_ctx_t *)(uintptr_t)0x20003c00u;}
+int dv_emulated_spi_read(uint32_t addr,void *buf,unsigned n,void *ctx){
+  uint8_t *d=(uint8_t *)buf;
+  const uint8_t *s=(const uint8_t *)(uintptr_t)addr;
+  unsigned i;
+  (void)ctx;
+  for(i=0;i<n;i++)d[i]=s[i];
+  return 0;
+}
+''')
+    else:
+        generated.write_text('''#include <stdint.h>
 #include "dv_live_slim_spi.h"
 /* Never link this placeholder into real firmware! */
 dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
@@ -57,6 +73,11 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
     for name,source in sources.items():
         obj=out/(name+'.o')
         extra=['-include',str(ROOT/'c/k6/mod/dv_live_slim_spi.h')] if name=='codec' else []
+        if name in ('shim','runtime'):
+            # Upstream cm0_slim_build.sh explicitly prevents Clang from
+            # rewriting __aeabi_memclr wrappers into recursive builtin
+            # calls. Without this flag the ARM emulator stack underflows.
+            extra.extend(['-ffreestanding','-fno-builtin'])
         call(['clang',*flags,'-I',str(ROOT/'c/k6/mod'),*extra,
               '-c',str(source),'-o',str(obj)])
         objects.append(obj)
@@ -68,6 +89,7 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
     args=['ld.lld','-T',str(sotto/'cm4/link.ld'),'--gc-sections',
           '-e','slim_encode10']
     for symbol in KEEP:args.extend(['-u',symbol])
+    if emulator_model:args.extend(['-u','dv_emulated_spi_read'])
     call([*args,*objects,'-o',elf])
     lines=call(['llvm-size',elf]).splitlines()
     text_bytes,data,bss=map(int,lines[1].split()[:3])
@@ -76,7 +98,9 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
     with elf.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
     # The radio's 15408B arena is separately used for encoded voice
     # state, stack, triple 10ms PCM buffering, bounded RF packet state.
-    remaining=15408-text_bytes-3148-704-3*160-204
+    # Conservatively use 848B measured from the combined real ARM
+    # Unicorn codec+SPI+guard execution, not the earlier standalone 704B.
+    remaining=15408-text_bytes-3148-848-3*160-204
     report={
         'artifact':'OFFLINE MEMORY PROBE ONLY - NOT FLASHABLE',
         'target':'thumbv6m-none-eabi Cortex-M0 -Oz',
@@ -87,11 +111,13 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
         'linked_bss_bytes':bss,
         'caller_owned_codec_state_model_bytes':3148,
         'caller_owned_guard_queue_bytes':204,
-        'modeled_codec_stack_highwater_bytes':704,
+        'modeled_codec_stack_highwater_bytes':848,
         'candidate_3x_10ms_pcm_buffers_bytes':480,
         'k6_module_arena_bytes':15408,
         'optimistic_remaining_arena_bytes':remaining,
-        'spi_context':'deliberate NULL stub, linker only; NOT runnable',
+        'spi_context':('Unicorn-only memory-mapped flash model, never real radio SPI' if emulator_model
+                       else 'deliberate NULL stub, linker only; NOT runnable'),
+        'unicorn_model_only':emulator_model,
         'runtime_proof':False,
         'flashable':False,
         'radio_hardware_access':False,
@@ -110,8 +136,9 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out',required=True,type=Path)
     p.add_argument('--sotto',type=Path,default=SOTTO)
+    p.add_argument('--unicorn-flash-model',action='store_true')
     a=p.parse_args()
-    x=build(a.out,a.sotto)
+    x=build(a.out,a.sotto,emulator_model=a.unicorn_flash_model)
     print('ARMv6-M offline core:',x['linked_code_and_readonly_bytes'],
           'B code,',x['linked_bss_bytes'],'B bss; optimistic arena headroom',
           x['optimistic_remaining_arena_bytes'],'B; NOT FLASHABLE')
