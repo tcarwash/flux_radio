@@ -108,7 +108,28 @@ python3 tools/k6_fsk_guard33_score.py \
   --out /home/tyler/flux-bench/tx-injection-20261122/fsk13-guard33/fsk13-guard33-strict-score-run01.json
 ```
 
-A successful run would establish only finite packetized DV **transport**
-under this specific observed one-word insertion/absence behavior. Native
-capture/real-time encode, PTT orchestration, jitter scheduling,
-radio-side receiver and speaker playback require separate testing.
+## Private K6 microphone follow-on (OFFLINE prepared)
+
+The real K6 microphone sample has independently produced **four CRC-valid
+Sotto-1200 L64 packets** under existing private bench storage. The separate
+`tools/k6_fsk_guard33_mic_private.py` generator checks the recorded
+256-byte packet file's SHA256 and CRC, then constructs **four 33-word
+guarded FSK frames**, with the same 1900ms watchdog and register/control
+sequence. It emits source and a hash-only manifest **outside Git**, with
+private output permissions, and does **not** touch RF hardware.
+
+The current private offline build contains a **1206-byte API3 compiled
+module**, original private mic packet SHA256
+`d81956bf1ae57747eaf8353edd2d10453b530408a61e781600ee8c7dc05d8bd6`,
+generated source SHA256
+`fc5e27797dbbd60a564a168fc848f223c668c263e307a4b72166aa24c7d1bb02`,
+compiled code SHA256
+`a8ad766185df22f0731ebec245bc9a274d5c908a0d1f96bc7e59bac48c536dee`.
+The real voice packet bytes, C arrays and encoded voice remain **private**.
+This prepares a *future separately authorized* mic-originated RF test after
+the public eight-frame guard-word experiment qualifies the physical format.
+
+A successful public FSK-13 run would establish only finite packetized DV
+**transport** under this specific observed one-word insertion/absence
+behavior. Native capture/real-time encode, PTT orchestration, jitter
+scheduling, radio-side receiver and speaker playback require separate testing.
