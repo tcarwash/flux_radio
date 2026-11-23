@@ -87,4 +87,9 @@ def test_physical_pa_on_if_capture_exists(run):
     assert s["audio_on_off_envelope_verified"]
     assert s["on0_and_on1_only_for_calibration"]
     assert s["pilot_only_fitted_audio_frequency_hz"]>1000
+    assert s["phase_model_qualified"]
+    assert s["best_model_exploratory_label"]=="free_running"
+    assert s["models"]["free_running"]["heldout_phase_rms_deg"]<1
+    assert s["models"]["frozen_during_off"]["heldout_phase_rms_deg"]>80
+    assert s["models"]["reset_on_enable"]["heldout_phase_rms_deg"]>35
     assert r["raw_rf_iq_sha256"]
