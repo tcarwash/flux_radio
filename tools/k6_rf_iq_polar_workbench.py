@@ -146,6 +146,15 @@ def measured_apc_feasibility(target: np.ndarray, polar: dict) -> dict:
         "reference_10ms_contrast_retained_fraction":0.944,
         "reference_5ms_cycle_hz":91.05,
         "reference_5ms_contrast_retained_fraction":0.395,
+        # Separate APC-only real RF captures show directional local phase
+        # perturbations at 80/100% edges. These numbers are deliberately
+        # NOT used to predict physically simultaneous FSK+APC IQ EVM.
+        "apc_only_edge_phase_fit_offsets_rad_observed": {
+            "100_to_80_percent_run1_run2": [0.14048,0.22072],
+            "80_to_100_percent_run1_run2": [-0.28275,-0.26421],
+        },
+        "apc_phase_perturbation_source_attribution_proven":False,
+        "joint_amplitude_and_frequency_rf_test_completed":False,
         "target_minimum_envelope_fraction_of_peak":float(np.min(normalized)),
         "samples_below_stable_amplitude_floor":int(np.count_nonzero(outside)),
         "fraction_below_stable_amplitude_floor":float(np.mean(outside)),
@@ -153,7 +162,7 @@ def measured_apc_feasibility(target: np.ndarray, polar: dict) -> dict:
         "envelope_ac_spectral_energy_above_90hz_fraction":cutoff90,
         "envelope_frequency_bin_resolution_hz":fs/len(a),
         "ideal_80percent_floor_clamped_amplitude_only_evm_lower_bound":envelope_only_evm,
-        "caveat": "No combined phase/amplitude RF control, hardware bandwidth transfer model, time-aligned GPIO trace, or spectral purity verified. A candidate is NOT an executable RF waveform."
+        "caveat": "No combined phase/amplitude RF control, hardware bandwidth transfer model, time-aligned GPIO trace, or spectral purity verified. Archived APC-only amplitude transitions exhibit apparent local RF phase perturbations of uncertain transmitter/receiver origin; amplitude-only EVM understates this risk. A candidate is NOT an executable RF waveform."
     }
 
 

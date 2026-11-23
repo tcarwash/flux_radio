@@ -159,3 +159,13 @@ def test_measured_apc_constant_envelope_requires_no_actuator():
     assert f['status']=='constant_envelope_no_apc_needed'
     assert f['envelope_ac_spectral_energy_above_50hz_fraction']==0
     assert f['samples_below_stable_amplitude_floor']==0
+
+
+def test_apc_phase_perturbation_advisory_not_confused_with_iq_evm():
+    x=reference("am",fs=48000,duration_s=.5)
+    r,_=analyze(x,48000)
+    p=r["fd6818b_measured_apc_feasibility"]
+    assert p["apc_only_edge_phase_fit_offsets_rad_observed"]["100_to_80_percent_run1_run2"]==[.14048,.22072]
+    assert p["apc_phase_perturbation_source_attribution_proven"] is False
+    assert p["joint_amplitude_and_frequency_rf_test_completed"] is False
+    assert "amplitude-only EVM understates this risk" in p["caveat"]
