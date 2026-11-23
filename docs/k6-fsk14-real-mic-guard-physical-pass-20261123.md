@@ -4,9 +4,10 @@ Date: 2026-11-23. **Strict physical test PASSED.** A genuine
 microphone recording made by this Baofeng K6 was encoded to Sotto-1200
 by a host, transmitted through the K6's native-FSK TX module, captured
 as RF by an independent air-coupled RTL-SDR, fully CRC/reassembled,
-and finally **host decoded as 1.04 seconds of speech**. All source voice
-and audio bytes remain PRIVATE. This is an important DV bearer result,
-**NOT autonomous live on-radio DV**.
+and finally **host decoded as 1.04 seconds of microphone audio**.
+The source was the earlier speaker-tone microphone capture, not a live
+spoken on-air conversation. All original audio bytes remain PRIVATE.
+This is an important DV bearer result, **NOT autonomous live on-radio DV**.
 
 ## Prospective protocol and freeze
 
