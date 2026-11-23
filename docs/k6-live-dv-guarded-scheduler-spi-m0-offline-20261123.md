@@ -179,11 +179,15 @@ Measured linked result:
 | Codec state (upstream existing model) | 3,148 |
 | Caller-owned bounded packet queue | 204 |
 | Combined ARM emulator stack high-water (real mic codec+SPI+queue) | 848 |
-| Three candidate 160B/10ms PCM buffers | 480 |
-| **Remaining from 15,408B Flux module arena** | **2,608** |
+| Four candidate 160B/10ms PCM buffers | 640 |
+| **Remaining from 15,408B Flux module arena** | **2,448** |
 
-This **2,608B is an optimistic engineering budget**, not measured
-spare RAM on the actual K6. Future ISR state, SPI scratch, context,
+This **2,448B is an optimistic engineering budget**, not measured
+spare RAM on the actual K6. The **four** 160B PCM buffers follow the
+separate PA11 W90 Cortex-M0 queue simulation: two- and three-buffer
+arrangements overflowed on the recorded 1.04s clip, while four survived
+that one modeled trace. This is not proven under physical ADC/SPI IRQ
+contention, so more buffers or timing changes could still be needed. Future ISR state, SPI scratch, context,
 radio register snapshot, PA watchdog, interrupts, alignment,
 return-address stack and per-module runtime still consume memory.
 The revised 848B stack high-water comes from the combined actual ARMv6-M

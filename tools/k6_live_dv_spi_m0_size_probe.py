@@ -97,10 +97,12 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
         raise RuntimeError(f'Unsafe ARM linked sections: {text_bytes} text, {data} data, {bss} bss')
     with elf.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
     # The radio's 15408B arena is separately used for encoded voice
-    # state, stack, triple 10ms PCM buffering, bounded RF packet state.
+    # state, stack, four 10ms PCM buffers, bounded RF packet state.
     # Conservatively use 848B measured from the combined real ARM
     # Unicorn codec+SPI+guard execution, not the earlier standalone 704B.
-    remaining=15408-text_bytes-3148-848-3*160-204
+    # PA11 W90 Unicorn concurrency gate found 2/3-buffer overflows;
+    # use the separate agent's 4x160B minimum *candidate* on this clip.
+    remaining=15408-text_bytes-3148-848-4*160-204
     report={
         'artifact':'OFFLINE MEMORY PROBE ONLY - NOT FLASHABLE',
         'target':'thumbv6m-none-eabi Cortex-M0 -Oz',
@@ -112,7 +114,7 @@ dv_flash_ctx_t *dv_flash_active(void) { return (dv_flash_ctx_t *)0; }
         'caller_owned_codec_state_model_bytes':3148,
         'caller_owned_guard_queue_bytes':204,
         'modeled_codec_stack_highwater_bytes':848,
-        'candidate_3x_10ms_pcm_buffers_bytes':480,
+        'candidate_4x_10ms_pcm_buffers_bytes':640,
         'k6_module_arena_bytes':15408,
         'optimistic_remaining_arena_bytes':remaining,
         'spi_context':('Unicorn-only memory-mapped flash model, never real radio SPI' if emulator_model
