@@ -18,6 +18,16 @@ on the same completion bit, and clears work/interrupt state on exit. These are
 facts about Flux's current driver path, not proof that silicon lacks another
 TX mode.
 
+The FD6818B pager patch's RX IRQ helper first checks `REG_0C & 1`, then writes
+zero to `REG_02` and reads `REG_02` to obtain pending causes. Its comment warns
+that reading before this clear/latch step can return the previous interrupt's
+causes. A TX sampler may observe `REG_02` without writing it, but must treat
+values as possibly stale and must not infer “no event” from an unchanged read.
+The physical FSK-09 telemetry saw `REG_0C=0x0220` and `REG_02=0x0800`
+throughout its bounded refill wait; this confirms those observations did not
+expose the assumed almost-empty bit, but does not validate `REG_02` as a
+complete B-chip FIFO map.
+
 The abandoned experimental refill source
 `c/k6/mod/fsk_refill.c` writes `REG_5E` using the **older FD6818/BK4819**
 almost-empty threshold interpretation, gates append operations on the
@@ -31,7 +41,9 @@ guess FIFO headroom.
 `c/k6/mod/fsk_fifo_probe.c` performs read-only snapshots but intentionally
 skips `REG_5F`; its idle snapshot cannot describe TX occupancy. The audit
 found no tracked B-specific API that reports FIFO fill/free words during TX,
-and no verified B-specific almost-empty or refill interrupt mapping.
+and no verified B-specific almost-empty or refill interrupt mapping. The
+directly useful completion candidate supported by the TX code is `REG_0C & 1`;
+it marks frame completion, not remaining headroom.
 
 ## Next safe discriminator
 
