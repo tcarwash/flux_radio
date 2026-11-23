@@ -57,5 +57,21 @@ def test_pa15_power_off_is_not_reported_as_safe_idle(live_test_radio):
     port.advance(600_000)
     status = link.status()
     assert not status["standby_idle"], "power-off must not appear as safe idle RX"
-    assert bytes(port.board.flash_data) == before
+    assert not status["transmitting"], "power-off must never leave RF active"
+    after = bytes(port.board.flash_data)
+    # With an erased simulated SPI flash, the ordinary graceful
+    # shutdown may persist the 8-byte channel/VFO mode state.
+    # Explicitly allow ONLY a valid first wear-levelled record in
+    # SYSTEMRAN (0xE000), never calibration, settings or module writes.
+    # Some firmware builds reach shutdown after this snapshot; in
+    # that case there must be no SPI writes at all.
+    assert before[:0xE000] == after[:0xE000]
+    assert before[0xE024:] == after[0xE024:]
+    assert before[0xE001:0xE01A] == after[0xE001:0xE01A]
+    if after != before:
+        from k6_update import crc16_xmodem
+        assert before[0xE000] == 0xFF and after[0xE000] == 0xFE
+        assert before[0xE01A:0xE024] == b"\xff" * 10
+        payload = after[0xE01A:0xE022]
+        assert after[0xE022:0xE024] == crc16_xmodem(payload).to_bytes(2, "little")
     assert port.board.fault is None

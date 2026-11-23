@@ -1,5 +1,7 @@
 # Flux TX-20 — FD6818B calibrated APC envelope feasibility checkpoint
 
+**Follow-up completed:** [Two actual RF staircase captures with reproducible 80–100% amplitude control, 70% fading, and verified firmware rollback](k6-apc-envelope-measured-followup.md). This document preserves the earlier pre-hardware safety and build work as a historical checkpoint; its original no-flash statements refer only to that earlier phase.
+
 Date: 2026-11-22 (bench session continued into 2026-11-23 UTC).
 Branch: `research/native-fsk-pdm`, source tree
 `/storage5/dev/flux-native-fsk-pdm`.
