@@ -59,4 +59,4 @@ python3 tools/k6_fsk_bchip_ae_analyze.py \
   --out /home/tyler/flux-bench/tx-injection-20261122/fsk09s-h-ae/fsk09s-h-ae-scored.json
 ```
 
-**Current result is strictly OFFLINE PASS for source compile, preflight and synthetic acquisition tests; B-chip AE has NOT been observed and NO hardware lease is claimed.**
+**Updated offline gate:** the full frozen Cortex-M0 binary has now passed actual Unicorn execution in 11 emulated scenarios, including threshold-dependent IRQ onset and negative/timeout guards; see [emulator qualification](k6-fsk09s-h-unicorn-emulator-qualification-20261123.md). The strict emulator run is `./tools/run_fsk09s_h_emulator.sh` and returned **59 passed / 0 skipped**. **B-chip AE remains PHYSICALLY UNOBSERVED** and no physical hardware lease has been claimed.
