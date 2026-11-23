@@ -103,6 +103,9 @@ python3 tools/k6_fsk_guard33_bench.py \
 python3 tools/k6_fsk_guardword_rx.py \
   --iq /home/tyler/flux-bench/tx-injection-20261122/fsk13-guard33/fsk13-guard33-run01.npy \
   --out /home/tyler/flux-bench/tx-injection-20261122/fsk13-guard33/fsk13-guard33-analysis-run01.json
+python3 tools/k6_fsk_guard33_score.py \
+  --rx /home/tyler/flux-bench/tx-injection-20261122/fsk13-guard33/fsk13-guard33-analysis-run01.json \
+  --out /home/tyler/flux-bench/tx-injection-20261122/fsk13-guard33/fsk13-guard33-strict-score-run01.json
 ```
 
 A successful run would establish only finite packetized DV **transport**
