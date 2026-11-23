@@ -34,19 +34,21 @@ def wrap_phase(theta):
 
 def fit_phases(f, symbols, tones, *, first_s, time_origin_s, fs=PROC_FS,
                baud=TONE_BAUD, left_guard_s=.0010, right_guard_s=.00065,
-               limit_symbols=SYMBOLS):
+               limit_symbols=SYMBOLS, symbol_step_s=None):
     """Independent least-squares sine+cosine+DC for every prescribed slot."""
+    step=1/baud if symbol_step_s is None else float(symbol_step_s)
     if (len(symbols)!=SYMBOLS or len(tones)!=8 or fs<=0 or baud<=0 or
         not 1<=limit_symbols<=SYMBOLS or
         not np.isfinite(first_s) or not np.isfinite(f).all() or
-        not 0<=left_guard_s<1/baud-right_guard_s):
+        not np.isfinite(step) or not .99/baud<=step<=1.01/baud or
+        not 0<=left_guard_s<step-right_guard_s):
         raise ValueError("invalid phase-observation inputs")
     phases,amplitudes,offsets,rmses=[],[],[],[]
     for i,k in enumerate(symbols[:limit_symbols]):
         expected=float(tones[int(k)])
-        t0=first_s+i/baud
+        t0=first_s+i*step
         lo=int(round((t0+left_guard_s-time_origin_s)*fs))
-        hi=int(round((t0+1/baud-right_guard_s-time_origin_s)*fs))
+        hi=int(round((t0+step-right_guard_s-time_origin_s)*fs))
         if lo<0 or hi>len(f) or hi-lo<fs//1000:
             raise ValueError(f"slot {i} outside RF discriminator window")
         time=np.arange(lo,hi,dtype=float)/fs+time_origin_s-t0
@@ -69,19 +71,22 @@ def fit_phases(f, symbols, tones, *, first_s, time_origin_s, fs=PROC_FS,
 
 
 def summarize_edges(phases,symbols,tones,amplitudes,rmses,*,pilot=PILOT,baud=TONE_BAUD,
-                    min_amplitude=300.,max_rmse=250.):
+                    min_amplitude=300.,max_rmse=250.,symbol_step_s=None):
     if any(len(x)!=SYMBOLS for x in (phases,symbols,amplitudes,rmses)):
         raise ValueError("edge vectors have inconsistent lengths")
     if not (8<=pilot<SYMBOLS) or baud<=0:
         raise ValueError("invalid edge partition")
+    step=1/baud if symbol_step_s is None else float(symbol_step_s)
+    if not np.isfinite(step) or not .99/baud<=step<=1.01/baud:
+        raise ValueError("invalid measured symbol interval")
     edges=[]
     for i in range(1,SYMBOLS):
         prev=int(symbols[i-1]);nxt=int(symbols[i])
         qualified=bool(min(amplitudes[i-1],amplitudes[i])>=min_amplitude and
                        max(rmses[i-1],rmses[i])<=max_rmse)
         delta=float(wrap_phase(phases[i]-phases[i-1]-
-                               2*np.pi*float(tones[prev])/baud))
-        reset_delta=float(wrap_phase(-2*np.pi*float(tones[prev])/baud))
+                               2*np.pi*float(tones[prev])*step))
+        reset_delta=float(wrap_phase(-2*np.pi*float(tones[prev])*step))
         edges.append({
             "symbol_index_after_write":i,
             "region":"pilot" if i<pilot else "heldout",

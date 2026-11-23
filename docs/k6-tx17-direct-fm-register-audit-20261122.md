@@ -1,5 +1,7 @@
 # Flux TX-17 — FD6818B/BK4829 direct-FM synthesizer register audit
 
+**Physical RX-only preflight (2026-11-22):** The K6 RX tunes at 162.550 and 162.475 MHz measured −93/−97 dBm, squelch closed, and a receive-only RTL-SDR scan did not verify a sufficiently strong steady reference. Both VFOs were restored to 144.390 MHz; **no register-latch experiment executed**, no transmitter enabled. See [TX-15Q clock report](k6-tx15q-clock-transfer-physical-20261122.md). Old 0x4819 non-B latch evidence still cannot be applied to B.
+
 Checkpoint: November 22, 2026. **Read-only firmware source and
 published documentation audit.** No register writes, RX retune,
 RF emission, serial connection or flashing performed.

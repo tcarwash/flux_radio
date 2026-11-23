@@ -1,5 +1,7 @@
 # Flux TX-15P — two real RF captures establish repeatable same-tone phase continuity
 
+**Important subsequent correction:** [TX-15Q physical clock/phase transfer](k6-tx15q-clock-transfer-physical-20261122.md) discovers the nominal-150/s scheduler assumption in the *phase* scoring was wrong relative to the SDR. The ~100–110° changed-tone apparent audio-phase RMS below reflects the **uncorrected timing model**, not firm proof of hardware phase reset. The pilot-only corrected clock and audio transfer reduce heldout changed-tone audio-phase RMS to **9.4° / 12.7°**. Both reports describe recovered FM *audio phase*, not direct RF IQ.
+
 Bench date: 2026-11-22 America/Los_Angeles (2026-11-23 UTC).
 Branch: `research/native-fsk-pdm`.
 This **supersedes the emulator-only status** of the new TX-15P
