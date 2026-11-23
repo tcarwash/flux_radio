@@ -1,0 +1,181 @@
+/* Flux FD6818B FSK-09S-E guarded four-batch in-flight FIFO append test.
+ * Default is inert. Enabled build: ONE bounded TX lease, ONE 64-word
+ * (128-byte) finite native-FSK frame, no prior frame rearm.
+ * The single frame preloads 48, starts transmission, then writes
+ * FOUR separate batches of FOUR words while TX remains active.
+ * Total 64 writes equal the proven 64-word preload capacity,
+ * even if no words have drained. This does not prove gapless streaming.
+ * Dummy-load only, hard TX watchdog, no automatic retry.
+ * SPDX-License-Identifier: MIT
+ */
+#ifndef FSK_BOUNDARY_ENABLE
+#define FSK_BOUNDARY_ENABLE 0
+#endif
+#ifndef FSK_BOUNDARY_FIXTURE_ACK
+#define FSK_BOUNDARY_FIXTURE_ACK 0
+#endif
+#ifndef FSK_BOUNDARY_WATCHDOG_ACK
+#define FSK_BOUNDARY_WATCHDOG_ACK 0
+#endif
+#if FSK_BOUNDARY_ENABLE && (!FSK_BOUNDARY_FIXTURE_ACK || !FSK_BOUNDARY_WATCHDOG_ACK)
+#error "Two-frame FSK TX requires explicitly verified dummy load and independent watchdog"
+#endif
+#define K6_MODULE_LEVEL 3
+#include "../k6_mod.h"
+#include "fsk_lab_vector.h"
+
+#define FSK_NUM_FRAMES 1u
+#define FSK_WORDS 64u
+#define FSK_FREQUENCY_HZ 433500000u
+#define FSK_GAIN_CODE 21u
+#define FSK_BAUD_CODE 0xc194u
+#define FSK_MAX_TX_MS 1900u
+#define FSK_FRAME_TIMEOUT_MS 700u
+
+#define R_CHIP 0x00u
+#define R_WORK 0x3fu
+#define R_CONTROL 0x59u
+#define R_PREAMBLE 0x58u
+#define R_GAIN 0x70u
+#define R_BAUD 0x72u
+#define R_SYNC0 0x5au
+#define R_SYNC1 0x5bu
+#define R_SYNC2 0x5cu
+#define R_LENGTH 0x5du
+#define R_FIFO 0x5fu
+#define R_CLEAR_IRQ 0x02u
+#define R_STATUS 0x0cu
+#define R_STATE 0x30u
+#define R_RSSI 0x67u
+#if FSK_BOUNDARY_ENABLE
+static const uint8_t restore_regs[]={
+    R_WORK,R_CONTROL,R_PREAMBLE,R_GAIN,R_BAUD,R_SYNC0,R_SYNC1,R_SYNC2,R_LENGTH
+};
+#define N_RESTORE (sizeof(restore_regs)/sizeof(restore_regs[0]))
+static int wr(const k6_api_t *a,uint8_t r,uint16_t v) {
+    return a->fd_write(r,v)==0 ? 0 : -1;
+}
+static int safe(const k6_api_t *a) {
+    return !a->key_down() && !km_power_switch_off();
+}
+static int free_channel(const k6_api_t *a) {
+    return KM_RSSI_DBM(a->fd_read(R_RSSI))<=-90;
+}
+/* All 64 words are predetermined. Exactly 48 get preloaded, then 16
+   appended across four independent timed 4-word writes. Full 64 words
+   are no more than our physically proven FIFO preload capacity even if
+   no words drain. FIFO has not been read or speculative IRQ consumed. */
+static uint16_t word_for(unsigned frame,unsigned index) {
+    (void)frame;
+    return fsk_lab_words[index];
+}
+static int wait_until(const k6_api_t *a,uint32_t start,unsigned delta_ms) {
+    while((uint32_t)(a->ms()-start)<delta_ms) {
+        if(!safe(a))return -4;
+        if(a->fd_read(R_STATUS)&1u)return -18; /* premature frame end */
+        a->delay_us(1000u);
+    }
+    return 0;
+}
+static int send_frame(const k6_api_t *a,unsigned frame) {
+    unsigned i;
+    uint32_t start;
+    int result;
+    unsigned batch,j;
+#define W(r,v) do {if(wr(a,(r),(uint16_t)(v))!=0)return -13;}while(0)
+    /* One finite frame; no rearm, and no secondary transmitter mode. */
+    W(R_CONTROL,0x00f8u);
+    W(R_CLEAR_IRQ,0u);
+    W(R_LENGTH,0x7f00u);
+    W(R_CONTROL,0x80f8u);
+    W(R_CONTROL,0x00f8u);
+    for(i=0;i<48u;i++) {
+        if(!safe(a))return -4;
+        W(R_FIFO,word_for(frame,i));
+    }
+    W(R_CONTROL,0x08f8u);
+    start=a->ms();
+    for(batch=0;batch<4u;batch++) {
+        /* Four bounded append periods. The latest is 145ms after TX
+           start, before the initially loaded 48 words can empty at the
+           4,800-bps symbol clock. All writes total only 64 words. */
+        result=wait_until(a,start,70u+25u*batch);
+        if(result<0)return result;
+        for(j=0;j<4u;j++) {
+            if(!safe(a))return -4;
+            W(R_FIFO,word_for(frame,48u+4u*batch+j));
+        }
+    }
+#undef W
+    while(1) {
+        if(!safe(a))return -4;
+        if(a->fd_read(R_STATUS)&1u)return (int)FSK_WORDS;
+        if((uint32_t)(a->ms()-start)>FSK_FRAME_TIMEOUT_MS)return -14;
+        a->delay_us(5000u);
+    }
+}
+#endif
+
+int k6_main(const k6_api_t *api) {
+    if(!api || api->abi!=1 || api->level<K6_MODULE_LEVEL)return -3;
+    if(api->fd_read(R_CHIP)!=0x4829u)return -6;
+#if !FSK_BOUNDARY_ENABLE
+    api->say("fsk boundary inert; bench build required");
+    return -9;
+#else
+    uint16_t snapshot[N_RESTORE];
+    unsigned i,frame;
+    int ret=0,keyed=0,restore=0;
+    if(api->rx_hz()!=FSK_FREQUENCY_HZ ||
+       (api->fd_read(R_STATE)&2u) || !safe(api))return -2;
+    if(!free_channel(api))return -7;
+    api->delay_us(50000);
+    if(!safe(api)||!free_channel(api))return -7;
+    if(api->fd_read(R_WORK)&0xa000u)return -8;
+    if(api->tx_on(FSK_MAX_TX_MS)!=0)return -5;
+    keyed=1;
+    if(api->tx_pa(0)!=0){ret=-4;goto cleanup;}
+    for(i=0;i<N_RESTORE;i++)snapshot[i]=api->fd_read(restore_regs[i]);
+    if((snapshot[0]&0xa000u)||(snapshot[1]&0x0800u)){
+        ret=-8;goto cleanup;
+    }
+    restore=1;
+#define W(r,v) do{if(wr(api,(r),(uint16_t)(v))!=0){ret=-13;goto cleanup;}}while(0)
+    W(R_CONTROL,0x00f8u);
+    W(R_CLEAR_IRQ,0u);
+    W(R_WORK,0x8000u);
+    W(R_PREAMBLE,0x00e1u);
+    W(R_GAIN,0x0080u|FSK_GAIN_CODE);
+    W(R_BAUD,FSK_BAUD_CODE);
+    W(R_SYNC0,0x076bu);
+    W(R_SYNC1,0x3e36u);
+    W(R_SYNC2,0x5625u);
+    W(R_LENGTH,0x7f00u);
+#undef W
+    if(api->tx_pa(1)!=0){ret=-4;goto cleanup;}
+    for(frame=0;frame<FSK_NUM_FRAMES;frame++){
+        ret=send_frame(api,1u);
+        if(ret!=(int)FSK_WORDS)goto cleanup;
+    }
+    ret=(int)(FSK_WORDS*FSK_NUM_FRAMES);
+cleanup:
+    if(keyed){
+        (void)api->tx_pa(0);
+        if(restore){
+            if(wr(api,R_CONTROL,0x00f8u)!=0 ||
+               wr(api,R_WORK,0u)!=0 ||
+               wr(api,R_CLEAR_IRQ,0u)!=0)ret=-15;
+            for(i=N_RESTORE;i>0;i--){
+                unsigned j=i-1;
+                if(wr(api,restore_regs[j],snapshot[j])!=0)ret=-15;
+            }
+        }
+        api->tx_off();
+    }
+    if(ret==(int)(FSK_WORDS*FSK_NUM_FRAMES))
+        api->say("fsk09s E: four in-flight batches completed; RX restored");
+    else
+        api->say("fsk09s E: aborted; RX restore checked");
+    return ret;
+#endif
+}
