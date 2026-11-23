@@ -29,6 +29,11 @@ def analyze_file(path:Path):
         errors=sum((a^b).bit_count() for a,b in zip(received,expected))
         preload=received[:48*2]
         appended=received[48*2:]
+        shifted_data=received[2:128]
+        shifted_first63_errors=sum((a^b).bit_count() for a,b in zip(shifted_data,expected[:126]))
+        # Post-hoc diagnostic only. A leading word may displace the final
+        # transmitted word. Never accept this realignment as a test PASS.
+        appended_15_shifted_exact=(received[2+96:128]==expected[96:126])
         out.append(dict(sync_start_s=packet['marker_start_s'],
                         payload_start_s=packet['payload_start_s'],
                         preamble_sync_correlation=packet['sync_correlation'],
@@ -37,6 +42,9 @@ def analyze_file(path:Path):
                         original_48_word_preload_exact=preload==expected[:96],
                         all_16_appended_words_exact=appended==expected[96:],
                         appended_16_words_bit_errors=sum((a^b).bit_count() for a,b in zip(appended,expected[96:])),
+                        first_received_word_le=received[:2].hex(),
+                        one_word_shift_first63_bit_errors=shifted_first63_errors,
+                        shifted_first15_appended_words_exact=appended_15_shifted_exact,
                         last_received_word_le=received[-2:].hex(),
                         last_expected_word_le=expected[-2:].hex(),
                         complete_payload_hex=received.hex()))
