@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Offline independent decode of FSK-09S-C known control vs in-flight append.
+"""Post-capture FSK-09S-C analysis with payload-INDEPENDENT native FSK sync.
 
-Uses ONLY the first 256 payload bits of each 49-word frame to estimate
-symbol timing/levels; the appended final word is in the held-out 528 bits.
-No radio, serial or device operations.
+Only the public FD6818B native 16*0x55 preamble + 0x076b3e36 sync trains
+frame starts and discriminator levels. No test-payload bits are used for
+acquisition. The fixed trial's expected control/append bits are used only
+AFTER independent demodulation for mismatch scoring. This analyzer replaces
+an ambiguous periodic-training decoder discovered faulty on the RF capture;
+it was developed after the first run, so report that distinction explicitly.
 """
 from __future__ import annotations
 import argparse
@@ -13,79 +16,87 @@ from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-import numpy as np
 from k6_fsk_lab_vector import build_vector,bits_from_words,make_probe_vector
-from k6_fsk_lab_decode import decode_samples
-from k6_fsk_sotto_payload_analyze import rf_recover_bits
+from k6_fsk_sotto_sync_rx import find_frames
 from k6_fsk_iq_edges import read_iq
 
 WORDS=49
-TRAIN_BITS=256
 
 
 def truth():
-    first,_=make_probe_vector(word_count=64,seed=0xACE1)
-    before=tuple(first[:48])
-    words=(before+(0x3ca5,),tuple((~x)&0xffff for x in before)+(0xa53c,))
-    return [build_vector(word_count=WORDS,data_bits=bits_from_words(w),baud=4800,gain=21)[1]
-            for w in words]
+    source,_=make_probe_vector(word_count=64,seed=0xACE1)
+    first=tuple(source[:48])
+    frames=(first+(0x3ca5,),tuple((~w)&0xffff for w in first)+(0xa53c,))
+    return [build_vector(word_count=WORDS,data_bits=bits_from_words(x),baud=4800,gain=21)[1]
+            for x in frames]
+
+
+def score(observed,expected,index):
+    b=bytes.fromhex(observed['raw_payload_hex'])
+    control=bytes.fromhex(expected['payload_bytes_hex'])
+    n=min(len(b),len(control))
+    diffs=[(b[i]^control[i]).bit_count() for i in range(n)]
+    shifted=bytes.fromhex(observed['raw_payload_hex'])
+    # Under a 1-word leading shift, the first 48 words may match after
+    # skipping first observed word; do not treat that as full 49-word pass.
+    shifted_prefix=shifted[2:98]
+    shifted_bits=sum((x^y).bit_count() for x,y in zip(shifted_prefix,control[:96]))
+    return dict(frame='control_full_49word_preload' if index==0 else '48_preload_plus_one_midtx_append',
+                frame_payload_start_s=observed['payload_start_s'],
+                synchronization_correlation=observed['sync_correlation'],
+                public_preamble_sync_bit_errors=observed['sync_bit_errors'],
+                raw_received_last_word_le=b[-2:].hex(),
+                expected_last_word_le=control[-2:].hex(),
+                expected_payload_sha256=expected['payload_sha256_le_words'],
+                complete_payload_bit_errors=sum(diffs),
+                last_word_match=b[-2:]==control[-2:],
+                first_wrong_byte_index=next((i for i,x in enumerate(diffs) if x),None),
+                first_received_word_le=b[:2].hex(),
+                one_word_shift_first_48words_bit_errors=shifted_bits,
+                received_payload_bytes_hex=b.hex(),
+                acquisition_used_test_payload=False)
 
 
 def analyze_file(path:Path):
-    iq=read_iq(path,duration=2.,offset=280500.)
-    truths=truth();out=[];decisions=[]
-    for i,m in enumerate(truths):
-        fit=decode_samples(iq,m,train_bits=TRAIN_BITS,lowpass_hz=8000.)
-        if fit.get('locked'):
-            rec=rf_recover_bits(iq,fit,nbits=WORDS*16)
-            observed=np.packbits(rec).tobytes()
-            ref=bytes.fromhex(m['payload_bytes_hex'])
-            errors=int(np.count_nonzero(rec!=np.unpackbits(np.frombuffer(ref,dtype=np.uint8))))
-            ending=observed[-2:].hex()
-            tail_match=observed[-2:]==ref[-2:]
-            decisions.append(observed)
-        else:
-            errors=None;ending=None;tail_match=False
-        out.append(dict(frame=('49word_full_preload_control' if i==0 else '48word_preload_plus_one_live_append'),
-                        expected_last_word_le=m['payload_bytes_hex'][-4:],
-                        recovered_last_word_le=ending,
-                        last_word_match=tail_match,
-                        total_bit_errors=errors,
-                        payload_sha256=m['payload_sha256_le_words'],
-                        known_only_first_256_bits_used_for_sync=True,**fit))
-    starts=[v.get('detected_first_payload_bit_center_s') for v in out]
-    spacing=(starts[1]-starts[0]) if all(x is not None for x in starts) else None
-    result='CONTROL_AND_APPEND_PASS' if all(x.get('locked') and x.get('total_bit_errors')==0
-                                                for x in out) else 'INCONCLUSIVE_OR_FAIL'
-    return dict(experiment='FSK-09S-C single-word in-frame append vs fully preloaded control',
-                result=result,recording=str(path),
-                iq_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-                payload_baud=4800,payload_words=WORDS,
-                configured_bytes=98,nominal_payload_s=WORDS*16/4800,
-                one_word_delayed_by_ms=70,
-                first_frame_fully_preloaded=True,second_frame_preloaded_words=48,
-                append_words_after_start=1,
-                packet_start_separation_ms=round(1000*spacing,3) if spacing else None,
-                frames=out,
-                caveats=['This test has distinct frame rearm; it is not continuous FIFO streaming.',
-                         'Known 256-bit training prefix per frame; last 528 bits are held out.',
-                         'Passing establishes a one-word write during TX only, not multiple sustained refills.',
-                         'RF capture is from dummy-loaded air-coupled SDR, not calibrated.'])
+    iq=read_iq(path,duration=2.0,offset=280500.)
+    found=find_frames(iq,payload_bytes=98,min_correlation=.95)
+    matched=found['packets']
+    expected=truth()
+    results=[score(observed,expected[i],i) for i,observed in enumerate(matched[:2])]
+    sep=results[1]['frame_payload_start_s']-results[0]['frame_payload_start_s'] if len(results)==2 else None
+    success=(len(results)==2 and all(v['complete_payload_bit_errors']==0 for v in results)
+             and all(v['last_word_match'] for v in results))
+    return dict(experiment='FSK-09S-C single-word in-flight FIFO write vs full preload control',
+                result='CONTROL_AND_APPEND_PASS' if success else 'INCONCLUSIVE_OR_FAIL',
+                recording=str(path),iq_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                decoder_change='Post-RF: replaced ambiguous periodic known-payload sync with public fixed framing',
+                acquisition_uses_only_public_native_fsk_preamble_and_sync=True,
+                native_fsk_bits_per_frame=WORDS*16,payload_words_per_frame=WORDS,
+                one_word_delayed_by_ms=70,first_frame_fully_preloaded=True,
+                second_frame_initial_words=48,second_frame_live_append_words=1,
+                candidates_considered=found['candidates_considered'],
+                independent_framing_candidates=found['frames_found'],
+                payload_start_separation_ms=round(sep*1000,3) if sep else None,
+                frames=results,
+                limits=['One-word physical TX test, not true streaming or FIFO occupancy discovery.',
+                        'The original prefix-trained decoder was ambiguous; sync-only reanalysis is post hoc.',
+                        'No subsequent RF write automatically authorized by any negative outcome.',
+                        'Dummy-loaded uncalibrated SDR, not real-world signal performance.'])
 
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--iq',type=Path,required=True)
     p.add_argument('--out',type=Path,required=True)
-    a=p.parse_args()
-    if a.out.exists():p.error('Refusing to overwrite existing analysis')
-    z=analyze_file(a.iq)
-    a.out.write_text(json.dumps(z,indent=2)+'\n')
-    print(z['result'],'frame starts delta ms',z['packet_start_separation_ms'])
-    for v in z['frames']:
-        print(v['frame'],'end',v['recovered_last_word_le'],'expected',v['expected_last_word_le'],
-              'match',v['last_word_match'],'heldout',v.get('held_out_tail_errors'),
-              'errors',v['total_bit_errors'])
+    opts=p.parse_args()
+    if opts.out.exists():p.error('Refuse to overwrite a previous analysis')
+    a=analyze_file(opts.iq)
+    opts.out.write_text(json.dumps(a,indent=2)+'\n')
+    print('FSK-09S-C',a['result'],'frames',len(a['frames']),'spacing',a['payload_start_separation_ms'])
+    for f in a['frames']:
+        print(f['frame'],'errors',f['complete_payload_bit_errors'],'tail',f['raw_received_last_word_le'],
+              'expected tail',f['expected_last_word_le'],
+              'shifted-48word-errors',f['one_word_shift_first_48words_bit_errors'])
 
 
 if __name__=='__main__':main()

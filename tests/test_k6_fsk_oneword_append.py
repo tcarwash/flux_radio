@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib
 import numpy as np
 from tools.k6_fsk_oneword_bench import frozen_build,SOURCE
-from tools.k6_fsk_oneword_analyze import truth,WORDS,TRAIN_BITS
+from tools.k6_fsk_oneword_analyze import truth,WORDS
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -43,7 +43,9 @@ def test_two_distinct_49word_payloads_and_heldout_markers():
     assert a['payload_words']==b['payload_words']==49
     assert a['payload_bits']==b['payload_bits']==784
     assert a['native_baud']==b['native_baud']==4800
-    assert TRAIN_BITS==256
+    # The updated independent decoder uses only public preamble/sync,
+    # not an easily ambiguous periodic prefix from the payload.
+    assert b"\x07\x6b\x3e\x36"==bytes.fromhex("076b3e36")
     assert a['payload_bytes_hex'][-4:]=='a53c'
     assert b['payload_bytes_hex'][-4:]=='3ca5'
     assert a['payload_sha256_le_words']!=b['payload_sha256_le_words']

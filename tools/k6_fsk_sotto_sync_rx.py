@@ -56,7 +56,7 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
                 sampling_phases=(.125,.375,.625,.875),
                 min_correlation=.79,
                 min_separation_hz=550,
-                max_frame_candidates=300):
+                max_frame_candidates=300, payload_bytes=PAYLOAD_BYTES):
     """List CRC-accepted packets found by searching *only* universal framing.
 
     Candidate matching and payload extraction use no expected voice bytes, no
@@ -70,7 +70,9 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
     phase=np.angle(filt[1:]*np.conj(filt[:-1]))*fs/(2*np.pi)
     freq=uniform_filter1d(phase,size=max(3,round(.16*fs/baud)))
     grid=np.arange(len(freq),dtype=np.float64)
-    p=pager.profile('L','1200',depth=1,parity=False,short_last=True)
+    if payload_bytes<1 or payload_bytes>256:
+        raise ValueError('Invalid programmed packet length')
+    p=pager.profile('L','1200',depth=1,parity=False,short_last=True) if payload_bytes==64 else None
     candidates=[]
     for factor in rate_factors:
         rate=baud*float(factor)
@@ -78,12 +80,12 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
         for frac in sampling_phases:
             positions=(np.arange(int(len(freq)/samples_per_bit),dtype=np.float64)+frac)*samples_per_bit
             observations=np.interp(positions,grid,freq)
-            if len(observations)<MARK_LEN+PAYLOAD_BITS:
+            if len(observations)<MARK_LEN+payload_bytes*8:
                 continue
             correlation=_match(observations,MARK_BITS)
             # Keep room for every bit of data. Max abs handles discriminator
             # polarity reversals without relying on known payload data.
-            max_start=len(observations)-MARK_LEN-PAYLOAD_BITS
+            max_start=len(observations)-MARK_LEN-payload_bytes*8
             peaks,_=find_peaks(np.abs(correlation[:max_start+1]),
                                height=min_correlation,distance=MARK_LEN//2)
             for k in peaks:
@@ -99,10 +101,10 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
                 framed=(prefix-threshold)*pol>0
                 marker_errors=int(np.count_nonzero(framed!=MARK_BITS))
                 if marker_errors>12:continue
-                d=observations[k+MARK_LEN:k+MARK_LEN+PAYLOAD_BITS]
+                d=observations[k+MARK_LEN:k+MARK_LEN+payload_bytes*8]
                 bits=((d-threshold)*pol>0).astype(np.uint8)
                 decoded=np.packbits(bits).tobytes()
-                packet=p.unpack(decoded)
+                packet=p.unpack(decoded) if p else None
                 candidates.append({
                     'marker_start_s':round(t_marker,7),
                     'payload_start_s':round(t_marker+MARK_LEN/rate,7),
