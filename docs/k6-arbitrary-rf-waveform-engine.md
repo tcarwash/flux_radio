@@ -1,5 +1,9 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**TX-15P next serial-controlled discriminator:** [new non-commensurate audio-tone register vector](k6-tx15-phase-discriminator-20261122.md) uses 150 word updates/s and repeated unchanged REG_71 writes to make continuous, change-reset and every-write-reset oscillator phases distinguishable in ideal pilot and heldout data. The prior real RF vector's integer cycles/symbol made it intrinsically unable to prove phase continuity despite 47/48 heldout tone-ID decodes. New vector is emulator/offline only, NOT new RF or arbitrary carrier-IQ synthesis.
+
+**TX-17 read-only audit:** [direct FM register leads](k6-tx17-direct-fm-register-audit-20261122.md) found no verified fast writable signed frequency offset. B-chip RX-only state/latch tests remain open; legacy 0x4819 latch evidence must not be imputed to 0x4829.
+
 **New independent RF discriminator:** [TX-12D2 strict spectral MICIN qualification](k6-micin-strict-spectral-rf-qualification-20261122.md) combines the earlier physically checked 2-ms RF-edge detector with pilot-frozen 32-symbol frequency-trajectory scoring. It recovers the archived 26-ms PA-off RF event while correctly rejecting four-level modulation qualification. This complements, rather than replaces, the separate 48-kHz/RTL-IQ MICIN observer.
 
 **Physical wiring / receive-only gate:** [TX-12D MICIN fixture mapping and 44-ms pilot/holdout IQ scorer](k6-micin-physical-fixture-preflight-20261122.md) inventories present ALSA/RTL-SDR devices and documents the shared MIC/PTT/serial contacts, while flagging a prior **26-ms PA-off RF-like transient** as a safety concern. An independently developed offline IQ observer refuses to classify that historical event as four-level MICIN RF. No MICIN audio source or electrical fixture is verified connected yet.

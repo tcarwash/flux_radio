@@ -5,7 +5,14 @@
    SPDX-License-Identifier: MIT */
 #define K6_MODULE_LEVEL 3
 #include "../k6_mod.h"
+#ifndef TX8_PHASE_VECTOR_V2
+#define TX8_PHASE_VECTOR_V2 0
+#endif
+#if TX8_PHASE_VECTOR_V2
+#include "tx8_phase_probe.h"
+#else
 #include "tx8_probe.h"
+#endif
 
 #ifndef TX8_BENCH_ENABLE
 #define TX8_BENCH_ENABLE 0
@@ -40,6 +47,9 @@
 #endif
 #if TX8_SYMBOL_RATE < 100u || TX8_SYMBOL_RATE > 600u
 #error "TX8 RF symbol rate outside bounded test"
+#endif
+#if TX8_PHASE_VECTOR_V2 && TX8_SYMBOL_RATE != 150u
+#error "TX-15P non-commensurate vector qualified only at 150 Hz schedule"
 #endif
 
 #define RCC_APB2ENR 0x40021018u
@@ -167,7 +177,12 @@ int k6_main(const k6_api_t *api) {
   }
   if(ret==(int)TX8_NS) wait_cycle(&clk,TX8_NS*CYCLES_PER_SYMBOL);
   span=clk_now(&clk);
-  p=put(line,"tx8 n=");p=dec(p,TX8_NS);
+#if TX8_PHASE_VECTOR_V2
+  p=put(line,"tx8p2 n=");
+#else
+  p=put(line,"tx8 n=");
+#endif
+  p=dec(p,TX8_NS);
   p=put(p," cycles=");p=dec(p,span);
   p=put(p," late=");p=dec(p,late);
   p=put(p," worst=");p=dec(p,worst);
