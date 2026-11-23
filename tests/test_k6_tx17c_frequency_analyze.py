@@ -69,13 +69,17 @@ def test_no_radio_device_access_in_analyzer():
         assert forbidden not in code
 
 
-def test_archived_physical_if_present():
+@pytest.mark.parametrize("run",["01","02"])
+def test_archived_physical_without_immediate_latch(run):
     p=Path.home()/(
       "flux-bench/tx-injection-20261122/tone-oscillator/"
-      "tx17c-pll-lowword-1-run01.npy")
+      f"tx17c-pll-lowword-1-run{run}.npy")
     if not p.exists():
         pytest.skip("TX-17C physical dummy-load RF not recorded yet")
     r=score_captured_raw_iq(p)
-    assert r["read_only"] and not (
-        r["immediate_synth_frequency_response_confirmed"] and
-        r["no_immediate_latch_detected"])
+    assert r["read_only"]
+    assert r["no_immediate_latch_detected"]
+    assert not r["immediate_synth_frequency_response_confirmed"]
+    assert not r["inconclusive"]
+    assert r["acquisition"]["signal_to_noise_proxy"]>10
+    assert max(abs(x) for x in r["measured_rf_frequency_deltas_hz"])<15
