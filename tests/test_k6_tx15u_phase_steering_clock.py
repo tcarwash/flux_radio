@@ -107,12 +107,23 @@ def test_posthoc_development_capture_only(variant,run):
         "measured_effective_common_audio_rate_correction_hz"])<.4
 
 
-@pytest.mark.parametrize("variant",[0,1])
-def test_independent_future_emission_when_available(variant):
-    p=BENCH/f"tx15t-phase-steer-{variant}-run03.npy"
+@pytest.mark.parametrize("variant,run",[
+    (0,"03"),(1,"03"),(1,"04"),(0,"04")
+])
+def test_independent_future_emission_when_available(variant,run):
+    p=BENCH/f"tx15t-phase-steer-{variant}-run{run}.npy"
     if not p.exists():pytest.skip("TX15U-independent RF verification not emitted yet")
     r=analyze_file(p,variant)
     assert r["qualification"]["predeclared_combined_test_pass"],r[
         "qualification"]
     assert r["pilot_only_timebase_rate_and_complex_rf_parameters"]
     assert r["source_iq_sha256"]
+    q=r["qualification"]
+    assert q["correct_program_coherence"]>q["counterfactual_program_coherence"]+.10
+    measured=r["primary_prediction"]["measured_guard_rf_phase_step_from_control_deg"]
+    if variant==0:
+        assert abs(measured)<40
+    else:
+        predicted=r["primary_prediction"]["pilot_predicted_steer_minus_control_guard_phase_deg"]
+        assert predicted*measured>0
+        assert abs(predicted)>35 and abs(measured)>25

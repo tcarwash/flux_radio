@@ -211,3 +211,24 @@ def test_physical_tx15t_when_saved(variant):
     assert report["arbitrary_rf_iq_transmission_demonstrated"] is False
     assert report["waveform_diff_symbols"]==list(range(177,183))
     assert q["predeclared_combined_test_pass"],q
+
+
+def test_original_locked_tx15t_control_run02_remains_a_failure():
+    """Do not quietly rewrite an original prospective negative control.
+
+    TX15U legitimately improves the subsequent model, but the
+    precommitted TX15T scorer failed on unchanged A run 02.
+    Keep both facts visible to maintain independent evidence integrity.
+    """
+    p=Path.home()/(
+        "flux-bench/tx-injection-20261122/tone-oscillator/"
+        "tx15t-phase-steer-0-run02.npy")
+    if not p.exists():
+        pytest.skip("original TX15T negative-control capture unavailable")
+    r=analyze_file(p,0)
+    q=r["qualification"]
+    assert not q["predeclared_combined_test_pass"]
+    assert not q["guard_rf_phase_step_matches_predeclared_test"]
+    assert r["primary_prediction"][
+        "measured_guard_rf_phase_step_from_control_deg"]>50.
+    assert q["correct_program_coherence"]<.5
