@@ -1,0 +1,27 @@
+{
+  "experiment": "FSK-12 real K6 microphone Sotto1200 L64 four-packet RF trial; prospective offline gate",
+  "private_payloads_not_committed": true,
+  "private_fixture_dir": "/home/tyler/flux-bench/micvoice-20261123/fsk12-private-20261123",
+  "source_packets_file_sha256": "d81956bf1ae57747eaf8353edd2d10453b530408a61e781600ee8c7dc05d8bd6",
+  "mic_sotto_156_byte_compressed_sha256": "60c8478cf6da655a62dd2317104d79ea30a6f655f73545fb152dd87d49a59ad3",
+  "per_packet_sha256": [
+    "e1e93bb5d9c9b110f73c12eb75c9340b009129f9f6354c6a452ee146d7b0bf87",
+    "496ee98c4a33208b73ec55bc4af88a87821a0012f1a75d3759208784d9fd4597",
+    "2452521a1df361b555ea02f0e831726f5779cf97e2b56c374fd4ef3bcdcca67c",
+    "44d1f0d2518be990d7e54c1b7f394d9466fdca8a274461f60444b89e34af54ea"
+  ],
+  "packet_count": 4,
+  "packet_len_bytes": 64,
+  "message_id": 93,
+  "codec_superframes": 26,
+  "voice_duration_s": 1.04,
+  "programmed_modem_baud": 4800,
+  "private_inert_source_sha256": "a9d7ff10a47497945a6e6c1f4492d19182fe8da9fc905bd583248440af112e4b",
+  "private_armed_source_sha256": "82920dfdc5fde037d70b553f332eb9ad7fec55a8475ab571fc0a34faa6199368",
+  "private_armed_compiled_code_sha256": "ec3143edf9b0c55fcbfae6384eff6457b05459af289317a44929f87320ad401b",
+  "compiled_code_bytes": 1206,
+  "generator_template_sha256": "77444b8c0c795141034b2cf1579db9f78b37cf9ce2d2f6631c95858286ee01b4",
+  "hardware_lease_status": "NOT_CLAIMED",
+  "physical_test_status": "NOT_EXECUTED",
+  "requires_shared_queue_ack_and_operator_lease": true
+}
