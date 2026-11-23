@@ -5,6 +5,12 @@ Branch: `research/offline-sotto-fsk-dv-20261123`
 Scope: **OFFLINE ONLY**. No serial, SDR, RF transmissions, source firmware flashing, or edits to the active bench worktree.
 Tracking: [Flux #10](https://github.com/tcarwash/flux_radio/issues/10); see also [shared queue #11](https://github.com/tcarwash/flux_radio/issues/11).
 
+## Eight-packet blind-acquisition physical milestone (2026-11-23, FSK-10B)
+
+The [prospectively frozen FSK-10B physical experiment](k6-fsk10b-eight-packet-blind-physical-20261123.md) passed: **eight different 64-byte Sotto 1200 packets** were transmitted under one bounded TX lease and detected on the RTL-SDR from **only the public 0x55 preamble and 0x076b3e36 sync**, with no packet-payload training. **8/8 CRC passed, 4096/4096 payload bits matched the frozen manifest in post-hoc scoring, 64/64 voice frames recovered**, and host Sotto decoding produced 2.56s of PCM byte-identical to the source. Measured seven start intervals range **151.042–151.302ms**. A 160ms buffered offline replay of *actual RF arrival times* had **zero concealed** voice frames in this clean burst.
+
+The real transmission used a **prerecorded, accelerated** sequence, not live microphone audio, so the earlier latency and 5% packet-erasure studies remain simulations. There was no mid-frame FIFO refill, and no extended RF-channel PER measurement.
+
 ## Physical Sotto packet pass (2026-11-23, FSK-11)
 
 **Important new milestone:** Two actual **Sotto 1200 L/64B CRC-protected packet bytes** were transmitted on the dummy-loaded K6's native 4,800-bps FSK modem. The air-coupled SDR decoder recovered both packets bit-exact (0/1024 errors), independently validated both CRCs and sequences, reconstructed 16 genuine Sotto frames, and decoded 640ms of speech to **the exact original PCM** in host software. Read the separate [FSK-11 physical report](k6-fsk11-sotto-over-native-fsk-physical-20261123.md). This does **not** establish blind packet acquisition, long streaming, two-way conversational audio or live on-radio encoder/decoder scheduling.
