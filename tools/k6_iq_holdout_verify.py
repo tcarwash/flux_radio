@@ -107,6 +107,45 @@ def _apc_level_diagnostics(target: np.ndarray, estimate: np.ndarray) -> dict:
     return result
 
 
+def _heldout_posthoc_diagnostics(target: np.ndarray, estimate: np.ndarray,
+                                 fs: float) -> dict:
+    """Describe already-scored holdout; NEVER use these to tune the fit."""
+    n = len(target)
+    sections = []
+    for k in range(4):
+        a = (k*n)//4
+        b = ((k+1)*n)//4
+        sections.append({
+            "fractional_window": k,
+            "start_sample": a,
+            "end_sample": b,
+            "normalized_evm_with_frozen_pilot_fit":
+                _fitted_metrics(target[a:b], estimate[a:b])["normalized_evm"],
+        })
+    threshold = .05 * float(np.max(np.abs(target)))
+    mask = np.abs(target) >= threshold
+    if np.count_nonzero(mask) < 32:
+        raise ValueError("held-out target has inadequate phase-bearing samples")
+    idx = np.flatnonzero(mask)
+    phase_error = np.unwrap(np.angle(estimate[mask] * np.conj(target[mask])))
+    t = (idx - idx[0]) / fs
+    # A slope fitted *afterward* to the heldout phase is descriptive only.
+    # It CANNOT be used to reduce the reported heldout EVM.
+    slope = np.polyfit(t, phase_error, 1)[0]/(2*np.pi)
+    return {
+        "heldout_used_to_recalibrate_cfo_or_gain": False,
+        "heldout_evm_quartiles_frozen_pilot_calibration": sections,
+        "posthoc_linear_phase_error_slope_hz": float(slope),
+        "first_10percent_median_wrapped_phase_residual_rad":
+            float(np.median(np.angle(estimate[:max(1,n//10)] *
+                                     np.conj(target[:max(1,n//10)])))),
+        "last_10percent_median_wrapped_phase_residual_rad":
+            float(np.median(np.angle(estimate[-max(1,n//10):] *
+                                     np.conj(target[-max(1,n//10):])))),
+        "caveat": "Posthoc phase trend describes errors ONLY; it is not an independent RF frequency calibration or a corrected EVM.",
+    }
+
+
 def verify(target: np.ndarray, observation: np.ndarray, *, fs: float,
            pilot_samples: int, max_lag_samples: int,
            max_cfo_hz: float = 300., maximum_pilot_evm: float = 0.5) -> tuple[dict, dict]:
@@ -161,6 +200,7 @@ def verify(target: np.ndarray, observation: np.ndarray, *, fs: float,
         "pilot_only_estimated_complex_gain_phase_rad": float(np.angle(best["complex_gain"])),
         "pilot_metrics": _fitted_metrics(pilot_target, aligned[:pilot_samples]),
         "heldout_metrics": _fitted_metrics(heldout_target, heldout),
+        "heldout_posthoc_diagnostics": _heldout_posthoc_diagnostics(heldout_target, heldout, fs),
         "heldout_apc_level_diagnostics": _apc_level_diagnostics(heldout_target, heldout),
         "warnings": [
             "Inputs may be synthetic: this analysis does not establish any real hardware transmitter capability",

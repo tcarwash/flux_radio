@@ -48,6 +48,9 @@ def test_pilot_only_alignment_and_heldout_iq():
     assert report["pilot_metrics"]["normalized_evm"] < .02
     assert report["heldout_metrics"]["normalized_evm"] < .025
     assert report["heldout_metrics"]["phase_error_rms_rad"] < .025
+    assert report["heldout_posthoc_diagnostics"]["heldout_used_to_recalibrate_cfo_or_gain"] is False
+    assert len(report["heldout_posthoc_diagnostics"]["heldout_evm_quartiles_frozen_pilot_calibration"]) == 4
+    assert abs(report["heldout_posthoc_diagnostics"]["posthoc_linear_phase_error_slope_hz"]) < 1.
     assert report["heldout_apc_level_diagnostics"]["available"]
     assert abs(report["heldout_apc_level_diagnostics"]["high_minus_low_median_phase_rad"]) < .03
     assert len(arrays["heldout_residual_iq"]) == 6400
@@ -73,6 +76,7 @@ def test_pilot_only_fit_detects_phase_drift_in_holdout():
     y[37:37+len(x)] *= np.exp(1j*phase_drift)
     report, _ = verify(x, y, **kwargs())
     assert report["heldout_metrics"]["normalized_evm"] > report["pilot_metrics"]["normalized_evm"] * 3
+    assert abs(report["heldout_posthoc_diagnostics"]["posthoc_linear_phase_error_slope_hz"]) > 2.
 
 
 def test_reject_invalid_inputs_or_no_pilot_lock():

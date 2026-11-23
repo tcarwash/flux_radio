@@ -21,15 +21,30 @@ import numpy as np
 
 
 def make_target(manifest: dict, *, sample_rate=96_000,
-                deviation_hz=1200., apc_halfstep_ms=20.6) -> tuple[np.ndarray,dict]:
+                deviation_hz=1200., apc_halfstep_ms=20.6,
+                amplitude_pattern="steps") -> tuple[np.ndarray,dict]:
+    """Accept either original FSK lab or the separate PDM-300 known manifest."""
     data = bytes.fromhex(manifest.get("payload_bytes_hex", ""))
     bits = np.unpackbits(np.frombuffer(data, dtype=np.uint8))
-    bit_truth = manifest.get("payload_bits_msb_each_byte_lower_byte_first")
+    if manifest.get("kind") == "8fsk_pdm300":
+        # The PDM manifest is independently checked for its exact training
+        # and heldout bit layout, not merely a matching byte digest.
+        from k6_fsk_pdm_chip_decode import validate_manifest
+        validated, _, _ = validate_manifest(manifest)
+        if not np.array_equal(bits, validated):
+            raise ValueError("PDM manifest bit ordering mismatch")
+        bit_truth = manifest.get("payload_bits")
+    else:
+        bit_truth = manifest.get("payload_bits_msb_each_byte_lower_byte_first")
     if (len(bits) < 512 or len(bits) > 1024 or len(bits) % 16 or
-            len(bits) != manifest.get("payload_bits") or
+            len(bits) != int(manifest.get("fifo_bits",manifest.get("payload_bits",0))
+                             if manifest.get("kind") == "8fsk_pdm300"
+                             else manifest.get("payload_bits",0)) or
             bit_truth != "".join(str(int(v)) for v in bits) or
             hashlib.sha256(data).hexdigest() != manifest.get("payload_sha256_le_words")):
         raise ValueError("manifest FIFO bit truth / hash inconsistency")
+    if amplitude_pattern not in ("steps", "constant"):
+        raise ValueError("amplitude pattern must be steps or constant")
     baud = manifest.get("native_baud")
     if not isinstance(baud,int) or baud not in (1200,2400,3600,4800):
         raise ValueError("unsupported native FSK bit rate")
@@ -43,8 +58,9 @@ def make_target(manifest: dict, *, sample_rate=96_000,
     frequency = np.repeat((2 * bits.astype(np.float64) - 1) * deviation_hz, sps)
     phase = 2 * np.pi * np.cumsum(frequency, dtype=np.float64) / sample_rate
     t = np.arange(len(frequency)) / sample_rate
-    apc_level = np.where((np.floor(1000*t / apc_halfstep_ms).astype(int) % 2) == 0,
-                         1.0, 0.8)
+    apc_level = (np.ones(len(t), dtype=float) if amplitude_pattern == "constant"
+                 else np.where((np.floor(1000*t / apc_halfstep_ms).astype(int) % 2) == 0,
+                               1.0, 0.8))
     iq = (apc_level * np.exp(1j*phase)).astype(np.complex64)
     report = {
         "analysis": "independently specified ideal FSK+APC baseband TARGET",
@@ -61,8 +77,9 @@ def make_target(manifest: dict, *, sample_rate=96_000,
         "complex_samples": len(iq),
         "nominal_payload_duration_ms": round(1000*len(iq)/sample_rate, 5),
         "assumed_frequency_offsets_hz": [-deviation_hz, deviation_hz],
-        "assumed_apc_levels_of_full_power": [0.8,1.0],
-        "assumed_apc_halfstep_ms": apc_halfstep_ms,
+        "assumed_apc_levels_of_full_power": ([1.0] if amplitude_pattern == "constant" else [0.8,1.0]),
+        "assumed_apc_halfstep_ms": (None if amplitude_pattern == "constant" else apc_halfstep_ms),
+        "amplitude_pattern": amplitude_pattern,
         "nominal_amplitude_transition_count": int(np.count_nonzero(np.diff(apc_level))),
         "caveats": [
             "Target is mathematical; actual RF deviation, PLL settling and APC envelope response differ",
@@ -82,13 +99,16 @@ def main(argv=None):
     parser.add_argument("--sample-rate", type=int, default=96000)
     parser.add_argument("--deviation-hz", type=float, default=1200.)
     parser.add_argument("--apc-halfstep-ms", type=float, default=20.6)
+    parser.add_argument("--amplitude-pattern", choices=("steps", "constant"),
+                        default="steps", help="constant for archived FSK-only recordings")
     args = parser.parse_args(argv)
     try:
         raw_manifest = args.manifest.read_bytes()
         manifest = json.loads(raw_manifest)
         iq, report = make_target(manifest, sample_rate=args.sample_rate,
                                  deviation_hz=args.deviation_hz,
-                                 apc_halfstep_ms=args.apc_halfstep_ms)
+                                 apc_halfstep_ms=args.apc_halfstep_ms,
+                                 amplitude_pattern=args.amplitude_pattern)
         j, n = args.out_prefix.with_suffix(".json"), args.out_prefix.with_suffix(".npy")
         if j.exists() or n.exists():
             raise ValueError("refusing to overwrite existing independent target")
