@@ -66,7 +66,17 @@ repeatable boundary to 2965 μs, without changing the wider arbitrary-IQ goal.
 Full evidence and IQ digests:
 `/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16n-run-v23-2964-long-preamble-physical-20261123.md`.
 Next, pursue a distinct modulation vector from the roadmap rather than more
-repeats at this failed setting; preserve the marked in-progress TX16M work.
+repeats at this failed setting.
+
+**TX16M single-register DCS polarity actuator completed:** two independently
+captured conducted runs verify repeatable opposite FM levels and an alternating
+waveform at 10, 5, and 2.5 ms requested dwells; 1.25 ms remains exploratory
+because the recovered deviation collapses. This establishes a fast binary-FM
+source, not selected-payload BER or arbitrary RF IQ. Preserve the physical
+report at
+`/storage5/dev/flux-tx16-subaudio-modulation/docs/k6-tx16m-polsrc-physical-20261123.md`.
+The next high-impact path is FSK-09S's B-specific FIFO status/headroom audit;
+the detailed roadmap requires status-only observation before any refill.
 
 **Latest independent non-FSK-injection evidence:** [real B-chip programmable-tone oscillator RF test](k6-arbitrary-rf-waveform-engine.md): 64 audio-tone updates at 150/s through the PLL FM path, zero firmware-reported late updates, **47/48 held-out tone IDs** using training-only timing. This bypassed the native-FSK FIFO. The next priority is a safe [REG_36 APC/envelope response study](k6-arbitrary-rf-waveform-engine.md), not only more FIFO work.
 
