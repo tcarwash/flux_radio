@@ -1,5 +1,7 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**New independent RF discriminator:** [TX-12D2 strict spectral MICIN qualification](k6-micin-strict-spectral-rf-qualification-20261122.md) combines the earlier physically checked 2-ms RF-edge detector with pilot-frozen 32-symbol frequency-trajectory scoring. It recovers the archived 26-ms PA-off RF event while correctly rejecting four-level modulation qualification. This complements, rather than replaces, the separate 48-kHz/RTL-IQ MICIN observer.
+
 **Physical wiring / receive-only gate:** [TX-12D MICIN fixture mapping and 44-ms pilot/holdout IQ scorer](k6-micin-physical-fixture-preflight-20261122.md) inventories present ALSA/RTL-SDR devices and documents the shared MIC/PTT/serial contacts, while flagging a prior **26-ms PA-off RF-like transient** as a safety concern. An independently developed offline IQ observer refuses to classify that historical event as four-level MICIN RF. No MICIN audio source or electrical fixture is verified connected yet.
 
 **New MICIN firmware checkpoint:** [TX-12C clean rebuild and compiled-image emulator acceptance](k6-micin-api26-emulator-acceptance-20261122.md) resolved the earlier test-harness failure: API26 needs a minimum API25 cancellation check, and legacy fixed-slot firmware cannot be tested with the packed SPI layout. The full emulator suite now passes 8 with 1 optional packed-library test skipped. This does not validate electrical MICIN input, hardware watchdog or RF transmission.

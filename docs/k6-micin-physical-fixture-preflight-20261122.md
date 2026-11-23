@@ -206,4 +206,5 @@ without synchronized, independent TX and audio provenance.
 
 Related: [MICIN baseband/filter exploration](k6-micin-bypass-lab.md),
 [API-26 emulator acceptance](k6-micin-api26-emulator-acceptance-20261122.md),
+[separate 2-ms spectral RF-edge and strict heldout qualifier](k6-micin-strict-spectral-rf-qualification-20261122.md),
 [TX roadmap](k6-tx-next-experiments.md).
