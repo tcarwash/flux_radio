@@ -45,19 +45,26 @@ and no verified B-specific almost-empty or refill interrupt mapping. The
 directly useful completion candidate supported by the TX code is `REG_0C & 1`;
 it marks frame completion, not remaining headroom.
 
+## Physical status-only result
+
+The frozen [FSK-09S-B observation](k6-fsk09s-status-probe-physical-20261123.md)
+ran twice with fully preloaded 16/32/48-word frames. `REG_5E=0x3044`,
+`REG_3F=0x8000`, and `REG_30=0xC1FA` stayed fixed. `REG_0C` only asserted
+completion (`0x0221`) after 87/140/193 ms; that is terminal status, not
+headroom. `REG_02` was `0x0800` only in run 01's first frame, then `0x8000`;
+run 02 read `0x8000` throughout. This did not repeat or track remaining FIFO
+words, so the predeclared status-signal criterion failed. No FIFO append was
+attempted.
+
 ## Next safe discriminator
 
-Before another refill attempt, implement a short guarded **status-only** TX
-observation at frozen times during known 16/32/48-word payloads. First
-establish which candidate reads are non-destructive on 0x4829; do not presume
-that an interrupt/status read cannot clear or acknowledge state. Likely
-candidates to audit are `REG_02`, `REG_0C`, `REG_3F`, `REG_5E`, and a separately
-justified state word. Use RX-idle baselines, TX-finished as the positive
-control, and the existing abort lease; do not write the threshold or IRQ
-gate, and do not read `REG_5F`. Require a repeatable change that tracks
-remaining payload length across independent captures before drawing a
-headroom inference. If no candidate changes, move to a source/datasheet audit
-of B-specific unframed mode rather than blindly appending FIFO words.
+Do not repeat the same old-family almost-empty IRQ guess. Before another
+refill attempt, find a B-specific source or interface description for an
+unframed/transparent TX mode or another documented occupancy signal. Any new
+candidate must first receive a fresh source/read-side-effect audit, then a
+frozen test, and must change repeatably with remaining payload length across
+independent captures. Never write an uncertain threshold or append FIFO words
+without a proven capacity bound.
 
 This source result supports an experiment design only. The measured 46.719-ms
 inter-frame nonpayload interval still prevents claiming transparent 4,800-bps
