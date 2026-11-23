@@ -52,8 +52,6 @@ int k6_main(const k6_api_t *api) {
 #define HOLD 3u
 #define W 200u
 #define AF_DAC 0x0200u
-#define CW_TEXT "AG7SU"
-#define UNIT_US 60000u /* 20 wpm */
 #define TX_MS 12000u
 
 static uint32_t rd(uint32_t a) { return *(volatile uint32_t *)a; }
@@ -72,25 +70,6 @@ static char *hexn(char *p, uint32_t v, int n) {
 }
 
 static int rssi(const k6_api_t *api) { return KM_RSSI_DBM(api->fd_read(0x67)); }
-
-/* Morse by code, as cwid.c: start at 1, then 0 for a dot and 1 for a dash (E = 2, A = 5) */
-static int code_of(char c) {
-  static const char tab[] = "~~ETIANMSURWDKGOHVF~L~PJBXCYZQ~~54~3~~~2~~+~~~~16=/~~~~~7~~~8~90";
-  int i;
-  for (i = 2; i < (int)sizeof tab - 1; i++)
-    if (tab[i] == c) return i;
-  return 0;
-}
-
-/* the PA on or off for n units; 0, -5 (the core keyed down) or -6 (a key) */
-static int hold(const k6_api_t *api, int on, int n) {
-  if (api->tx_pa(on) < 0) return -5;
-  while (n--) {
-    if (api->key_poll()) return -6;
-    api->delay_us(UNIT_US);
-  }
-  return 0;
-}
 
 /* IMA ADPCM, the standard coder: 4 bits a sample */
 typedef struct {
@@ -142,27 +121,18 @@ typedef struct {
   uint32_t ticks, n, rest, over, s30, now;
 } rec_t;
 
-/* keyed: the ID, then with the PA off the recording into rec (n samples). 0 or a negative
-   error; keyed down and REG_30 put back either way */
+/* PA disabled for microphone recording into rec (n samples). No CW ID or deliberate RF keying.
+   TX audio route may still momentarily energize RF; dummy load remains mandatory. */
 static int record(const k6_api_t *api, uint32_t m_in, uint16_t r47, uint16_t r48, uint8_t *rec, rec_t *o) {
   pa11_t c = {0, 0, 0, 0};
   ima_t ima = {0, 0};
   int32_t mean = 0;
   uint32_t i, j, t0 = 0, want;
-  const char *s;
   int e;
   if (rssi(api) >= RSSI_ON) return -4; /* never onto a busy channel */
   if (api->tx_on(TX_MS) != 0) return -3;
-  e = hold(api, 0, 5);
-  for (s = CW_TEXT; *s && !e; s++) {
-    int cd = code_of(*s), b;
-    for (b = 31; !(cd >> b); b--) {}
-    while (b-- && !e) {
-      e = hold(api, 1, (cd >> b) & 1 ? 3 : 1);
-      if (!e) e = hold(api, 0, b ? 1 : 3);
-    }
-  }
-  if (!e && api->tx_pa(0) < 0) e = -5;
+  /* Immediately request PA off. No intentional RF identification/keying. */
+  e = api->tx_pa(0) < 0 ? -5 : 0;
   if (!e) {
     o->s30 = api->fd_read(0x30);
     if (api->fd_read(0x36) & 0x0080u) e = -5; /* the PA is still on: no mic bit */

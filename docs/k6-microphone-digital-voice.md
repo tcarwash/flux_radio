@@ -40,9 +40,9 @@ The opt-in 0x4829-only, level-13 bench variant is designed to:
 - Refuse an unexpected chip or VFO other than 440.850 MHz.
 - Show PULL CABLE, require a full physical key press and release,
   then show TALK, THEN PRESS before the test.
-- Check the channel energy, request a short bounded guarded TX,
-  and identify with the configured research callsign AG7SU in CW.
-- Call tx_pa(0), verify REG_36 PA-enabled indication is cleared,
+- Check the channel energy and request a bounded TX-related audio state;
+  do not deliberately transmit a CW ID or other RF payload.
+- Immediately call tx_pa(0), verify REG_36 PA-enabled indication is cleared,
   and only then attempt REG_30 mic ADC and AF DAC bits.
   Restricted fd_write is attempted first; the adapted upstream
   low-level bus write is a last resort and its value is read back.

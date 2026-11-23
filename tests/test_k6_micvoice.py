@@ -76,7 +76,12 @@ def test_guard_sources_are_explicit_and_no_auto_lab_tx():
     assert 'api->fd_read(0x36) & 0x0080u' in s
     assert "mic_bus_write(api, 0x30, want)" in s
     assert "api->tx_off()" in s
-    assert '#define CW_TEXT "AG7SU"' in s
+    assert 'CW_TEXT' not in s
+    assert 'code_of(' not in s
+    assert 'hold(' not in s
+    assert 'api->tx_pa(1)' not in s
+    assert 'e = api->tx_pa(0) < 0 ? -5 : 0' in s
+    assert s.index('api->tx_on(TX_MS)') < s.index('api->tx_pa(0)')
     assert '#define MAX_BYTES 4096u' in s
 
 
