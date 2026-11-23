@@ -55,8 +55,15 @@ def select_l64(payload: bytes) -> dict:
 def receive(iq) -> dict:
     # Entire physical 66-byte frame, fixed programmed nominal 4800-baud.
     # Sync acquisition is based exclusively on the modem's public header.
+    profile=pager.profile('L','1200',depth=1,parity=False,short_last=True)
+    def unpack_guard(frame):
+        decision=select_l64(frame)
+        return profile.unpack(bytes.fromhex(decision['packet_hex'])) if decision['valid'] else None
+    # Use CRC only to choose among independently acquired public-sync
+    # sampling-phase candidates; never use known TX packet bytes.
     candidates=find_frames(iq,payload_bytes=PHYSICAL_BYTES,
-                           rate_factors=(1.,),min_correlation=.95)
+                           rate_factors=(1.,),min_correlation=.95,
+                           unpack_packet=unpack_guard)
     frames=[]
     for c in candidates['packets']:
         payload=bytes.fromhex(c['raw_payload_hex'])

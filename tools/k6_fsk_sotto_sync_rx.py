@@ -56,7 +56,8 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
                 sampling_phases=(.125,.375,.625,.875),
                 min_correlation=.79,
                 min_separation_hz=550,
-                max_frame_candidates=300, payload_bytes=PAYLOAD_BYTES):
+                max_frame_candidates=300, payload_bytes=PAYLOAD_BYTES,
+                unpack_packet=None):
     """List CRC-accepted packets found by searching *only* universal framing.
 
     Candidate matching and payload extraction use no expected voice bytes, no
@@ -105,7 +106,8 @@ def find_frames(iq, *, fs=FS, baud=BAUD,
                 d=observations[k+MARK_LEN:k+MARK_LEN+payload_bits]
                 bits=((d-threshold)*pol>0).astype(np.uint8)
                 decoded=np.packbits(bits).tobytes()
-                packet=p.unpack(decoded) if payload_bytes==PAYLOAD_BYTES else None
+                packet=(unpack_packet(decoded) if unpack_packet is not None else
+                        p.unpack(decoded) if payload_bytes==PAYLOAD_BYTES else None)
                 candidates.append({
                     'marker_start_s':round(t_marker,7),
                     'payload_start_s':round(t_marker+MARK_LEN/rate,7),
