@@ -23,7 +23,8 @@ FRAME_S = 0.040
 FRAME_BYTES = 6
 NATIVE_PACKET_BYTES = 128
 NATIVE_BAUD = 4800
-RF_RESTART_S = 0.046719
+RF_RESTART_S = 0.046719  # measured XL (128-byte FSK-09)
+RF_RESTART_S_L = 0.044375  # measured L (64-byte FSK-10), two physical repeats
 RF_PACKET_S = (NATIVE_PACKET_BYTES * 8 / NATIVE_BAUD) + RF_RESTART_S
 assert abs(RF_PACKET_S - 0.26005233333333333) < 1e-9
 
@@ -104,9 +105,10 @@ def simulate(
         raise ValueError("Interleave depth must be 1, 2, 4 or 8")
     if payload not in ("XL", "L"):
         raise ValueError("Use the existing L (64B) or XL (128B) pager profile")
-    # The 46.719-ms restart was physically observed for XL only.
-    # Applying it to the 64B L profile is explicitly an extrapolation.
-    rf_packet_s = pager.PROFILES[payload].payload * 8 / NATIVE_BAUD + RF_RESTART_S
+    # Both L and XL now have independently measured two-frame start intervals.
+    # Whether these gaps remain stable for long multi-packet sessions is unknown.
+    rf_packet_s = (pager.PROFILES[payload].payload * 8 / NATIVE_BAUD
+                   + (RF_RESTART_S_L if payload == "L" else RF_RESTART_S))
 
     rng = random.Random(seed)
     n_frames = len(frames) // FRAME_BYTES

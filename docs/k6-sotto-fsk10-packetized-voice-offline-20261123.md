@@ -5,6 +5,12 @@ Branch: `research/offline-sotto-fsk-dv-20261123`
 Scope: **OFFLINE ONLY**. No serial, SDR, RF transmissions, source firmware flashing, or edits to the active bench worktree.
 Tracking: [Flux #10](https://github.com/tcarwash/flux_radio/issues/10); see also [shared queue #11](https://github.com/tcarwash/flux_radio/issues/11).
 
+## Physical L64 timing correction (2026-11-23)
+
+**FSK-10 physical runs now establish an L64 measured start-to-start interval of 151.042ms**, with 44.375ms nonpayload framing/rearm, **0/256 heldout bit errors per frame in four physically captured 64-byte frames**. The prior L = 153.386ms estimate and ~613ms delay throughout this original offline report are **historical extrapolations**, now superseded. See [FSK-10 physical evidence](k6-fsk10-l64-physical-20261123.md).
+
+The committed simulator now sets `RF_RESTART_S_L=0.044375`, `RF_RESTART_S_XL=0.046719`, and predicts **~611ms capture-to-playout delay for L without parity** (160ms configured jitter buffer) or **~1,231ms** for L + depth2 parity with 500ms buffer. These are still simulations, **not a demonstrated voice link**. The two physical repeats used diagnostic fixed payload, not actual Sotto bitstream; long-run packet acquisition remains unproven.
+
 ## Result and recommendation
 
 **Sotto 1200 is a plausible compressed voice codec for native-FSK packet DV.** We use its *actual encoded* 48-bit/40-ms superframes (1,200 bps), not fabricated audio or uncompressed PCM, and reuse the existing `modem/pager.py` CRC, PN9, packet header, seq, 1-/2-/4-/8-way interleave and XOR parity machinery.

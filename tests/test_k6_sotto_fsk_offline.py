@@ -118,6 +118,7 @@ def test_existing_L_packet_profile_reduces_codec_collection_delay():
     assert small.frame_values_match
     assert small.capture_to_playout_ms < xl.capture_to_playout_ms
     assert small.air_fraction < 1.0
+    assert small.rf_frame_ms == 151.042
 
 
 def test_existing_L_packet_loss_conceals_320ms_not_800ms():
