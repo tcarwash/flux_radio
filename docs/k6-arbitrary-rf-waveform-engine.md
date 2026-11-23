@@ -1,5 +1,7 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**Latest real B-chip TX-15P phase discriminator:** [two 150-update/s non-commensurate tone trials](k6-tx15p-physical-phase-evidence-20261122.md) recorded complete SDR RF IQ; 48/48 held-out audio tone IDs each run. Unchanged REG_71 words had ~0.4° recovered audio phase RMS discontinuity across 28 held-out boundaries per run; changed words had ~100° RMS, with analog filter/receiver attribution unresolved. This is *real emitted FM*, but audio-tone phase is **not direct RF-carrier phase** or arbitrary waveform transmission. Both module backups, TX lease and VFO restorations verified.
+
 **TX-15P next serial-controlled discriminator:** [new non-commensurate audio-tone register vector](k6-tx15-phase-discriminator-20261122.md) uses 150 word updates/s and repeated unchanged REG_71 writes to make continuous, change-reset and every-write-reset oscillator phases distinguishable in ideal pilot and heldout data. The prior real RF vector's integer cycles/symbol made it intrinsically unable to prove phase continuity despite 47/48 heldout tone-ID decodes. New vector is emulator/offline only, NOT new RF or arbitrary carrier-IQ synthesis.
 
 **TX-17 read-only audit:** [direct FM register leads](k6-tx17-direct-fm-register-audit-20261122.md) found no verified fast writable signed frequency offset. B-chip RX-only state/latch tests remain open; legacy 0x4819 latch evidence must not be imputed to 0x4829.

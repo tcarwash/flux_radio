@@ -1,5 +1,7 @@
 # Flux TX-15P — phase-discriminating programmable RFIC tone vector
 
+**Physical follow-up completed:** [two live 0x4829 TX-15P RF captures and held-out audio phase results](k6-tx15p-physical-phase-evidence-20261122.md) supersede this document's emulator-only status. The original phase-vector *design* findings remain valid, but the new RF data demonstrate unchanged-register phase continuity (~0.4° RMS) and large, unresolved apparent phase changes when updating to a different tone word. This is not coherent arbitrary RF IQ.
+
 Checkpoint: November 22, 2026, local time. Branch
 `research/native-fsk-pdm`. 100% offline design and compiled
 Cortex-M0 emulator. **No new RF TX, flashing, audio connection or

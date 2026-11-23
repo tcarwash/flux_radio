@@ -129,6 +129,41 @@ def test_phase_vector_64_writes_preserve_default_pa_off_and_cleanup(phase_wrappe
 
 
 @need_clang
+def test_armed_phase_vector_uses_guarded_single_rf_lease(tmp_path):
+    p=tmp_path/"armed_phase.c"
+    p.write_text(
+        "#define TX8_BENCH_ENABLE 1\n"
+        "#define TX8_PHASE_VECTOR_V2 1\n"
+        "#define TX8_RF_ENABLE 1\n"
+        "#define TX8_RF_FIXTURE_ACK 1\n"
+        "#define TX8_RF_WATCHDOG_ACK 1\n"
+        "#define TX8_HZ 433500000u\n"
+        "#define TX8_SYMBOL_RATE 150u\n"
+        f'#include "{SOURCE}"\n'
+    )
+    code,entry=k6mod.build(str(p))
+    assert entry==0 and len(code)<4096
+    mmio,rcc,timers=k6_clock()
+    tx={}
+    ret,said,after,writes=run(
+        {**START,0:0x4829,0x70:0,0x71:0},
+        src=str(p),level=3,rx_hz=433500000,
+        tx=tx,mmio=mmio,write_us=180,count=130_000_000)
+    assert ret==64 and said[-1].startswith("tx8p2 n=64 "),said
+    assert [e[0] for e in tx["log"]]==[
+        "tx_on","tx_pa","tx_pa","tx_pa","tx_off"
+    ]
+    assert [e[1] for e in tx["log"] if e[0]=="tx_pa"]==[0,1,0]
+    assert tx["log"][0][:2]==("tx_on",1800)
+    words,symbols=parse_header(NEW_HEADER)
+    assert [v for reg,v,t in tx["w"] if reg==0x71 and v]==[
+        int(words[s]) for s in symbols
+    ]
+    assert after[0x70]==after[0x71]==0
+    assert not timers.get(0,0)&1 and rcc[0x18]==0
+
+
+@need_clang
 def test_phase_vector_does_not_allow_wrong_symbol_rate(tmp_path):
     p=tmp_path/"wrong_rate.c"
     p.write_text(
