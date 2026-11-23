@@ -1,5 +1,7 @@
 # Flux — arbitrary RF waveform engine: architecture and physical TX paths
 
+**New measured envelope evidence (2026-11-22):** [FD6818B APC hysteresis and high-side modulation-rate experiments](k6-apc-fine-hysteresis-bandwidth.md) show a second physically functioning RF control dimension. For this K6, the APC target responds over 80-100% at ~25-48 Hz but loses substantial modulation contrast by ~91 Hz; dropping to 70% initiates ~8-ms periodic RF fades that persist until the target returns toward 80%. The offline polar-IQ workbench now includes an evidence-constrained measured APC feasibility diagnostic and idealized 80% amplitude-floor EVM bound. This does **not** demonstrate synchronous combined phase/envelope IQ, usable audio-rate amplitude modulation, calibrated power, or spectral compliance. All experimental firmware was rolled back to the original build after the tests.
+
 Date: November 22, 2026.
 Worktree: /storage5/dev/flux-native-fsk-pdm
 Branch: research/native-fsk-pdm

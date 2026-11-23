@@ -106,6 +106,57 @@ def complex_fit(target:np.ndarray,candidate:np.ndarray)->dict:
                 coherent_correlation=float(cosine))
 
 
+
+def measured_apc_feasibility(target: np.ndarray, polar: dict) -> dict:
+    """Evidence-constrained *advisory* for the tested FD6818B low-power APC.
+
+    The lab only proved 80-100% relative envelope modulation at tens of Hz;
+    this does not simulate the actual RF actuator, PLL or output spectrum.
+    """
+    fs=float(polar["sample_rate_hz"])
+    a=np.asarray(polar["envelope"],dtype=float)
+    normalized=a/max(float(a.max()),1e-12)
+    floor=0.80  # Conservative stable limit (70-76% showed hysteresis).
+    outside=normalized<floor-1e-9
+    ac=normalized-float(np.mean(normalized))
+    spectrum=np.abs(np.fft.rfft(ac*np.hanning(len(ac))))**2
+    frequencies=np.fft.rfftfreq(len(ac),1/fs)
+    total=float(np.sum(spectrum))
+    cutoff50=float(np.sum(spectrum[frequencies>50])/total) if total>1e-12 else 0.
+    cutoff90=float(np.sum(spectrum[frequencies>90])/total) if total>1e-12 else 0.
+    # This idealized clamping-error number is a mathematical lower bound
+    # for *amplitude alone*: no real PA delay, settling or RF phase error.
+    ph=np.asarray(polar["phase"],dtype=float)
+    ideal_clamped=np.clip(normalized,floor,1.)*np.exp(1j*ph)
+    envelope_only_evm=complex_fit(target,ideal_clamped)["normalized_evm"]
+    is_constant=bool(np.max(normalized)-np.min(normalized)<1e-5)
+    enough_resolution=fs/len(a)<=25.
+    candidate=(not np.any(outside) and cutoff50<.01 and enough_resolution)
+    return {
+        "status": ("constant_envelope_no_apc_needed" if is_constant else
+                   "outside_measured_amplitude_range" if np.any(outside) else
+                   "rate_or_duration_unvalidated" if not candidate else
+                   "slow_80_to_100_percent_apc_candidate_only"),
+        "source": "two 2026-11-22 hardware trials, uncalibrated air-coupled K6/FD6818B",
+        "physical_target_waveform_transmission_verified": False,
+        "measured_stable_apc_target_range_percent": [80,100],
+        "observed_70percent_hysteresis": True,
+        "reference_20ms_cycle_hz":24.28,
+        "reference_10ms_cycle_hz":47.59,
+        "reference_10ms_contrast_retained_fraction":0.944,
+        "reference_5ms_cycle_hz":91.05,
+        "reference_5ms_contrast_retained_fraction":0.395,
+        "target_minimum_envelope_fraction_of_peak":float(np.min(normalized)),
+        "samples_below_stable_amplitude_floor":int(np.count_nonzero(outside)),
+        "fraction_below_stable_amplitude_floor":float(np.mean(outside)),
+        "envelope_ac_spectral_energy_above_50hz_fraction":cutoff50,
+        "envelope_ac_spectral_energy_above_90hz_fraction":cutoff90,
+        "envelope_frequency_bin_resolution_hz":fs/len(a),
+        "ideal_80percent_floor_clamped_amplitude_only_evm_lower_bound":envelope_only_evm,
+        "caveat": "No combined phase/amplitude RF control, hardware bandwidth transfer model, time-aligned GPIO trace, or spectral purity verified. A candidate is NOT an executable RF waveform."
+    }
+
+
 def analyze(x:np.ndarray,fs:float,*,freq_limit_hz=1200.,
             envelope_levels=4)->tuple[dict,dict]:
     polar=complex_to_polar(x,fs)
@@ -140,6 +191,7 @@ def analyze(x:np.ndarray,fs:float,*,freq_limit_hz=1200.,
             20*np.log10(max(np.percentile(envelope,99),1e-12)/
                         max(np.percentile(envelope,1),1e-12))),
         "constant_envelope_target":bool(np.allclose(envelope,np.mean(envelope),rtol=1e-4,atol=1e-5)),
+        "fd6818b_measured_apc_feasibility":measured_apc_feasibility(x,polar),
         "results":case,
         "caveats":[
             "FM-only can reproduce phase trajectories subject to deviation/clock limits, but cannot reproduce variable RF amplitude.",

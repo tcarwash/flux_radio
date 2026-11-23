@@ -167,6 +167,10 @@ if [ "${K6_MICIN_TX:-0}" = 1 ]; then
   }
   python3 "$HERE/apply-micin-tx-api.py"
 fi
+if [ "${K6_APC_FINE:-0}" = 1 ] && [ "${K6_APC_TX:-0}" != 1 ]; then
+  echo "Fine APC profile requires explicitly enabled APC TX" >&2
+  exit 1
+fi
 if [ "${K6_APC_TX:-0}" = 1 ]; then
   [ "${K6_MICIN_TX:-0}" = 1 ] && [ "${K6_LIVE_SERIAL:-0}" = 1 ] &&
   [ "${K6_LEAN_TXDOG:-0}" = 1 ] && [ "${K6_OTA_SERVICE:-1}" = 0 ] || {

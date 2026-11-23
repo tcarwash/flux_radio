@@ -127,3 +127,35 @@ def test_source_is_offline():
                   "tx_on(","fd_write(","mutate_library(","run_module(",
                   "subprocess.run("):
         assert token not in s
+
+
+def test_measured_apc_feasibility_distinguishes_slow_narrow_and_fast_am():
+    fs=48000
+    t=np.arange(fs,dtype=float)/fs
+    small=(.9+.1*np.sin(2*np.pi*13*t))*np.exp(2j*np.pi*120*t)
+    r,_=analyze(small,fs)
+    apc=r['fd6818b_measured_apc_feasibility']
+    assert apc['status']=='slow_80_to_100_percent_apc_candidate_only'
+    assert apc['samples_below_stable_amplitude_floor']==0
+    assert apc['envelope_ac_spectral_energy_above_50hz_fraction']<.01
+    assert not apc['physical_target_waveform_transmission_verified']
+    high=(.9+.1*np.sin(2*np.pi*100*t))*np.exp(2j*np.pi*120*t)
+    out,_=analyze(high,fs)
+    fast=out['fd6818b_measured_apc_feasibility']
+    assert fast['status']=='rate_or_duration_unvalidated'
+    assert fast['envelope_ac_spectral_energy_above_90hz_fraction']>.8
+    wide=reference('am',fs=fs,duration_s=.5)
+    old,_=analyze(wide,fs)
+    limited=old['fd6818b_measured_apc_feasibility']
+    assert limited['status']=='outside_measured_amplitude_range'
+    assert limited['fraction_below_stable_amplitude_floor']>.1
+    assert limited['ideal_80percent_floor_clamped_amplitude_only_evm_lower_bound']>.01
+
+
+def test_measured_apc_constant_envelope_requires_no_actuator():
+    x=reference('cw',fs=48000,duration_s=.25)
+    r,_=analyze(x,48000)
+    f=r['fd6818b_measured_apc_feasibility']
+    assert f['status']=='constant_envelope_no_apc_needed'
+    assert f['envelope_ac_spectral_energy_above_50hz_fraction']==0
+    assert f['samples_below_stable_amplitude_floor']==0

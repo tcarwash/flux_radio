@@ -116,6 +116,14 @@ unsafe extern "C" fn mod_apc_set(percent: u32) -> i32 {
 unsafe extern "C" fn mod_apc_set(_percent: u32) -> i32 { -1 }
 
 '''
+# This additional, narrower research profile is opt-in and does not widen
+# the previously validated four-value API27 contract by default.
+if os.environ.get("K6_APC_FINE", "0") == "1":
+    callback=callback.replace(
+        'if percent != 70 && percent != 80 && percent != 90 && percent != 100 {',
+        'if !matches!(percent, 70 | 72 | 74 | 76 | 78 | 80 | 85 | 90 | 100) {')
+    if 'matches!(percent, 70 | 72 | 74 | 76 | 78 | 80 | 85 | 90 | 100)' not in callback:
+        raise SystemExit('fine profile refusal whitelist patch missing')
 replace_once(anchor,callback+anchor)
 pager.write_text(s)
 print("Applied opt-in level-27 calibrated APC callback")
