@@ -37,7 +37,7 @@
 #define TX8_GAIN 48u
 #endif
 /* Optional conducted-load RF calibration. Unlike the original
- * PA-off write-timing probe, this explicitly keys RF during the 64
+ * PA-off write-timing probe, this explicitly keys RF during the bounded
  * tone events. The two independent acknowledgments must be supplied
  * by a wrapper outside the repository's inert/default build. */
 #ifndef TX8_RF_ENABLE

@@ -121,8 +121,9 @@ def linear_fit_predict(obs,time,bases,train,test,*,carrier_poly_degree=1):
     X=np.stack(cols,axis=1)
     coefs=np.linalg.lstsq(X[train],obs[train],rcond=None)[0]
     predicted=X@coefs
-    def metrics(mask):
-        residual=np.angle(np.exp(1j*(obs[mask]-predicted[mask])))
+    def metrics(mask,alternative_prediction=None):
+        pred=predicted if alternative_prediction is None else alternative_prediction
+        residual=np.angle(np.exp(1j*(obs[mask]-pred[mask])))
         return dict(
             n_samples=int(mask.sum()),
             phase_rms_deg=float(np.sqrt(np.mean(np.rad2deg(residual)**2))),
@@ -130,6 +131,13 @@ def linear_fit_predict(obs,time,bases,train,test,*,carrier_poly_degree=1):
             circular_coherence=float(abs(np.mean(np.exp(1j*residual)))),
             circular_bias_deg=float(np.rad2deg(np.angle(np.mean(np.exp(1j*residual)))))
         )
+    # Explicit counterfactual: invert *only* the learned FM portion
+    # after freezing every pilot coefficient. The pilot is never fit to
+    # this wrong-sign hypothesis and the heldout is never fitted at all.
+    inverted=None
+    if bases:
+        fm=coefs[-len(bases):]@X[:,-len(bases):].T
+        inverted=predicted-2*fm
     return dict(
         coefficients=[float(v) for v in coefs],
         fitted_pilot_only=True,
@@ -139,6 +147,7 @@ def linear_fit_predict(obs,time,bases,train,test,*,carrier_poly_degree=1):
         fm_quadrature_norm=float(np.hypot(*coefs[-2:])) if bases else None,
         pilot=metrics(train),
         heldout=metrics(test),
+        inverted_modulation_heldout_diagnostic=metrics(test,inverted) if inverted is not None else None,
     )
 
 
@@ -194,6 +203,7 @@ def analyze_file(iq_path:Path,header:Path=HEADER):
         source_acquisition=anchor,pilot_clock_training=clock,
         model_comparison=results,
         model_selection_on_first_two_captures_is_exploratory=True,
+        inverted_fm_diagnostic_added_after_three_captures=True,
         frozen_quadratic_rf_cfo_model_for_independent_future_run=True,
         limitations=[
             "RF phase predictions fit 4 parameters on disjoint pilot IQ samples; heldout never tunes this model.",

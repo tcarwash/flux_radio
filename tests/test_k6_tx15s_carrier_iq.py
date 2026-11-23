@@ -61,6 +61,7 @@ def test_four_pilot_windows_train_quadratic_cfo_rf_iq_model_without_heldout():
     assert fm["fm_quadrature_norm"]==pytest.approx(1.,abs=.04)
     assert fm["rf_cfo_drift_hz_per_s"]==pytest.approx(-6.,abs=.2)
     assert null["heldout"]["circular_coherence"]<.8
+    assert fm["inverted_modulation_heldout_diagnostic"]["circular_coherence"]<.8
 
 
 def test_quadratic_fit_coefficients_do_not_change_when_heldout_is_changed():
@@ -112,3 +113,5 @@ def test_physical_carrier_phase_capture_if_present(run):
         assert abs(fm["estimated_rf_cfo_hz"])<1000
         assert fm["fm_quadrature_norm"]<3
         assert fm["heldout"]["circular_coherence"]>null["heldout"]["circular_coherence"]
+        assert fm["heldout"]["circular_coherence"]>fm[
+            "inverted_modulation_heldout_diagnostic"]["circular_coherence"]
