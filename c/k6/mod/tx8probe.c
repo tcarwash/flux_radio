@@ -8,7 +8,15 @@
 #ifndef TX8_PHASE_VECTOR_V2
 #define TX8_PHASE_VECTOR_V2 0
 #endif
-#if TX8_PHASE_VECTOR_V2
+#ifndef TX8_PHASE_VECTOR_V3
+#define TX8_PHASE_VECTOR_V3 0
+#endif
+#if TX8_PHASE_VECTOR_V2 && TX8_PHASE_VECTOR_V3
+#error "TX8 cannot select more than one phase-vector payload"
+#endif
+#if TX8_PHASE_VECTOR_V3
+#include "tx8_long_phase_probe.h"
+#elif TX8_PHASE_VECTOR_V2
 #include "tx8_phase_probe.h"
 #else
 #include "tx8_probe.h"
@@ -48,8 +56,11 @@
 #if TX8_SYMBOL_RATE < 100u || TX8_SYMBOL_RATE > 600u
 #error "TX8 RF symbol rate outside bounded test"
 #endif
-#if TX8_PHASE_VECTOR_V2 && TX8_SYMBOL_RATE != 150u
-#error "TX-15P non-commensurate vector qualified only at 150 Hz schedule"
+#if (TX8_PHASE_VECTOR_V2 || TX8_PHASE_VECTOR_V3) && TX8_SYMBOL_RATE != 150u
+#error "TX-15P/R non-commensurate vectors qualified only at 150 Hz schedule"
+#endif
+#if TX8_PHASE_VECTOR_V3 && TX8_NS != 192u
+#error "TX-15R fixed-length 192-event safety budget"
 #endif
 
 #define RCC_APB2ENR 0x40021018u
@@ -177,7 +188,9 @@ int k6_main(const k6_api_t *api) {
   }
   if(ret==(int)TX8_NS) wait_cycle(&clk,TX8_NS*CYCLES_PER_SYMBOL);
   span=clk_now(&clk);
-#if TX8_PHASE_VECTOR_V2
+#if TX8_PHASE_VECTOR_V3
+  p=put(line,"tx8r n=");
+#elif TX8_PHASE_VECTOR_V2
   p=put(line,"tx8p2 n=");
 #else
   p=put(line,"tx8 n=");
