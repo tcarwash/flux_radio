@@ -34,6 +34,8 @@
             <label>Known prefix anomaly <select name="prefix_every"><option value="0">None</option><option value="2">Every second frame</option></select></label>
             <label>ADC cycles/sample <input type="number" name="adc_cycles" value="4800" min="0" max="7500" step="25"></label>
             <label>SPI overhead · µs/read <input type="number" name="spi_us" value="10" min="1" max="100" step="1"></label>
+            <label>RX FIFO threshold (words) <input type="number" name="rx_threshold" value="4" min="1" max="7" step="1"></label>
+            <label>RX polling · µs <input type="number" name="rx_poll_us" value="1000" min="500" max="25000" step="500"></label>
           </div>
           <button type="submit" class="primary" id="sotto-lab-run">Run virtual PTT → RX → speaker</button>
         </form>
@@ -109,7 +111,7 @@ if(sottoForm)sottoForm.addEventListener('submit',async e=>{
   e.preventDefault();
   const button=document.querySelector('#sotto-lab-run'),status=document.querySelector('#sotto-lab-status'),player=document.querySelector('#sotto-lab-audio');
   const data=new FormData(sottoForm);
-  const body={fixture:data.get('fixture'),cn_db:Number(data.get('cn_db')),offset_hz:Number(data.get('offset_hz')),prefix_every:Number(data.get('prefix_every')),adc_cycles:Number(data.get('adc_cycles')),spi_us:Number(data.get('spi_us'))};
+  const body={fixture:data.get('fixture'),cn_db:Number(data.get('cn_db')),offset_hz:Number(data.get('offset_hz')),prefix_every:Number(data.get('prefix_every')),adc_cycles:Number(data.get('adc_cycles')),spi_us:Number(data.get('spi_us')),rx_threshold:Number(data.get('rx_threshold')),rx_poll_us:Number(data.get('rx_poll_us'))};
   button.disabled=true;player.pause();player.removeAttribute('src');player.hidden=true;
   status.textContent='Compiling real ARM Sotto + native reference and running offline virtual RF…';
   try{
@@ -117,7 +119,7 @@ if(sottoForm)sottoForm.addEventListener('submit',async e=>{
     const result=await response.json();
     if(!result.report)throw Error(result.error||'No modem result');
     const r=result.report;
-    status.textContent=`${r.passed?'PASS':'MODEL LIMIT'} · ${r.codec_frames} exact superframes · ${r.rf_packets_received} RF packets · ${r.samples_captured}/${r.samples_in} PCM · ${r.spi_reads} SPI reads · ${r.compiled_artifacts_reused?'cached build':'fresh build'} · ${r.total_wall_seconds}s · TX idle ${r.tx_idle?'yes':'NO'} · return RX ${r.radio_returned_to_rx?'yes':'NO'}`;
+    status.textContent=`${r.passed?'PASS':'MODEL LIMIT'} · ${r.codec_frames} exact superframes · ${r.rf_packets_received} RF packets · ${r.samples_captured}/${r.samples_in} PCM · ${r.spi_reads} SPI reads · RX FIFO ${r.rx_fifo_status?.overruns??'—'} overruns · ${r.compiled_artifacts_reused?'cached build':'fresh build'} · ${r.total_wall_seconds}s · TX idle ${r.tx_idle?'yes':'NO'} · return RX ${r.radio_returned_to_rx?'yes':'NO'}`;
     if(!r.passed)throw Error('Offline model did not complete the voice session (see statistics above)');
     player.src='/api/sotto/audio.wav?'+Date.now();player.hidden=false;
     notify('Sotto virtual RX audio ready');

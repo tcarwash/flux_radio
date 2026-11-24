@@ -160,7 +160,8 @@ class MockSottoRadio:
         self.rx_audio=audio
         self.speaker_cursor=0
 
-    def transmit(self,*,adc_cycles=4800,spi_us=10,spi_byte_us=0,channel=None):
+    def transmit(self,*,adc_cycles=4800,spi_us=10,spi_byte_us=0,channel=None,
+                 threshold=4,poll_us=1000):
         if self.ptt or self.running or self.radio_state=='TX':
             raise RuntimeError('PTT already held')
         if not ptt_allowed(sotto_selected=self.mode=='SOTTO',
@@ -176,7 +177,8 @@ class MockSottoRadio:
         self.running=True
         try:
             result=trial(self.artifact,channel or Channel(),cpi=1.5,adc_cycles=adc_cycles,
-                         spi_us=spi_us,spi_byte_us=spi_byte_us,capture_codec=True)
+                         spi_us=spi_us,spi_byte_us=spi_byte_us,capture_codec=True,
+                         threshold=threshold,poll_us=poll_us)
         finally:
             # The actual ARM TX oracle enforces its own RF/PA release; the
             # mock's control state *also* fails closed back to RX on errors.

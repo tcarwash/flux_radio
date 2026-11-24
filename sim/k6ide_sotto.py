@@ -143,7 +143,8 @@ class SottoVoiceLab:
     def run(self, *, fixture: str = "mixed", cn_db: float = 25.0,
             offset_hz: float = 0.0, prefix_every: int = 0,
             adc_cycles: int = 4800, spi_us: float = 10.0,
-            spi_byte_us: float = 0.0) -> dict:
+            spi_byte_us: float = 0.0, rx_threshold: int = 4,
+            rx_poll_us: int = 1000) -> dict:
         """Build, execute, receive, decode and render one half-duplex session."""
         if fixture not in ("mixed", "triangle"):
             raise ValueError("Fixture must be mixed or triangle")
@@ -154,11 +155,14 @@ class SottoVoiceLab:
         if not (5 <= cn_db <= 45 and -4000 <= offset_hz <= 4000
                 and 1 <= spi_us <= 100 and 0 <= spi_byte_us <= 5):
             raise ValueError("RF / SPI model parameter outside safe offline range")
-        if isinstance(prefix_every, bool) or isinstance(adc_cycles, bool):
+        if any(isinstance(v, bool) for v in
+               (prefix_every, adc_cycles, rx_threshold, rx_poll_us)):
             raise ValueError("Invalid non-integer simulation setting")
         if (int(prefix_every) != prefix_every or int(adc_cycles) != adc_cycles
-                or not 0 <= prefix_every <= 6 or not 0 <= adc_cycles <= 7500):
-            raise ValueError("Invalid FSK prefix or ADC workload")
+                or int(rx_threshold) != rx_threshold or int(rx_poll_us) != rx_poll_us
+                or not 0 <= prefix_every <= 6 or not 0 <= adc_cycles <= 7500
+                or not 1 <= rx_threshold <= 7 or not 500 <= rx_poll_us <= 25000):
+            raise ValueError("Invalid FSK prefix, ADC workload, or RX FIFO timing")
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Sotto lab is busy")
         try:
@@ -183,6 +187,7 @@ class SottoVoiceLab:
                 passed = radio.transmit(
                     adc_cycles=int(adc_cycles), spi_us=spi_us,
                     spi_byte_us=spi_byte_us,
+                    threshold=int(rx_threshold),poll_us=int(rx_poll_us),
                     channel=Channel(cn_db=cn_db, offset_hz=offset_hz,
                                     prefix_every=int(prefix_every)),
                 )
@@ -221,6 +226,9 @@ class SottoVoiceLab:
                     "codec_frames": raw["codec_frames"],
                     "codec_exact": bool(raw["codec_exact"]),
                     "rf_packets_received": raw["received"],
+                    "rx_fifo_status": raw["rx"],
+                    "rx_threshold": rx_threshold,
+                    "rx_poll_us": rx_poll_us,
                     "session_complete": bool(raw["session"]["complete"]),
                     "wire_decoder_agrees": bool(raw["wire_decoder_agrees"]),
                     "audio_samples": int(len(radio.rx_audio)) if passed else 0,

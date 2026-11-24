@@ -14,7 +14,12 @@ FD6818B preloaded 33-word/4800-baud FSK profile emits IQ. The independent
 RF receiver and C/Python FDV1 wire decoders must recover an *exact* stream
 before the pinned native C Sotto-1200 decoder produces 20 ms PCM speaker
 blocks. The strict pass oracle checks buffers, CRC, session boundaries,
-codec agreement and post-TX restoration.
+codec agreement and post-TX restoration. The receiver side is not just
+an analytic IQ decoder: `tools/k6_fsk_emulator_replay.receive` executes
+a **compiled Cortex-M0 polling receiver fixture** against SoapyFang's
+behavioral FD6818B `FskRx` FIFO, followed by independent C/Python FDV1
+checks and the real *host* fixed-point speech decoder. The chip/register
+model remains uncalibrated to physical 4,800-baud silicon.
 
 ## Launch with the workbench
 
@@ -30,7 +35,8 @@ cd /storage5/dev/flux-sotto-flashable-duplex-20261124
 
 Then open `http://127.0.0.1:5056/` and use **Sotto-1200 half-duplex
 voice**. You can choose two 8-kHz PCM fixtures, finite RF C/N, frequency
-offset, known 2-byte prefix anomaly, ADC workload and SPI per-read latency.
+offset, known 2-byte prefix anomaly, ADC workload, SPI per-read latency,
+and the **actual modeled 33-word FSK RX FIFO threshold/polling interval**.
 The button executes **one bounded virtual session**, shows packet/codec/
 SPI/PCM results and enables the browser's decoded-receiver WAV player
 only after strict acceptance.
@@ -69,6 +75,32 @@ initialized. A no-microphone baseline captures 9,600 samples, sends
 six virtual FSK packets, verifies 30 exact 6-byte Sotto codeframes, and
 produces 60 x 20 ms receiver PCM blocks. Under deliberately high ADC/SPI
 load, it returns an explicit MODEL LIMIT and deletes stale playback.
+
+## First receiver scheduling sweep (modeled)
+
+At 1.2 seconds of mixed PCM with ADC 4,800 cycles/sample and
+10 µs SPI overhead, the actual ARM polling receive fixture, SoapyFang
+`FskRx` FIFO and independent FDV1 receiver reported:
+
+| RX threshold | Poll interval | FDV1 received | FIFO overrun/underflow | Full session |
+|---:|---:|---:|---:|---|
+| 4 words | 1 ms | 6/6 | 0 / 0 | Pass |
+| 4 words | 3 ms | 6/6 | 0 / 0 | Pass |
+| 4 words | 5 ms | 6/6 | 0 / 0 | Pass |
+| 6 words | 1 ms | 6/6 | 0 / 0 | Pass |
+| 6 words | 3 ms | 6/6 | 0 / 0 | Pass |
+| 6 words | 5 ms | 5/6 | 0 / 0 | Fail |
+| 6 words | 12 ms | 5/6 | 6 / 6 | Fail |
+| 6 words | 25 ms | 5/6 | 28 / 28 | Fail |
+
+The 5-ms/threshold-6 miss **is not an overrun** by this model's
+status counters; it is likely frame completion/re-arm scheduling
+sensitivity. Do not falsely count it as FIFO overflow or assume that
+6 words is safer than 4. These are deterministic, incomplete sweep
+data, **not physical B-chip measurements** and not a proven global
+threshold optimum. Keep conservative 4-word/1-ms polling as the
+default until hardware-derived timings and other noise/phase cases
+are validated.
 
 ## Limits and next optimization gates
 

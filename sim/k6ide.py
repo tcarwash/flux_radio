@@ -512,7 +512,8 @@ def create_app(workbench: RadioAdapter, *, sotto_lab=None):
             if not isinstance(body, dict):
                 raise ValueError("Expected an object of bounded test parameters")
             allowed = {"fixture", "cn_db", "offset_hz", "prefix_every",
-                       "adc_cycles", "spi_us", "spi_byte_us"}
+                       "adc_cycles", "spi_us", "spi_byte_us",
+                       "rx_threshold", "rx_poll_us"}
             if set(body) - allowed:
                 raise ValueError("Unknown Sotto lab settings")
             report = sotto_lab.run(**body)

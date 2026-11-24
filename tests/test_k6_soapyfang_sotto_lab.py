@@ -40,6 +40,8 @@ def test_validation_and_no_stale_wav():
         {"adc_cycles":9999}, {"spi_us":-1},
         {"prefix_every":7}, {"prefix_every":2.3}, {"offset_hz":9000},
         {"rf_source":"soapy:driver=hackrf"}, {"fixture":[]},
+        {"rx_threshold":0}, {"rx_threshold":8},
+        {"rx_poll_us":100}, {"rx_poll_us":30000}, {"rx_poll_us":500.1},
     ]:
         res=client.post('/api/sotto/run',json=body)
         assert res.status_code==400,body
@@ -69,6 +71,10 @@ def test_real_arm_virtual_rf_speaker_and_overload():
     assert r['samples_in']==r['samples_captured']==r['audio_samples']==9600
     assert r['speaker_blocks_20ms']==60
     assert r['module_bytes']+24 <= 10240
+    assert r['rx_fifo_status']['frames']==6
+    assert r['rx_fifo_status']['words']==6*33
+    assert r['rx_fifo_status']['overruns']==r['rx_fifo_status']['underflows']==0
+    assert r['rx_threshold']==4 and r['rx_poll_us']==1000
     assert r['keyed_spi_reads']>0 and r['spi_read_bytes']>r['keyed_spi_read_bytes']
     assert 'SoapyFang RFBackend/VirtualAir IQ' in r['radio_path']
     out=client.get('/api/sotto/audio.wav')
@@ -120,3 +126,22 @@ def test_content_hash_invalidates_build_cache_without_git_changes(monkeypatch):
     lab.close()
     with pytest.raises(RuntimeError,match="closed"):
         lab.run()
+
+
+def test_rx_fifo_threshold_polling_can_miss_final_session_without_overrun():
+    # An intentionally slow 5-ms service loop is adequate for threshold=4
+    # in this finite virtual session but misses a packet with threshold=6,
+    # despite neither case reporting a raw FIFO overflow.
+    lab=SottoVoiceLab(ROOT)
+    try:
+        ok=lab.run(fixture="mixed",rx_threshold=4,rx_poll_us=5000)
+        assert ok["passed"] and ok["rf_packets_received"]==6
+        assert ok["rx_fifo_status"]["overruns"]==0
+        fail=lab.run(fixture="mixed",rx_threshold=6,rx_poll_us=5000)
+        assert not fail["passed"] and fail["rf_packets_received"]==5
+        assert fail["rx_fifo_status"]["overruns"]==0
+        assert fail["compiled_artifacts_reused"]
+        assert fail["tx_idle"] and fail["radio_returned_to_rx"]
+        assert not lab.state()["audio_available"]
+    finally:
+        lab.close()
