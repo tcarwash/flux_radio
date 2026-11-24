@@ -86,6 +86,8 @@ The C tests compile the functions for both host and actual Cortex-M0 target, cro
 
 ## Development roadmap
 
+**Updated architecture decision:** The Sotto RF modem and encoder should be a user-installable catalog module, not resident modem-specific firmware. See [Sotto modem module](k6-sotto-modem-module.md) for the staged PTT workflow, module scratch budget, and next TX test. The list below remains relevant to shared decoder, audio and radio services rather than requiring all of the Sotto TX logic to be linked into internal flash.
+
 1. Create substantial flash headroom for the next Sotto firmware image (at least several KiB for explicit B-chip TX/RX driver/scheduler). Keep real-time DSP margin via reproducible Cortex-M0 audio corpus tests. Review RAM: SPI decoder state, message store, module arena, ISR stack and ring buffers.
 2. Wire a **bounded native B-chip 66-byte FSK receive** path into the Rust firmware's RFIC ISR/foreground services, independent CRC/guard and queued voice/session parsing. Do not steal the TIM14 TX watchdog or modify RX exception remap without detailed audit. Validate RX-only before any RF-transmitting firmware.
 3. Integrate physical Sotto decoder, PWM speaker and jitter buffer. No flash or RF without separate GitHub #11 hardware reservation/ACK, canonical serial-port lock, and rollback procedure.
