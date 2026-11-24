@@ -26,10 +26,29 @@ ACK_URL=re.compile(r"^https://github\.com/([^/]+/[^/]+)/issues/([1-9]\d*)#issuec
 
 def gh_api(route, paginate=False):
     args=["gh","api"]
-    if paginate: args+=["--paginate","--slurp"]
+    if paginate: args.append("--paginate")
     args.append(route)
     raw=subprocess.run(args,check=True,capture_output=True,text=True,timeout=60).stdout
-    return json.loads(raw)
+    if not paginate:
+        return json.loads(raw)
+    # gh 2.28's --paginate emits adjacent JSON arrays, but --slurp was
+    # introduced later. Decode ALL complete pages, never just the first.
+    decoder=json.JSONDecoder()
+    pages=[]
+    pos=0
+    while pos<len(raw):
+        while pos<len(raw) and raw[pos].isspace():
+            pos+=1
+        if pos==len(raw):
+            break
+        page,end=decoder.raw_decode(raw,pos)
+        if not isinstance(page,list):
+            raise batch.Refused("paginated bench coordination response is not an array")
+        pages.append(page)
+        pos=end
+    if not pages:
+        raise batch.Refused("no GitHub coordination pages returned")
+    return pages
 
 def load_config(path):
     d=json.loads(Path(path).read_text())

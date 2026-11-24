@@ -112,3 +112,15 @@ def test_wrong_job_issue_blocks(tmp_path,monkeypatch):
     cfgpath.write_text(json.dumps(c))
     with pytest.raises(h.batch.Refused,match="job issue mismatch"):
         h.load_registered_manifest(h.load_config(cfgpath),9)
+
+
+def test_old_github_cli_paginated_history(monkeypatch):
+    class Completed:
+        stdout='[{"id":1}]\n[{"id":2},{"id":3}]\n'
+    def run(argv,**kwargs):
+        assert "--paginate" in argv and "--slurp" not in argv
+        return Completed()
+    monkeypatch.setattr(h.subprocess,"run",run)
+    assert h.gh_api("repos/test/repo/issues/11/comments?per_page=100",paginate=True)==[
+        [{"id":1}],[{"id":2},{"id":3}]]
+
