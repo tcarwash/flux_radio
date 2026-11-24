@@ -42,3 +42,24 @@ def test_vfo_baseline_fail_closed():
     a["status"]["vfos"][0]["hz"]=444000000
     with pytest.raises(ValueError):
         b.check(a,baseline=baseline)
+
+def test_exact_api_gate():
+    a=sample()
+    assert b.check(a,exact_api=29)
+    with pytest.raises(ValueError,match="API"):
+        b.check(a,exact_api=30)
+
+def test_snapshot_slot_drift_gate():
+    a=sample()
+    a["slot_sha256"]={"0":"abcd","31":"deadbeef"}
+    a["slot_count"]=2
+    base=__import__("copy").deepcopy(a)
+    assert b.check(a,baseline=base)
+    a["slot_sha256"]["31"]="changed"
+    with pytest.raises(ValueError,match="packed"):
+        b.check(a,baseline=base)
+
+def test_snapshot_baseline_requires_slot_data():
+    a=sample()
+    with pytest.raises(ValueError,match="missing full"):
+        b.check(a,baseline=a)

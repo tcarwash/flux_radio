@@ -272,3 +272,50 @@ qualification and physical lease gates before enrollment.
 Whole-bench flock excludes only agents that honor it; GitHub claim comments
 are not atomic reservations. Other hardware agents must adopt the same
 whole-bench reservation. No unattended hardware retry after unknown state.
+
+## Fully autonomous, locally approved hardware one-shots — dummy-load policy
+
+The installed user timer now executes, in order, autonomous OFFLINE dispatch,
+read-only delegated hardware review, and the guarded physical one-shot
+controller (tools/k6_experiment_hardware_autopilot.py --once).
+
+The controller does **not** interpret GitHub issue bodies as commands.
+It considers only open ranked issues authored by tcarwash with an immutable,
+locally registered manifest and a specific user-authorized local policy entry
+in config/k6-experiment-hardware-standing.json. Policy requires:
+exact manifest SHA256, expected firmware build and exact API, an expiration,
+named operator AG7SU, a currently confirmed dummy-load setup and one_shot=true.
+It is NOT a blanket permit for other RF configurations.
+
+Before any operation, the controller checks the full SHA-pinned manifest,
+local source/entrypoint checks, a completed independent read-only delegated
+VALIDATION: APPROVED bound to the manifest+API digest, current trusted
+GitHub priority/owner, GitHub login, expiry, and absence of active claims.
+It then takes the cooperative whole-bench flock and repeats the checks,
+durably journals an attempt BEFORE a lease or possible TX, posts a fresh
+exact-session BENCH ACK from the operator account, verifies it on GitHub,
+then calls the batch engine with independent session and job preflight.
+Per-device canonical serial_lock remains required in each physical harness.
+On verified PASS it posts PASS / RELEASE and a sanitized per-issue result;
+on unexpected results it posts BLOCKED / HOLD, requiring inspection.
+A power failure, process timeout or incomplete restoration NEVER
+causes an automatic retry. Recovery of an unknown bench state is manual.
+
+The session's read-only physical probe now supports the arguments
+--exact-api 29 --include-slots --output private-baseline.json for a
+full SHA256 snapshot of every existing packed slot before a session;
+--exact-api 29 --include-slots --baseline private-baseline.json
+verifies the exact existing library and VFO configuration afterward.
+This complements job-specific restore/verify and catches packed library
+drift outside the temporary slot.
+
+For this non-radiating dummy-load-only lab setup, the user explicitly
+exempted the FSK test fixture from a Morse identifier. This policy
+does NOT grant permission for an antenna-connected RF test and does not
+relax the hardware's frequency, channel-occupancy, TX-watchdog, SDR,
+low-power, memory preservation or restoration gates. A dummy load does
+not provide calibrated proof of zero leakage; other configurations need
+their own technical/legal review.
+
+The first hardware manifest may remain enrolled but not execute until
+its exact, newly pinned revision receives independent APPROVED validation.
