@@ -56,6 +56,31 @@ extern "C" {
 #ifndef KM_LEVEL
 #define KM_LEVEL 23
 #endif
+/* Optional read-only installed-provider discovery (build opt-in
+   K6_MODE_REGISTRY=1): API level 26 appends k6_api_t.mode_info below.
+   The default image is unchanged (level 23 here; tools/k6_build.sh raises
+   the ceiling for live/Data images, and the registry ceiling applies on
+   top of that). No packet transmit path is involved. */
+#if defined(K6_MODE_REGISTRY) && KM_LEVEL < 26
+#undef KM_LEVEL
+#define KM_LEVEL 26
+#endif
+
+/* API 26 installed-provider record: mode ID u16LE, capability flags,
+   name length + 12 name bytes, max packet payload u16LE. Naturally aligned
+   (18 bytes, no padding); repr(C)-compatible with the Rust host side. */
+#define K6_MODE_PACKET_TX 0x01u
+#define K6_MODE_PACKET_RX 0x02u
+#define K6_MODE_VOICE 0x04u
+#define K6_MODE_SOTTO_TEST 0x0100u
+#define K6_MODE_SOTTO_RFTEST 0x0101u
+typedef struct k6_mode_info {
+  uint16_t mode_id;
+  uint8_t flags;
+  uint8_t name_len;
+  char name[12];
+  uint16_t max_payload;
+} k6_mode_info_t;
 
 struct km_explore_frame;
 typedef struct k6_api {
@@ -245,6 +270,18 @@ typedef struct k6_api {
      module should return cleanly (typically -125) when it sees 1.
      Do not use concurrently with level-14 exclusive KISS serial mode. */
   int (*cancel_poll)(void);
+  /* Level 26 (opt-in K6_MODE_REGISTRY=1 only): read-only discovery of
+     installed library module providers. mode_info(index, out) fills *out
+     for the index-th validated provider in slot order and returns 1, 0
+     past the end, or -1 on a null caller pointer, a busy SPI read, or a
+     corrupted library entry. Only explicitly validated identities
+     enumerate (SOTTO TEST voice, ID 0x0100; SOTTO RFTEST, ID 0x0101, only
+     with the RFTEST opt-in); anything else yields no entry. The host
+     performs SPI reads only (kl_info); it never loads or runs module code,
+     asserts no packet TX, and never transmits. A module must feature-test
+     api->level >= 26 and never call this with api->mode_info == NULL on
+     older images. */
+  int (*mode_info)(uint32_t index, k6_mode_info_t *out);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

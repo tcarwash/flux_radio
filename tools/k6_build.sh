@@ -147,6 +147,12 @@ if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
 elif [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   CFLAGS="$CFLAGS -DKM_LEVEL=24"
 fi
+# Optional read-only installed-provider discovery (API 26, k6_mod.h):
+# default images keep their ceiling; only an explicit K6_MODE_REGISTRY=1
+# raises it. Discovery only, no packet transmit path is involved.
+if [ "${K6_MODE_REGISTRY:-0}" = 1 ]; then
+  CFLAGS="$CFLAGS -DK6_MODE_REGISTRY=1"
+fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then
