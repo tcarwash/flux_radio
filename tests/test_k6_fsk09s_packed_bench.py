@@ -29,7 +29,7 @@ def status():
 
 def test_frozen_module_is_api3_and_unchanged():
     p=preflight_source()
-    assert p["level"]==3 and p["entry"]==0 and p["code_bytes"]==1690
+    assert p["level"]==3 and p["entry"]==0 and p["code_bytes"]==1710
 
 
 @pytest.mark.parametrize("bad",[
@@ -92,8 +92,8 @@ def test_mocked_single_shot_and_verified_restoration(monkeypatch,tmp_path,radio_
     monkeypatch.setattr(bench,"serial_lock",lambda port:nullcontext())
     monkeypatch.setattr(bench,"_open",lambda port:nullcontext(object()))
     monkeypatch.setattr(bench,"preflight_source",lambda:{"source_ok":True,
-        "code_sha256":"a"*64,"entry":0,"code_bytes":1690})
-    monkeypatch.setattr(bench,"frozen_code",lambda:bytes([9])*1690)
+        "code_sha256":"a"*64,"entry":0,"code_bytes":1710})
+    monkeypatch.setattr(bench,"frozen_code",lambda:bytes([9])*1710)
     monkeypatch.setattr(bench.k6mod,"image",lambda *args,**kwargs:img)
     monkeypatch.setattr(bench,"directory",lambda link:{n:(n*100,len(b)) for n,b in tree.items()})
     monkeypatch.setattr(bench,"snapshot",lambda link:{

@@ -55,11 +55,11 @@ VFO_A_HZ = 433_500_000
 VFO_B_HZ = 144_390_000
 PORT_DEFAULT = "/dev/ttyUSB0"
 
-PIN_SOURCE_INERT_SHA256 = "58d80e3929e42c19bcdbadf49ad40d185f178a02ca006d48906d5dae5256fcdd"
+PIN_SOURCE_INERT_SHA256 = "c731c91390bb1b2e59b13b43fb2fb0ad0cf91ff72a1aebdb00c15b3e7abcb48a"
 PIN_SOURCE_ARMED_SHA256 = "7ebd2a4ac62314abee6781c8ca194a39607c667d1b1e0582a60fc6e5a65812cf"
 PIN_VECTOR_SHA256 = "230ba218a033e5782b42c3d191e557723b1e0656a9ac1eaa546e09090d125450"
-PIN_CODE_SHA256 = "1ecfdd57cf773bddba3c23e5128a2e1d0b751c457b86655f79ba9b86ac7c08d0"
-PIN_CODE_BYTES = 1690
+PIN_CODE_SHA256 = "1ceb9d27ac8597a1f5b686e9e64581f8939d552a0879a0e0aa8d33f63195df39"
+PIN_CODE_BYTES = 1710
 PIN_CODE_ENTRY = 0
 PIN_CODE_LEVEL = 3
 PIN_FRAME_TIMEOUT_MS = 700
@@ -109,7 +109,9 @@ def preflight_source() -> dict:
     raw=SOURCE_INERT.read_text()
     if (raw.count('#define FSK_LEASE_MS 1900u') != 1 or
         raw.count('#define FSK_FRAME_TIMEOUT_MS 700u') != 1 or
-        raw.count('for(k=0;k<attempted_frames;k++)report(api,k,&trace[k]);') != 1):
+        raw.count('for(k=0;k<attempted_frames;k++)report(api,k,&trace[k]);') != 1 or
+        raw.count('#define FSK_TXDONE_MIN_MS 220u') != 1 or
+        raw.count('(irq&IRQ_TX_DONE)||(status&1u)') != 1):
         raise ValueError('new bounded timeout and de-keyed telemetry contract changed')
     words = lab_words()
     return dict(source_ok=True, code_sha256=code_sha, code_bytes=len(code),

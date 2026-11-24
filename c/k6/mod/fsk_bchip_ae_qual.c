@@ -27,6 +27,7 @@
 #define FSK_BAUD_CODE 0xc194u
 #define FSK_LEASE_MS 1900u
 #define FSK_FRAME_TIMEOUT_MS 700u /* bounded two-frame probe, <1900ms TX lease */
+#define FSK_TXDONE_MIN_MS 220u /* 49x16 + 160 public sync/preamble bits at 4800 ~=197ms */
 #define FSK_WORDS 49u
 #define R_CHIP 0x00u
 #define R_WORK 0x3fu
@@ -129,7 +130,15 @@ static int send_one(const k6_api_t *a,unsigned which,
         if(t->polls!=0xffffu)t->polls++;
         if((irq&IRQ_AE_BIT)&&t->first_bit14_ms==0xffffu)t->first_bit14_ms=dt;
         if((irq&15u)==IRQ_AE_EVENT&&t->first_code14_ms==0xffffu)t->first_code14_ms=dt;
-        if(status&1u){t->first_done_ms=dt;return (int)FSK_WORDS;}
+        /* On the real B chip 0x8000 appeared in the IRQ latch while
+         * REG_0C[0] never asserted. Accept it only after a conservative
+         * complete RF frame airtime (784 payload + 160 preamble/sync bits
+         * at 4800 baud ~197ms), and still require the independent blind
+         * SDR scorer to see both exact frames. Never infer AE headroom. */
+        if(dt>=FSK_TXDONE_MIN_MS && ((irq&IRQ_TX_DONE)||(status&1u))){
+            t->first_done_ms=dt;
+            return (int)FSK_WORDS;
+        }
         a->delay_us(1000u);
     }
 }

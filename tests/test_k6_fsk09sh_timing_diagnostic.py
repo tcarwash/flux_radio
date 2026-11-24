@@ -20,5 +20,5 @@ def test_new_timeout_and_partial_report_are_bounded():
 
 def test_exact_pinned_new_module_is_still_small_and_level3():
     d=preflight_source()
-    assert d['code_bytes']==1690 and d['entry']==0 and d['level']==3
-    assert d['code_sha256']=='1ecfdd57cf773bddba3c23e5128a2e1d0b751c457b86655f79ba9b86ac7c08d0'
+    assert d['code_bytes']==1710 and d['entry']==0 and d['level']==3
+    assert d['code_sha256']=='1ceb9d27ac8597a1f5b686e9e64581f8939d552a0879a0e0aa8d33f63195df39'
