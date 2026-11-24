@@ -257,8 +257,21 @@ def bench_status(check_github=False):
 def intake_status():
     state=read_jobs(STATEDIR / "intake.json")
     snapshot=read_json(STATEDIR / "intake-snapshot.json")
+    # Multiple revisions of an issue are retained for audit; report its
+    # newest active state only, not misleading duplicate work counts.
+    by_issue={}
+    for key,record in state["jobs"].items():
+        issue=record.get("issue")
+        if issue is None:
+            try: issue=int(key.split(":",1)[0].removeprefix("issue-"))
+            except (ValueError,AttributeError):continue
+        timestamp=record.get("created",record.get("updated",
+                                                 record.get("published_at","")))
+        rank=(timestamp,1 if "migrated_from" in record else 0)
+        if issue not in by_issue or rank>=by_issue[issue][0]:
+            by_issue[issue]=(rank,record)
     counts={}
-    for record in state["jobs"].values():
+    for _,record in by_issue.values():
         phase=record.get("state","UNKNOWN")
         counts[phase]=counts.get(phase,0)+1
     if snapshot is None:
@@ -320,7 +333,8 @@ def status(now=None, check_github=False):
             result["alerts"].append(
                 f"{intake['open_without_intake']} GitHub RF issues need first intake assessment")
         blocked=sum(intake["counts"].get(x,0) for x in (
-            "INFRA_FAILURE","UNPARSEABLE_REVIEW","SUBMISSION_STARTED"))
+            "INFRA_FAILURE","UNPARSEABLE_REVIEW","SUBMISSION_STARTED",
+            "CONTRADICTORY_EVIDENCE"))
         if blocked:
             result["alerts"].append(f"{blocked} intake assessments require intervention")
     if result["offline"] and result["offline"]["pending"]:

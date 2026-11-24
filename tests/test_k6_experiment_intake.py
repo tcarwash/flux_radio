@@ -42,6 +42,8 @@ def gh_fake(*args):
                 "body":"| 1 | [#37 experiment](https://github.com/owner/flux/issues/37) |"}
     if args[:2]==("issue","list"):
         return gh_items()
+    if args[0]=="api":
+        return []
     raise AssertionError(args)
 
 
@@ -187,3 +189,49 @@ def test_immutable_issue_comment_dedupe_refuses_truncation(monkeypatch):
     c.stdout=json.dumps([{} for _ in range(100)])
     with pytest.raises(it.IntakeError,match="truncated"):
         it.existing_comment({"repo":REPO,"trusted_author":OWNER},30,"notpresent")
+
+
+
+def test_owner_comment_evidence_changes_fingerprint_but_intake_does_not():
+    base=issue(21,"[Flux RF][OFFLINE] fast SPI")
+    v1=it.identity(base)
+    updated=dict(base,comments=[{"body":"OFFLINE RESULT 8/8 passed",
+                                  "created_at":"2026-11-23T19:20:00Z"}])
+    assert it.identity(updated)!=v1
+    assert it.legacy_identity(updated)==it.legacy_identity(base)
+    prompt=it.prompt_for(updated,it.identity(updated))
+    assert "OFFLINE RESULT" in prompt and "Verify their evidence" in prompt
+
+
+def test_legacy_published_assessment_migrates_without_duplicating(tmp_path):
+    reg=config(tmp_path);state=tmp_path/"intake.json"; prompts=tmp_path/"p"
+    one=gh_items()[0]
+    old=it.legacy_identity(one)
+    state.write_text(json.dumps({"schema":1,"jobs":{old:{"state":"TRIAGED",
+       "published_at":"2026-11-24T22:52:50Z", "verdict":"NEEDS_PINNED_HARNESS"}}}))
+    out=it.one_cycle(reg,state,prompts,max_new=0,fetch=gh_fake)
+    assert out["events"][0]["action"]=="MIGRATED_PREVIOUS_ASSESSMENT"
+    assert json.loads(state.read_text())["jobs"][it.identity(one)]["state"]=="TRIAGED"
+
+
+
+def test_contradictory_review_cannot_overrule_owner_offline_result(tmp_path):
+    reg=config(tmp_path);state=tmp_path/"intake.json";prompts=tmp_path/"p"
+    source=gh_items()[1]
+    source["comments"]=[{"body":"OFFLINE RESULT: 8/8 PASS, source pinned",
+                         "created_at":"2026-11-23T23:01:00Z"}]
+    def fetch(*args):
+        if args[:2]==("issue","view"):
+            return {"state":"OPEN","author":{"login":OWNER},"body":""}
+        if args[:2]==("issue","list"):
+            return [source]
+        if args[0]=="api":
+            return [{"body":source["comments"][0]["body"],
+                     "created_at":source["comments"][0]["created_at"],
+                     "user":{"login":OWNER}}]
+        raise AssertionError(args)
+    it.one_cycle(reg,state,prompts,fetch=fetch,delegate=lambda p:"a"*12,publish_results=False)
+    got=it.one_cycle(reg,state,prompts,max_new=0,fetch=fetch,
+            get_result=lambda j:("NEEDS_OFFLINE","I saw no offline evidence"),
+            send_comment=lambda *args:pytest.fail("must not publish stale advice"))
+    assert got["events"][0]["reason"]=="CONTRADICTORY_EVIDENCE"
