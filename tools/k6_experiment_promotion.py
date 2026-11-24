@@ -265,7 +265,20 @@ def register_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
         if record.get("state")!="TESTED_NEEDS_INDEPENDENT_REVIEW":
             continue
         n=int(nstr)
-        if nstr in reg["manifests"]:continue
+        old=reg["manifests"].get(nstr)
+        if old:
+            # Old exact manifest may be superseded ONLY after the previous
+            # physical attempt has reached a terminal state and source pins
+            # changed. The old journal/manifest/ACK remain immutable.
+            prev=journal.state_load(STATE_ROOT/"hardware.json")["jobs"].get(
+                f"issue-{n}:{old['sha256']}",{})
+            if prev.get("state") not in ("BLOCKED_NO_AUTO_RETRY","PASS"):
+                continue
+            old_manifest=json.loads(Path(old["path"]).read_text())
+            oldpins={x["path"]:x["sha256"] for x in old_manifest["jobs"][0]["pins"]}
+            if all(oldpins.get(str(Path(record["worktree"])/x["path"]))==x["sha256"]
+                   for x in record["pins"]):
+                continue
         # Validate and SHA-pin locally BEFORE changing the coordination issue.
         m=generate(n,recipe,record,p)
         if not ranked(reg,n):
@@ -314,9 +327,15 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
         entry=reg["manifests"].get(nstr)
         if not entry or entry.get("sha256")!=record.get("manifest_sha256"):
             raise Refused("builder manifest registry drift")
-        if nstr in standing["approved"]:
-            continue
         n=int(nstr)
+        old_grant=standing["approved"].get(nstr)
+        if old_grant:
+            if old_grant["manifest_sha256"]==entry["sha256"]:
+                continue
+            old_attempt=hardware_attempts.get(
+                f"issue-{n}:{old_grant['manifest_sha256']}",{})
+            if old_attempt.get("state") not in ("PASS","BLOCKED_NO_AUTO_RETRY"):
+                raise Refused("old hardware grant still active; no source rotation")
         m,manifest_sha,raw=hardware.load_registered_manifest(reg,n)
         api,api_raw=batch.read_api_config(batch.API_CONFIG)
         key=fingerprint(n,manifest_sha,api_raw)
