@@ -1,5 +1,7 @@
 # CW conducted TX response sweep: capture-ready analyzer and bounded offline shaping
 
+Low-regret CW key/PLL-held carrier cancellation and PA cleanup: [`k6-cw-carrier-cleanup-20261124.md`](k6-cw-carrier-cleanup-20261124.md).
+
 **2026-11-24 · CW/non-Sotto modulation track · no physical RF test has run.**
 
 The new targeted physical-hardware queue experiment is [CW TX-35 / issue #38](https://github.com/tcarwash/flux_radio/issues/38). It requests a **conducted RF envelope/filter response sweep** of the B-chip K6 transmitter as a prerequisite for real click-free CW. It is `OPEN / UNCLAIMED / RADIO-EXCLUSIVE DEFERRED`. Posting the issue does **not** reserve the bench, key PTT, open `/dev/ttyUSB0`, or instruct another agent to do an unapproved test. The existing TX-29 (#22) protective PA-driver guard and the [shared queue #11](https://github.com/tcarwash/flux_radio/issues/11) have priority.
