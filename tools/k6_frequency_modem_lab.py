@@ -17,6 +17,7 @@ ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from sim.k6emu.rf.frequency_modem import Settings,build,RATE,PATHS
 from sim.k6emu.rf.sources import write_sigmf
+from sim.k6emu.rf.burst_acquisition import acquire
 from sim.k6emu.rf.backend import create_backend
 from tools.k6_soapyfang_modlab import CENTER_HZ
 
@@ -47,6 +48,10 @@ def rx_soapy(iq, *, snr_db=30,seed=80):
             duration=len(iq)/RATE
             for step in range(1,math.ceil(duration/.05)+1):
                 backend.read(0x67,regs,min(step*.05,duration))
+            # RFBackend batches read advances below 1 ms. The final partial
+            # tail of an arbitrarily positioned burst must still be ingested;
+            # otherwise sub-millisecond lead offsets spuriously lose samples.
+            backend.chip.advance(duration)
             if not taps:raise RuntimeError('No IQ received by SoapyFang')
             filtered=np.concatenate(taps)
             if len(filtered)!=len(iq):
@@ -124,6 +129,60 @@ def decode_pilot(frame,iq):
                 acquisition='pilot_frame_known_start_no_blind_sync')
 
 
+def run_blind(settings,*,snr_db=30,payload_symbols=128,wrong_signed_order=False,
+              lead_samples=1289,offset_hz=230,noise_seed=80):
+    """Unknown burst start and carrier offset through SoapyFang RX FIR.
+
+    Public pilot/sync are the *only* acquisition labels supplied to the
+    blind-start algorithm. Expected payload is used after lock for scoring.
+    """
+    if not isinstance(lead_samples,int) or not 0<=lead_samples<=RATE:
+        raise ValueError('leading silence must be 0..one sample-rate second')
+    if not math.isfinite(offset_hz) or abs(offset_hz)>2000:
+        raise ValueError('frequency offset must be finite and bounded')
+    source=build(settings,payload_symbols=payload_symbols,
+                 wrong_signed_order=wrong_signed_order)
+    wave=np.r_[np.zeros(lead_samples,dtype=np.complex64),source['iq']]
+    rotation=np.exp(2j*np.pi*offset_hz*np.arange(len(wave))/RATE)
+    observed=rx_soapy(np.asarray(wave*rotation,dtype=np.complex64),
+                      snr_db=snr_db,seed=noise_seed)
+    pilot_n=source['pilot_n'];sync_n=source['sync_n']
+    found=acquire(fm_discriminator(observed),baud=settings.baud,rate=RATE,
+                  order=source['order'],
+                  pilot=source['source_levels'][:pilot_n],
+                  sync=source['source_levels'][pilot_n:pilot_n+sync_n],
+                  payload_symbols=payload_symbols)
+    if not found['locked']:
+        return dict(path=settings.path,baud=settings.baud,
+                    lock=False,pass_frame=False,lead_samples=lead_samples,
+                    offset_hz=offset_hz,
+                    physical_rf=False,hardware_qualified=False,
+                    **{k:v for k,v in found.items() if k!='locked'})
+    decision=found.pop('decisions')
+    means=found.pop('estimated_levels_hz')
+    truth=source['source_levels'][pilot_n+sync_n:]
+    payload=decision[pilot_n+sync_n:]
+    ser=float(np.mean(payload!=truth))
+    if source['order']==4:
+        xor=(payload^(payload>>1))^(truth^(truth>>1))
+        ber=(np.count_nonzero(xor&1)+np.count_nonzero(xor&2))/(2*len(truth))
+    else:
+        ber=ser
+    qualifies=bool(ser==0 and found['level_order_valid']
+                   and source['missed_register_updates']==0)
+    return dict(path=settings.path,baud=settings.baud,order=source['order'],
+                lock=True,pass_frame=qualifies,lead_samples=lead_samples,
+                offset_hz=offset_hz,snr_db=snr_db,
+                recovered_start_sample=found['start_sample'],
+                start_error_samples=int(found['start_sample']-lead_samples),
+                payload_ber=float(ber),payload_symbol_error_rate=ser,
+                payload_bits=len(truth)*(2 if source['order']==4 else 1),
+                missed_register_updates=source['missed_register_updates'],
+                level_means_hz=[float(x) for x in means],
+                physical_rf=False,hardware_qualified=False,
+                **{k:v for k,v in found.items() if k not in ('locked','start_sample')})
+
+
 def run(settings,*,snr_db=30,payload_symbols=128,wrong_signed_order=False):
     source=build(settings,payload_symbols=payload_symbols,
                  wrong_signed_order=wrong_signed_order)
@@ -155,22 +214,39 @@ def main(argv=None):
     p.add_argument('--snr-db',type=float,default=30.)
     p.add_argument('--payload-symbols',type=int,default=128)
     p.add_argument('--wrong-signed-order',action='store_true')
+    p.add_argument('--blind-start',action='store_true',
+                   help='search unknown burst start using only public pilot and sync')
+    p.add_argument('--lead-samples',type=int,default=1289)
+    p.add_argument('--offset-hz',type=float,default=230.)
     p.add_argument('--json',type=Path)
     a=p.parse_args(argv)
     baud=a.baud or (4800 if a.path in ('native_fsk','reg40_per_frame') else 300)
     settings=Settings(path=a.path,baud=baud,write_us=a.spi_write_us,
                       bandwidth_hz=a.bandwidth_hz)
-    try:r=run(settings,snr_db=a.snr_db,payload_symbols=a.payload_symbols,
-              wrong_signed_order=a.wrong_signed_order)
+    try:
+        if a.blind_start:
+            r=run_blind(settings,snr_db=a.snr_db,payload_symbols=a.payload_symbols,
+                        wrong_signed_order=a.wrong_signed_order,
+                        lead_samples=a.lead_samples,offset_hz=a.offset_hz)
+        else:
+            r=run(settings,snr_db=a.snr_db,payload_symbols=a.payload_symbols,
+                  wrong_signed_order=a.wrong_signed_order)
     except (ValueError,RuntimeError) as e:p.error(str(e))
     if a.json:
         a.json.parent.mkdir(parents=True,exist_ok=True)
         a.json.write_text(json.dumps(r,indent=2)+'\n')
-    print(f'{r["path"]} {r["baud"]} baud {r["order"]}-FSK: '
-          f'{"PASS" if r["pass_frame"] else "FAIL"} BER={r["payload_ber"]:.4f}, '
-          f'eye={r["pilot_eye_hz"]:.1f} Hz, '
-          f'gap={r["missed_register_updates"]} writes, '
-          f'RX pilot lag {r["recovered_delay_samples"]} samples')
+    if a.blind_start:
+        print(f'{r["path"]} {r["baud"]} baud blind-start: '
+              f'{"PASS" if r["pass_frame"] else "FAIL"} '
+              f'lock={r["lock"]}, BER={r.get("payload_ber","n/a")}, '
+              f'start={r.get("recovered_start_sample","n/a")}, '
+              f'offset_est={r.get("estimated_center_offset_hz","n/a")} Hz')
+    else:
+        print(f'{r["path"]} {r["baud"]} baud {r["order"]}-FSK: '
+              f'{"PASS" if r["pass_frame"] else "FAIL"} BER={r["payload_ber"]:.4f}, '
+              f'eye={r["pilot_eye_hz"]:.1f} Hz, '
+              f'gap={r["missed_register_updates"]} writes, '
+              f'RX pilot lag {r["recovered_delay_samples"]} samples')
     return 0 if r['pass_frame'] else 1
 
 if __name__=='__main__':raise SystemExit(main())

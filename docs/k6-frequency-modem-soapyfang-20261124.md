@@ -1,5 +1,7 @@
 # K6 frequency-modem offline lab: FIFO FSK vs register-paced subaudio/4-FSK
 
+Follow-on burst acquisition and native-FIFO RX replay: [`k6-frequency-burst-fifo-20261124.md`](k6-frequency-burst-fifo-20261124.md).
+
 **2026-11-24 · Simulation only. No hardware, radio TX, flash, installed mode, or KISS change.**
 
 The preceding CW lab modeled **causal amplitude control** from timestamped
