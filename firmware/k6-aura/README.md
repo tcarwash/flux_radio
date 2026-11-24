@@ -16,3 +16,14 @@ K6_MOD_KEY_FILE="$HOME/.config/flux/k6-mod.key" \
 The output directory is `firmware/k6-aura/out-fd6818b/`. The main artifact is `flux-fd6818b.bin`; module bundles are emitted beside it. Never commit the signing key or generated binary files.
 
 The feature-pack builder and matrix use the same Flux base profile. The Scan pack delivers Explore through the local module catalog. Sotto remains a separate module/feature pack. Standalone Explore and pager images are reference-only and rejected by the FD6818B builder.
+
+### Sotto development image
+
+A separate **build-only** Sotto-1200 profile now lives on `dev/sotto-firmware`:
+
+```sh
+sh firmware/k6-aura/build-sotto.sh
+python3 tools/k6_sotto_firmware_audit.py
+```
+
+It writes `out-fd6818b-sotto/flux-fd6818b-sotto.bin` without modifying the default image. The first-stage image contains the genuine Sotto-1200 packet/decoder and a bounded 33-word FDV1 guarded wire library; it **does not** enable unqualified B-chip RX/automatic TX or constitute a working two-way DV firmware. Flash margin is very small, and real-time CPU/SPI/PWM concurrency is not hardware-qualified. See [Sotto development firmware design and measurement report](../../docs/k6-sotto-firmware-dev.md) before flashing or adding services.
