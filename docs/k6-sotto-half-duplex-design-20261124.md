@@ -40,8 +40,9 @@ a fast 0.4ms modeled FIFO rearm, with PTT/timeout and register cleanup.
 The actual run_module -> km_run_on_stack -> km_run path now also
 runs a CRC32 cable-verified level-31 receiver module to completion,
 recovering all six IQ packets. Production SipHash/SPI install, full
-UART/CPS and VFO mode activation are still untested. API28–30 remain
-stubs, so this is not the merged two-way host.
+UART/CPS and VFO mode activation are still untested. API28 read-only K6CB/K6SC resources are now emulator-qualified with
+the normal ARM module runner as a separate opt-in, but API29/30 FSK TX
+and microphone remain stubs; this is not the merged two-way host.
 
 The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
 adds a bounded PCM queue and failure/preemption semantics. Its

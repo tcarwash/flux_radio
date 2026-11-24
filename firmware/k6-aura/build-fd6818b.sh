@@ -181,6 +181,15 @@ K6_MODE_REGISTRY=${K6_MODE_REGISTRY:-0}
 K6_MODE_RFTEST=${K6_MODE_RFTEST:-0}
 K6_PACKET_MAILBOX=${K6_PACKET_MAILBOX:-0}
 K6_FSK4800_RX=${K6_FSK4800_RX:-0}
+K6_SOTTO_RESOURCES=${K6_SOTTO_RESOURCES:-0}
+case "$K6_SOTTO_RESOURCES" in
+  0|1) ;;
+  *) echo "K6_SOTTO_RESOURCES must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_FSK4800_RX" != 1 ]; then
+  echo "Sotto resources require experimental API31 RX and API27 KISS tail" >&2
+  exit 1
+fi
 case "$K6_FSK4800_RX" in
   0|1) ;;
   *) echo "K6_FSK4800_RX must be 0 or 1" >&2; exit 1 ;;
@@ -204,6 +213,9 @@ if [ "$K6_PACKET_MAILBOX" = 1 ]; then
 fi
 if [ "$K6_FSK4800_RX" = 1 ]; then
   python3 "$HERE/apply-sotto-rx4800.py"
+fi
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
+  python3 "$HERE/apply-sotto-api28-resources.py"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
@@ -238,6 +250,7 @@ PACK_CFG=""
 if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"; fi
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbox"; fi
 if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi

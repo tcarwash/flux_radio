@@ -143,13 +143,15 @@ class Dispatcher:
         v=b.uc.reg_read(UC_ARM_REG_R0)
         return v if v<2**31 else v-2**32
 
-    def verified_cable_stage(self,code:bytes,entry:int):
+    def verified_cable_stage(self,code:bytes,entry:int,expected_chunks:int|None=None):
         from unicorn import UC_HOOK_CODE
         envelope=k6mod.image(code,entry,serial=42,key=None,level=31)
         # CPU-side byte input to the real C cable ingress (CRC + replay checks).
         packets=k6mod.packets(envelope,xfer=91,length=64)
-        if len(packets)!=26:
+        if expected_chunks is not None and len(packets)!=expected_chunks:
             raise RuntimeError("Test fixture upload unexpectedly changed chunk count")
+        if not packets or len(packets)>255:
+            raise RuntimeError("Invalid cable upload chunk count")
         arena=self.syms["arena"]
         pkt_addr=0x20005000
         self.board.uc.mem_write(pkt_addr,bytes(packets[0][:11])+bytes([packets[0][11]^0x40])+packets[0][12:])
@@ -186,7 +188,7 @@ class Dispatcher:
         self.board.fd_regs[0x38]=hz&0xffff
         self.board.fd_regs[0x39]=hz>>16
 
-    def execute(self):
+    def execute(self,expected_return:int=6,require_rf:bool=True):
         from unicorn.arm_const import (
             UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_SP,
             UC_ARM_REG_LR,UC_ARM_REG_PC,
@@ -211,15 +213,18 @@ class Dispatcher:
                 and self.trace["km_run"]==1
                 and self.trace["km_run_on_stack"]==1
                 and self.trace["consumer"]==1
-                and self.trace["api31"]>100
+                and (self.trace["api31"]>100 if require_rf else self.trace["api31"]==0)
                 and self.trace["radio_enter_tx"]==0):
             raise RuntimeError(f"Normal execution/PA trace unexpected: {self.trace}")
-        if self.module_ret!=[6]:
-            raise RuntimeError(f"Real compiled C FDV1 consumer did not complete: {self.module_ret}")
-        if b"K6 MOD ret=6 (0x6)" not in b.uart_tx:
+        if self.module_ret!=[expected_return]:
+            raise RuntimeError(f"Real compiled C module returned unexpected value: {self.module_ret}")
+        expected_line=f"K6 MOD ret={expected_return} (0x{expected_return:x})".encode()
+        if expected_line not in b.uart_tx:
             raise RuntimeError("Host did not observe successful module return")
         if int.from_bytes(b.uc.mem_read(self.syms["ctx_app"],4),"little")!=0:
             raise RuntimeError("Host leaked module context on return")
+        if not require_rf:
+            return {}
         fsk=self.rf.status()["fsk_rx"]
         if fsk["frames"]!=6 or fsk["words"]!=198 or fsk["overruns"] or fsk["underflows"]:
             raise RuntimeError(f"Normal dispatcher consumed wrong RF frames: {fsk}")
@@ -243,7 +248,7 @@ def run(elf:Path,image:Path,tree:Path):
             raise RuntimeError("API31 Cortex-M0 module exceeds arena/code cap")
         dispatch=Dispatcher(elf,image,art["names"])
         try:
-            n,envelope=dispatch.verified_cable_stage(code,entry)
+            n,envelope=dispatch.verified_cable_stage(code,entry,expected_chunks=26)
             dispatch.virtual_air(proof["virtual_air"])
             fsk=dispatch.execute()
             return dict(

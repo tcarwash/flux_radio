@@ -199,16 +199,64 @@ and both remain useful for identifying failures at different layers.
 No hardware, local serial port, SDR transmitter or shared bench lock
 is used.
 
+## Opt-in real API28 SPI resources (2026-11-24)
+
+The same main-compatible API31 Base+Data research host now supports an
+additional **opt-in K6_SOTTO_RESOURCES=1** service. It fills the existing
+API28 resource_open/resource_read table slots *without moving or changing*
+API26 provider discovery, API27 KISS mailbox or API29/30 placeholder slots.
+Normal firmware and RX31 builds without this option retain the -1 stubs.
+
+The real linked ARM callbacks read the fixed read-only **K6CB codebook**
+at 0x100000 (32-byte header plus 30,720 table bytes) and an installed
+**K6SC IVF deck** (4,182 bytes) from the existing logical library
+index. The deck is located by kl_locate, including the packed
+dual-directory **KUL2** layout, not by assuming slot * 16 KiB. A deck
+open checks its K6M envelope type/slot, payload length and K6SC magic.
+The codec is still responsible for verifying the *full* K6CB/K6SC CRC
+before accepting bytes as trusted data.
+
+Reads fail closed on unopened deck, other resource kinds, zero length,
+over-256-byte requests, out-of-bounds offsets, non-SRAM buffer pointers,
+invalid slot or missing header. A failed open clears the previous deck
+handle, which also resets upon entering and leaving the real Rust
+module runner. The service allows bounded codebook reads during TX
+for a future encoder, but does **not** key or configure RF. It does not
+erase or program SPI, install modules, or replace the existing loader.
+
+A fresh real ARM build with both options enabled is **111,288 bytes**
+out of the 122,880-byte app limit, **11,592 B headroom**. This is
+**436 bytes above the previous RX-only build**, with API29 and API30
+still unavailable. SHA-256 of the tested binary:
+130529f6c39acd61d86ddd0ef45343ae662d044869e60810773f35af43e071be.
+
+The independent opt-in acceptance gate
+tools/k6_sotto_api28_resource_gate.py runs a real compiled C resource
+consumer via the **CRC32 cable loader and normal ARM run_module stack
+switch**, with virtual K6CB SPI and a CRC-protected packed KUL2 deck.
+It checks actual K6CB/K6SC header and end ranges, null/peripheral
+pointers, read limits, invalid slot handle reset, codebook/deck
+read-only behavior and safe module return. The companion
+tests/test_k6_sotto_api28_resources_host.py verifies overlay ordering,
+idempotence and opt-in feature gating. Real radio, physical SPI,
+keyed SipHash authorization, microphone and speaker remain untested.
+
+Build/test entirely offline:
+
+    K6_AURA_RESET_GENERATED=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 K6_FSK4800_RX=1 K6_SOTTO_RESOURCES=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-sotto-resources-host
+    K6_SIM_SOTTO_RX31_IMAGE=firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin K6_SIM_SOTTO_RX31_ELF=firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura K6_SIM_SOTTO_API28_RESOURCES=1 ~/.local/share/flux-rf-venv/bin/python -m pytest -q tests/test_k6_sotto_api28_resource_gate.py
+
 ## Boundaries remaining for flashable half-duplex voice
 
 1. Complete the UART/CPS and keyed install/SPI library path. The
    **actual run_module and km_run_on_stack execution is now tested**
    after CRC32 cable ingress, but on-device keyed SPI installation and
    normal selectable VFO binding remain open.
-2. Join the API28 resource, API29 finite FSK async TX and API30 mic
-   callbacks into a **single append-only host**, then bind installed
-   Sotto to `RX → PTT TX → RX`. Never expose stubbed callbacks to
-   the live TX module as if supported.
+2. **API28 read-only resources are now linked and emulator-qualified**
+   behind an opt-in flag. Next add API29 finite async FSK TX and API30
+   microphone callbacks to the *same* append-only host, then bind
+   installed Sotto to the half-duplex RX / PTT TX / RX mode transition.
+   Never expose stubbed callbacks as supported.
 3. Move the native fixed-point RX decode and 20-ms speaker PCM service
    into radio firmware or a loadable module, measure total SRAM and flash,
    qualify the paced ring and prebuffer against real 20-ms deadlines.
