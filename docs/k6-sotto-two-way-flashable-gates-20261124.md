@@ -1,10 +1,20 @@
-# Sotto two-way **flashable** end state: integration and bench gates
+# Sotto half-duplex **flashable** end state: integration and bench gates
 
 **2026-11-24, research status.** The user requires a *flashable FD6818B K6
-transmitter AND receiver* with Sotto installable/selectable as a modem; the
+transmitter AND receiver* operating **half-duplex** with Sotto installable/selectable as a modem; the
 offline voice loop is a qualification tool, not the final deliverable. Do not
 label a mock-only loop or an image containing decoder object code as a working
-two-way radio.
+half-duplex radio.
+
+## Selected half-duplex operation
+
+Default in Sotto mode: **receive and play validated digital voice**. On PTT
+press, stop RX and clear queued speaker PCM before microphone capture and
+bounded native-FSK TX. On PTT release or abort, de-key/restore RFIC and
+resume listening. RX and TX never run concurrently, so encoder and decoder
+scratch can potentially be shared after an explicit stack/arena audit.
+This **does not eliminate the application flash overrun**. See
+[the state model and acceptance gates](k6-sotto-half-duplex-design-20261124.md).
 
 ## Already working offline
 
@@ -64,12 +74,14 @@ radio-qualified.
    verified library, or packet-mbox compatibility. Prove actual executable
    image and module code+stack+scratch fit; avoid speculative unrestricted
    arena borrowing or untested IRQ stacking.
-4. **Installable one-touch operation.** The VFO must enumerate the **actual**
+4. **Installable half-duplex operation.** The VFO must enumerate the **actual**
    signed installed Sotto package and PTT must launch the unified TX runtime
    only with a real press, with cable/PTT arbitration, PA-off capture and
    bounded lease. Normal Sotto mode should listen for valid sessions while
-   idle and play through a bounded speaker buffer. Both directions must be
-   independently abortable and cleanup must be checked.
+   idle and play through a bounded speaker buffer. PTT must preempt RX and
+   playback before TX; de-key must safely restore RX. No simultaneous
+   receiver, codec decoder or playback is required while transmitting.
+   Both directions must be abortable and cleanup must be checked.
 5. **Build-only release gate.** Produce the exact binary + ELF + module
    package + pinned K6CB and K6SC deck, manifest and hashes. Require
    signature/provisioning checks; build audits, API layout tests, exact ARM

@@ -65,6 +65,17 @@ The 1.2-second built-in mixed-frequency fixture yielded:
 - **Verified 2-byte prefix anomaly**: independent 00F8-shifted RF path still
   recovers exact bits and plays exactly the same PCM.
 
+## Radio directionality
+
+Sotto is **half-duplex**, with no simultaneous receiver and transmitter.
+The mock explicitly models `FM -> RX/listen -> TX/PTT -> RX/listen -> FM`:
+PTT preempts queued speaker audio, the independent virtual-RF receiver's
+output is handed to the decoder **after** TX has returned idle, speaker
+reads are forbidden while keyed, and error cleanup returns to RX without
+replaying stale audio. The actual physical receiver has not been implemented
+yet, so this is a validated *sequential offline contract* rather than a
+radio driver. See [half-duplex design](k6-sotto-half-duplex-design-20261124.md).
+
 ## Important integration boundary
 
 The mock binds the **existing** stable VFO identity `SOTTO TEST` to the

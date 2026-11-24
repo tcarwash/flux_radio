@@ -38,7 +38,7 @@ def built(tmp_path_factory):
 def test_mode_uninstalled_and_installed_guard(built):
     a,dec=built
     r=MockSottoRadio(a,dec)
-    assert r.status()==dict(installed=False,mode='FM',ptt=False,running=False,playback_ready=False)
+    assert r.status()==dict(installed=False,mode='FM',ptt=False,running=False,radio_state='FM',playback_ready=False)
     assert r.select()=='FM'
     with pytest.raises(RuntimeError,match='not installed'):
         r.transmit()
@@ -48,6 +48,7 @@ def test_mode_uninstalled_and_installed_guard(built):
         r.install()
     assert r.select()=='SOTTO'
     assert r.status()['mode']=='SOTTO'
+    assert r.status()['radio_state']=='RX'
     r.running=True
     with pytest.raises(RuntimeError):
         r.remove()
@@ -55,7 +56,7 @@ def test_mode_uninstalled_and_installed_guard(built):
         r.select()
     r.running=False
     r.remove()
-    assert r.status()==dict(installed=False,mode='FM',ptt=False,running=False,playback_ready=False)
+    assert r.status()==dict(installed=False,mode='FM',ptt=False,running=False,radio_state='FM',playback_ready=False)
 
 
 @pytest.mark.parametrize('prefix', [0,2])
@@ -71,9 +72,11 @@ def test_actual_voice_over_virtual_rf_and_decoder(built,prefix,tmp_path):
     assert t['received']==t['tx']['completed']==6
     assert t['session']['complete'] and t['session']['offset_2']==(3 if prefix else 0)
     assert not t['pcm_lost'] and not t['lease_expired']
+    assert r.status()['radio_state']=='RX'
     assert r.status()['playback_ready'] and r.rx_audio.shape==(8320,)
     assert np.max(np.abs(r.rx_audio.astype(np.int32)))>100
     assert not r.ptt and not r.running and not t['tx']['active']
+    assert r.radio_state=='RX'
     assert r.rx_audio.dtype.str=='<i2'
     assert np.array_equal(decode_pcm(decoder,t['received_codec_bytes']),r.rx_audio)
     speaker=[]
@@ -121,3 +124,50 @@ def test_voice_runtime_identity_still_not_bound_by_production_vfo():
     from tools.k6_sotto_installed_vfo import is_sotto_installed_module
     assert not is_sotto_installed_module(rc=0, flags=1, name='SOTTO TX')
     assert is_sotto_installed_module(rc=0, flags=1, name='SOTTO TEST')
+
+
+def test_half_duplex_preempts_rx_and_restores_listen_on_failure(built,monkeypatch):
+    artifact,decoder=built
+    import tools.k6_sotto_e2e_mock as mock
+    r=MockSottoRadio(artifact,decoder)
+    r.install()
+    assert r.select()=='SOTTO' and r.radio_state=='RX'
+    # Pretend a previously CRC-validated session has been received.
+    r._render_validated_receive(artifact['reference'])
+    assert r.speaker_next() is not None
+    assert r.speaker_cursor==160
+
+    def checked_tx(*args,**kwargs):
+        assert r.radio_state=='TX'
+        assert r.ptt and r.running
+        assert r.speaker_cursor==0 and r.rx_audio is None
+        with pytest.raises(RuntimeError,match='speaker'):
+            r.speaker_next()
+        with pytest.raises(RuntimeError):
+            r._render_validated_receive(artifact['reference'])
+        # Simulate the actual ARM emulator raising, not a successful RF frame.
+        raise RuntimeError('emulated FIFO abort')
+
+    monkeypatch.setattr(mock,'trial',checked_tx)
+    with pytest.raises(RuntimeError,match='FIFO abort'):
+        r.transmit()
+    assert r.radio_state=='RX' and not r.ptt and not r.running
+    assert r.rx_audio is None and r.speaker_next() is None
+    # Failures must never leave TX keyed or silently replay old voice.
+    r.remove()
+    assert r.radio_state=='FM'
+
+
+def test_no_idle_sotto_receive_in_fm(built):
+    artifact,decoder=built
+    r=MockSottoRadio(artifact,decoder)
+    with pytest.raises(RuntimeError,match='outside RX'):
+        r._render_validated_receive(artifact['reference'])
+    r.install()
+    with pytest.raises(RuntimeError,match='outside RX'):
+        r._render_validated_receive(artifact['reference'])
+    r.select()
+    r._render_validated_receive(artifact['reference'])
+    assert r.radio_state=='RX' and r.status()['playback_ready']
+    r.remove()
+    assert r.radio_state=='FM' and not r.status()['playback_ready']

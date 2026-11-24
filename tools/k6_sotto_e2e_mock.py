@@ -110,6 +110,7 @@ class MockSottoRadio:
         self.artifact=artifact
         self.decoder=decoder
         self.mode='FM'
+        self.radio_state='FM'  # FM | RX | TX: RF is strictly half-duplex
         self.slots=[]
         self.running=False
         self.ptt=False
@@ -138,43 +139,63 @@ class MockSottoRadio:
             self.mode=on_select_toggle(legacy=self.mode,sotto_installed=self.installed,
                                        sotto_selected=self.mode=='SOTTO')
         assert self.mode in ('SOTTO','FM')
+        self.radio_state='RX' if self.mode=='SOTTO' else 'FM'
         return self.mode
 
+    def _render_validated_receive(self,payload):
+        """Audio playout is only allowed in RX after an independent RF check.
+
+        This does not model a production on-chip decoder; it uses the pinned
+        native Sotto decoder and strictly verified virtual FDV1 payload.
+        """
+        if (self.radio_state!='RX' or self.running or self.ptt
+                or not self.installed or self.mode!='SOTTO'):
+            raise RuntimeError('Sotto receive/playout unavailable outside RX')
+        if not payload or payload!=self.artifact['reference']:
+            raise RuntimeError('decoded RF payload differs from independent native encoder')
+        audio=decode_pcm(self.decoder,payload)
+        reference=decode_pcm(self.decoder,self.artifact['reference'])
+        if not np.array_equal(audio,reference):
+            raise RuntimeError('received PCM differs from native reference decoder')
+        self.rx_audio=audio
+        self.speaker_cursor=0
+
     def transmit(self,*,adc_cycles=4800,spi_us=10,spi_byte_us=0,channel=None):
-        if self.ptt or self.running:
+        if self.ptt or self.running or self.radio_state=='TX':
             raise RuntimeError('PTT already held')
         if not ptt_allowed(sotto_selected=self.mode=='SOTTO',
                            sotto_ready=self.installed and self.mode=='SOTTO',
-                           legacy_allowed=True) or self.mode!='SOTTO':
-            raise RuntimeError('Sotto not installed and selected')
+                           legacy_allowed=True) or self.mode!='SOTTO' or self.radio_state!='RX':
+            raise RuntimeError('Sotto not installed and selected for RX')
+        # PTT preempts reception and clears speaker/jitter state before TX.
+        # No local RX codec processing or playout is allowed while keyed.
+        self.rx_audio=None
+        self.speaker_cursor=0
+        self.radio_state='TX'
         self.ptt=True
         self.running=True
         try:
             result=trial(self.artifact,channel or Channel(),cpi=1.5,adc_cycles=adc_cycles,
                          spi_us=spi_us,spi_byte_us=spi_byte_us,capture_codec=True)
-            result['accepted']=accepted(result)
-            self.last=result
-            self.rx_audio=None
-            self.speaker_cursor=0
-            if not result['accepted']:
-                return False
-            payload=result['received_codec_bytes']
-            if not payload or payload!=self.artifact['reference']:
-                raise RuntimeError('decoded RF payload differs from independent native encoder')
-            # Render the *received* RF codec, not the input or an encoder-side shortcut.
-            self.rx_audio=decode_pcm(self.decoder,payload)
-            reference_audio=decode_pcm(self.decoder,self.artifact['reference'])
-            if not np.array_equal(self.rx_audio,reference_audio):
-                raise RuntimeError('received PCM differs from native reference decoder')
-            return True
         finally:
+            # The actual ARM TX oracle enforces its own RF/PA release; the
+            # mock's control state *also* fails closed back to RX on errors.
             self.ptt=False
             self.running=False
+            self.radio_state='RX'
+        result['accepted']=accepted(result)
+        self.last=result
+        if not result['accepted']:
+            return False
+        # The independent virtual receiver has acquired this payload *after*
+        # TX completed. Do not decode it as a simultaneous second RF path.
+        self._render_validated_receive(result['received_codec_bytes'])
+        return True
 
 
     def speaker_next(self):
         """Pull one 20-ms PCM block, as a virtual speaker sink would."""
-        if self.ptt or self.running:
+        if self.ptt or self.running or self.radio_state=='TX':
             raise RuntimeError('speaker cannot start while the mock is transmitting')
         if self.rx_audio is None:
             return None
@@ -192,6 +213,7 @@ class MockSottoRadio:
         self.slots=[]
         if self.mode=='SOTTO':
             self.mode='FM'
+        self.radio_state='FM'
         self.rx_audio=None
         self.speaker_cursor=0
 
@@ -199,7 +221,8 @@ class MockSottoRadio:
         return dict(installed=self.installed,mode=vfo_label(
                     legacy='FM',sotto_installed=self.installed,
                     sotto_selected=self.mode=='SOTTO'),
-                    ptt=self.ptt,running=self.running,playback_ready=self.rx_audio is not None)
+                    ptt=self.ptt,running=self.running,radio_state=self.radio_state,
+                    playback_ready=self.rx_audio is not None)
 
 
 def main(argv=None):
