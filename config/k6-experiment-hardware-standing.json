@@ -5,10 +5,10 @@
   "environment": "dummy_load",
   "approved": {
     "9": {
-      "manifest_sha256": "15f9ba1d4554ae4474626807db9ceac35dbf58e5d1a27276e9e6caaa999c7d61",
+      "manifest_sha256": "6c15a5f925973e2a298de94490add011e4df68c9f01333be19803169e88f7795",
       "expected_build": "339e08a2b77c7679",
       "exact_api": 29,
-      "expires_utc": "2026-11-24T23:20:54.548251+00:00",
+      "expires_utc": "2026-11-24T23:29:36.382004+00:00",
       "one_shot": true,
       "dummy_load_confirmed": true,
       "no_cwid_for_dummy_load": true
