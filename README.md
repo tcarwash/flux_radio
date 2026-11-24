@@ -168,6 +168,10 @@ starter ZIP. Open <http://127.0.0.1:5056> and use the emulator's virtual display
 PTT and SPI library. This is a development tool, not evidence of RF
 performance. Keep its unauthenticated server on a trusted local network.
 
+For receive experiments, add `--rf-source synthetic` to simulate a band,
+replay SigMF/NumPy IQ, or connect a receive-only SoapySDR source. See the
+[SDR-backed emulator guide](docs/k6-emulator.md#sdr-backed-receive-model-experimental).
+
 ## Explore the project
 
 | Find out about | Documentation |

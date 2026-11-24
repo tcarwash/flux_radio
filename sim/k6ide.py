@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import atexit
+import io
+import wave
 from collections import deque
 import json
 import threading
@@ -36,11 +39,13 @@ KEYS = ("MENU", "UP", "DOWN", "EXIT", "VM", "AB", "BAND", "SIDE1", "SIDE2",
 
 class K6Workbench:
     """Own the virtual flash and board; all Unicorn access is serialized by one lock."""
-    def __init__(self, image: Path, spi_path: Path | None = None, cpi: float = 1.5):
+    def __init__(self, image: Path, spi_path: Path | None = None, cpi: float = 1.5, *, rf_factory=None):
         self.lock = threading.RLock()
         self.image = image.expanduser().resolve()
         self.spi_path = spi_path.expanduser().resolve() if spi_path else None
         self.cpi = cpi
+        self.rf_factory = rf_factory
+        self.closed = False
         self.profiles = {}
         self.profile = None
         self.input_queue = deque()
@@ -60,6 +65,7 @@ class K6Workbench:
         self._boot()
         self.worker = threading.Thread(target=self._run, name="k6-ide-emulator", daemon=True)
         self.worker.start()
+        atexit.register(self.close)
 
     def _boot(self):
         self.input_queue.clear()
@@ -73,7 +79,11 @@ class K6Workbench:
             self.spi_path.parent.mkdir(parents=True, exist_ok=True)
             self.spi_path.write_bytes(self.spi_data)
             seed = self.spi_path
+        if self.board:
+            self.board.close_rf()
         self.board = K6Board(self.image, spi_image=seed, cpi=self.cpi, collect_mmio=False)
+        if self.rf_factory:
+            self.board.rf_backend = self.rf_factory()
         if seed is None:
             self.board.flash_data[:] = self.spi_data
         self.running = True
@@ -81,7 +91,7 @@ class K6Workbench:
         self.error = None
 
     def _run(self):
-        while True:
+        while not self.closed:
             with self.lock:
                 active = self.running and self.board is not None
                 if active:
@@ -99,6 +109,32 @@ class K6Workbench:
                         self.running = False
                         self.error = str(exc)
             time.sleep(.001 if active else .04)
+
+    def close(self):
+        with self.lock:
+            self.closed = True
+            self.running = False
+            if self.board:
+                self.board.close_rf()
+
+    def rf_audio(self):
+        """A bounded snapshot of model discriminator audio, not hardware speaker output."""
+        with self.lock:
+            backend = self.board.rf_backend
+            if backend is None:
+                raise ValueError("no RF source configured")
+            c = backend.chip
+            _, pcm = c.pcm_after(0)
+            pcm = pcm[-round(c.pcm_rate * 5):]
+            if not len(pcm):
+                raise ValueError("no RF audio available yet")
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(round(c.pcm_rate))
+                wav.writeframes(pcm.astype("<i2").tobytes())
+            return buf.getvalue()
 
     def inject_aprs(self, source="AG7SU", destination="APRS", message=">sim test",
                     ssid=7, noise=0.0, gain=1.0, clip=1.0,
@@ -372,6 +408,7 @@ class K6Workbench:
                     "virtual_ms": round(b.cycles / 96_000, 1) if b else 0,
                     "pc": f"0x{b.last_pc:08x}" if b else "—",
                     "uart": bytes(b.uart_tx[-3000:]).decode("utf-8", "replace") if b else "",
+                    "rf_backend": b.rf_backend.status() if b and b.rf_backend else None,
                     "modules": self.modules(), "keys": list(KEYS)}
 
     def screen_svg(self):
@@ -394,6 +431,7 @@ class RadioAdapter(Protocol):
     """Backend contract for one emulated radio model; UI routes stay model-neutral."""
     def state(self) -> dict: ...
     def screen_svg(self) -> str: ...
+    def rf_audio(self) -> bytes: ...
     def press(self, key: str, down: bool): ...
     def switch(self, name: str, on: bool): ...
     def inject_aprs(self, **kwargs): ...
@@ -457,6 +495,15 @@ def create_app(workbench: RadioAdapter):
     @app.get("/api/state")
     def api_state():
         return jsonify(workbench.state())
+
+    @app.get("/api/rf/audio.wav")
+    def api_rf_audio():
+        from flask import Response
+        try:
+            return Response(workbench.rf_audio(), mimetype="audio/wav",
+                            headers={"Cache-Control": "no-store"})
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
 
     @app.post("/api/profile")
     def api_profile():
@@ -595,6 +642,8 @@ def main():
                         help="HTTP bind address (default: all interfaces for remote browser access)")
     parser.add_argument("--port", type=int, default=5056)
     parser.add_argument("--cpi", type=float, default=1.5)
+    from sim.k6emu.rf_options import add_rf_args, rf_options
+    add_rf_args(parser)
     args = parser.parse_args()
     profiles = {}
     if args.profiles:
@@ -608,13 +657,23 @@ def main():
         args.image, args.spi_image = profiles[args.profile]["image"], profiles[args.profile]["spi"]
     if not args.image.is_file():
         parser.error(f"firmware image not found: {args.image}")
-    board = RADIO_MODELS[args.model](args.image, args.spi_image, args.cpi)
+    rf_factory = None
+    if args.rf_source:
+        from sim.k6emu.rf.backend import create_backend
+        rf_factory = lambda: create_backend(args.rf_source, **rf_options(args))
+    try:
+        board = RADIO_MODELS[args.model](args.image, args.spi_image, args.cpi, rf_factory=rf_factory)
+    except (ValueError, OSError, ImportError, RuntimeError) as exc:
+        parser.error(str(exc))
     board.profiles = profiles
     board.profile = args.profile
-    print(f"Flux radio simulator at http://{args.host}:{args.port} (virtual RF only)")
+    print(f"Flux radio simulator at http://{args.host}:{args.port} ({'RX-only IQ backend' if args.rf_source else 'virtual RF only'})")
     print(f"On this host: http://127.0.0.1:{args.port}")
     print("On your LAN, use this host's LAN address; Ctrl-C stops the workbench.")
-    create_app(board).run(host=args.host, port=args.port, threaded=True, debug=False)
+    try:
+        create_app(board).run(host=args.host, port=args.port, threaded=True, debug=False)
+    finally:
+        board.close()
 
 
 if __name__ == "__main__":
