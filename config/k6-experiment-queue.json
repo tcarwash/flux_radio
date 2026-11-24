@@ -110,6 +110,50 @@
           "sha256": "8b986d9e96cb9a43b9c78f82e5a319d4820355671089f15d5ed7819ee9415d53"
         }
       ]
+    },
+    "37": {
+      "kind": "OFFLINE",
+      "worktree": "/storage5/dev/flux-tx34-step-response-20261124",
+      "head_sha": "99c1c6f4181668fb1a0e45bb2f4022c622f12d24",
+      "argv": [
+        "/usr/bin/python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_k6_tx34_step_response.py",
+        "tests/test_k6_rf_backend.py"
+      ],
+      "timeout_seconds": 120,
+      "pins": [
+        {
+          "path": "tests/test_k6_tx34_step_response.py",
+          "sha256": "7cee9ee5f90680489589e9af7474f4ef2b562bf4737dc66012d8d209fd6faa1e"
+        },
+        {
+          "path": "tests/test_k6_rf_backend.py",
+          "sha256": "b45e95f72c336ce0d2a436b90f52f57f7e1e7ec08f98c5533fe62219df1351fa"
+        },
+        {
+          "path": "tools/k6_tx34_step_response.py",
+          "sha256": "c3ac1038202615d5e4c2e701c5003f82f23da9f9b602b95a47ffe9f23e333a40"
+        },
+        {
+          "path": "sim/k6emu/rf/backend.py",
+          "sha256": "d883267e00951d00fd794c7536332f7abf980723ac362679e52beec0f6f278bf"
+        },
+        {
+          "path": "sim/k6emu/rf/chip.py",
+          "sha256": "c624840b060ed550ad70a9d332b6469321003121c61b158121de3139db61f6ac"
+        },
+        {
+          "path": "sim/k6emu/rf/sources.py",
+          "sha256": "268e653cdc5a1f20ca0004eb870590647a4e90e8aff825fcc1e85dd5c90d83ee"
+        },
+        {
+          "path": "sim/k6emu/rf/dsp.py",
+          "sha256": "1919c22d024966a6684855ef2f80bacdda9194ab471de3aed3fe44e3dcbcd5b2"
+        }
+      ]
     }
   },
   "schema": 1
