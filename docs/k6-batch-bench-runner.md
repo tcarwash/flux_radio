@@ -413,3 +413,39 @@ Result=success, ExecMainStatus=0 while both registered hardware attempts
 were marked BLOCKED_NO_AUTO_RETRY; no repeat TX occurred. The timer
 remains enabled to process additional locally approved experiments and
 review results in order.
+
+## Operator CLI: flux-queue
+
+Use the read-only controller status utility to confirm the scheduler is
+working without opening the radio, changing a state file or claiming bench.
+
+The CLI lives in tools/k6_experiment_status.py. On the development
+workstation it is installed as ~/.local/bin/flux-queue.
+
+Commands:
+
+    flux-queue status             # scheduler, last run, next timer, journals, local lock
+    flux-queue status --github    # also check shared GitHub queue #11 (read-only)
+    flux-queue status --json      # structured machine-readable report
+    flux-queue status --strict    # nonzero exit when controller unhealthy
+    flux-queue logs               # last 60 systemd service log lines
+    flux-queue logs --lines 150
+
+A HEALTHY scheduler can be idle. BLOCKED_NO_AUTO_RETRY is a review-required
+experiment outcome, not a broken controller, and appears under Attention.
+All existing hardware experiments for #9 are consumed and must not be
+rerun except with a new independently reviewed and locally pinned manifest.
+
+The CLI reports DEGRADED for an inactive/disabled timer, no trigger or
+successful service completion in over 30 minutes, failed last service,
+missing/corrupt required journals, or an active hardware manifest drifting
+from its standing approval. Use --strict for integration with monitors.
+
+Without --github the bench field reports only a cooperative local flock;
+a free local lock alone cannot prove the shared GitHub queue has no claim.
+With --github it reads the trusted issue #11 coordination history, and
+reports unknown when the network cannot verify the lease. Neither check
+can exclude independent software that ignores the coordination protocol.
+
+This CLI never opens the radio/SDR, sends commands, flashes, transmits,
+starts any runner, edits a journal, or makes a physical lease.
