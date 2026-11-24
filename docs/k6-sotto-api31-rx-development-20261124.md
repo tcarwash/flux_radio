@@ -236,7 +236,15 @@ consumer via the **CRC32 cable loader and normal ARM run_module stack
 switch**, with virtual K6CB SPI and a CRC-protected packed KUL2 deck.
 It checks actual K6CB/K6SC header and end ranges, null/peripheral
 pointers, read limits, invalid slot handle reset, codebook/deck
-read-only behavior and safe module return. The companion
+read-only behavior and safe module return. A second *real compiled ARM*
+consumer (tests/data/k6/sotto_codec_resource_crc_probe.c) uses the
+unmodified Sotto encoder resource initializer from sotto_tx_codec_io.h
+to verify the complete K6CB and K6SC contents, not merely headers.
+The module succeeds on the canonical assets and fails closed if either
+the codebook data or deck payload is bit-corrupted while its header
+remains valid. Both negative paths preserve SPI and RF state.
+
+The companion
 tests/test_k6_sotto_api28_resources_host.py verifies overlay ordering,
 idempotence and opt-in feature gating. Real radio, physical SPI,
 keyed SipHash authorization, microphone and speaker remain untested.

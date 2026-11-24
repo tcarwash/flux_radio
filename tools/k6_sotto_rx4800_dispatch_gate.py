@@ -218,7 +218,7 @@ class Dispatcher:
             raise RuntimeError(f"Normal execution/PA trace unexpected: {self.trace}")
         if self.module_ret!=[expected_return]:
             raise RuntimeError(f"Real compiled C module returned unexpected value: {self.module_ret}")
-        expected_line=f"K6 MOD ret={expected_return} (0x{expected_return:x})".encode()
+        expected_line=f"K6 MOD ret={expected_return} (0x{expected_return&0xffffffff:x})".encode()
         if expected_line not in b.uart_tx:
             raise RuntimeError("Host did not observe successful module return")
         if int.from_bytes(b.uc.mem_read(self.syms["ctx_app"],4),"little")!=0:

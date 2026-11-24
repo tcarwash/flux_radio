@@ -28,21 +28,27 @@ BASE=0x110000
 SLOT=14
 SLOT_BYTES=0x4000
 
-def run(elf:Path,image:Path,tree:Path):
+def run(elf:Path,image:Path,tree:Path,*,source:Path=SRC,
+        corrupt_codebook:bool=False,corrupt_deck:bool=False,
+        expected_return:int=7):
     with tempfile.TemporaryDirectory(prefix="flux-sotto-resource31-") as t:
         tmp=Path(t)
         sha,firmware_bytes=matching_image(elf,image,tmp)
         art=prepare(tree,tmp,pcm=mixed_pcm())
-        code,entry=k6mod.build(str(SRC))
+        code,entry=k6mod.build(str(source))
         if len(code)+24>10240:
             raise RuntimeError("Resource API verifier exceeds ARM module code cap")
         fw=Dispatcher(elf,image,art["names"])
         try:
             b=fw.board
-            cb=art["cb"]
-            deck=art["deck"]
+            cb=bytearray(art["cb"])
+            deck=bytearray(art["deck"])
             if len(cb)!=30752 or len(deck)!=4182:
                 raise RuntimeError("Incorrect K6CB / K6SC reference resources")
+            if corrupt_codebook:
+                cb[1024]^=0x04  # valid-looking header, invalid pinned CRC
+            if corrupt_deck:
+                deck[256]^=0x01 # valid-looking K6SC, invalid pinned CRC
             deck_image=k6mod.image(deck,0,serial=77,key=None,level=31,
                                    lib=SLOT,cards=True)
             b.flash_data[0x100000:0x100000+len(cb)]=cb
@@ -55,7 +61,7 @@ def run(elf:Path,image:Path,tree:Path):
             before_cb=hashlib.sha256(b.flash_data[0x100000:0x100000+len(cb)]).hexdigest()
             before_deck=hashlib.sha256(b.flash_data[BASE:END]).hexdigest()
             chunks,envelope=fw.verified_cable_stage(code,entry)
-            fw.execute(expected_return=7,require_rf=False)
+            fw.execute(expected_return=expected_return,require_rf=False)
             if hashlib.sha256(b.flash_data[0x100000:0x100000+len(cb)]).hexdigest()!=before_cb:
                 raise RuntimeError("Resource API mutated codebook SPI flash")
             if hashlib.sha256(b.flash_data[BASE:END]).hexdigest()!=before_deck:
@@ -66,6 +72,9 @@ def run(elf:Path,image:Path,tree:Path):
                 actual_ARM_resource_callbacks=True,
                 real_ARM_module_run=True,
                 module_return=fw.module_ret[0],
+                uses_actual_sotto_sio_init=source.name=="sotto_codec_resource_crc_probe.c",
+                corrupted_codebook_fixture=corrupt_codebook,
+                corrupted_deck_fixture=corrupt_deck,
                 module_bytes=len(code),module_envelope_bytes=envelope,
                 cable_crc_chunks=chunks,
                 codebook_bytes=len(cb),deck_bytes=len(deck),
