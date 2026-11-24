@@ -10,7 +10,7 @@ SPEC = json.loads((Path(__file__).resolve().parents[1] / 'config/k6-feature-pack
 def test_scan_data_deduplicates_base():
     plan = resolve(SPEC, ['scan', 'data'])
     assert plan['packs'] == ['base', 'scan', 'data']
-    assert plan['modules'] == ['surf', 'explore_scan', 'cardlink']
+    assert plan['modules'] == ['surf', 'explore_scan', 'cardlink', 'fluxtnc']
     assert len(plan['cargo_features']) == len(set(plan['cargo_features']))
 
 def test_unknown_and_unavailable_rejected():
@@ -40,7 +40,7 @@ def test_aprs_is_catalog_only_and_raw_data_is_optional():
     assert base['modules']==[]
     assert gate_environment(base,policy)['K6_FSK_RX_SERVICE']=='0'
     data=resolve(SPEC,['data'])
-    assert data['modules']==['cardlink']
+    assert data['modules']==['cardlink','fluxtnc']
     assert gate_environment(data,policy)['K6_FSK_RX_SERVICE']=='1'
     with pytest.raises(ValueError,match='unknown'):
         resolve(SPEC,['aprs'])

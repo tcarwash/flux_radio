@@ -64,9 +64,10 @@
         "fd6818-fsk-rx"
       ],
       "modules": [
-        "cardlink"
+        "cardlink",
+        "fluxtnc"
       ],
-      "description": "Raw fixed-frame FSK plus PXK6 cable record list/read/write/erase for Card Link and experimental digital data. Not required for APRS. Serial IQ acquisition belongs to Data; the SPI IQ overlay is an experimental build option pending flash-budget qualification."
+      "description": "Raw fixed-frame FSK, including the bounded experimental 4800-baud TX extension, plus PXK6 cable record list/read/write/erase for Card Link and experimental digital data. Not required for APRS. Serial IQ acquisition belongs to Data; the SPI IQ overlay is an experimental build option pending flash-budget qualification. Includes the optional Flux KISS TNC with APRS-1200 packet TX and versioned mode control; additional packet providers require their own ingress ABI."
     },
     "ota": {
       "requires": [
@@ -94,6 +95,10 @@
       "explore-ui-api",
       "candidate-ranking",
       "cw-tone-observation"
+    ],
+    "fluxtnc": [
+      "module-loader",
+      "fd6818-fsk-rx"
     ]
   }
 }

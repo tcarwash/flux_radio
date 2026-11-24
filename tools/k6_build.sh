@@ -147,6 +147,18 @@ if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
 elif [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   CFLAGS="$CFLAGS -DKM_LEVEL=24"
 fi
+# Optional read-only installed-provider discovery (API 26, k6_mod.h):
+# default images keep their ceiling; only an explicit K6_MODE_REGISTRY=1
+# raises it. Discovery only, no packet transmit path is involved.
+if [ "${K6_MODE_REGISTRY:-0}" = 1 ]; then
+  CFLAGS="$CFLAGS -DK6_MODE_REGISTRY=1"
+fi
+# Host-owned V1 packet mailbox (API 27, k6_mod.h): only with the registry
+# opt-in (k6_mod.h errors otherwise); default images keep their ceiling.
+if [ "${K6_PACKET_MAILBOX:-0}" = 1 ]; then
+  [ "${K6_MODE_REGISTRY:-0}" = 1 ] || { echo "K6_PACKET_MAILBOX requires K6_MODE_REGISTRY=1" >&2; exit 1; }
+  CFLAGS="$CFLAGS -DK6_PACKET_MAILBOX=1"
+fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then
@@ -171,8 +183,21 @@ $CC $CFLAGS -Oz -c "$ROOT/c/k6/card_store.c" -o "$OUT/card_store.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/card_air.c" -o "$OUT/card_air.o"
 # per packet, not per sample (the PWM conversion is 160 samples in 20 ms): -Oz, about 2 KB less
 $CC $CFLAGS ${K6_PAGER_OPT:--Oz} -c "$ROOT/c/k6/sotto_pager.c" -o "$OUT/sotto_pager.o"
-$CC $CFLAGS -Dcalloc=sp_calloc -Dfree=sp_free -c "$ROOT/c/fixed/sotto_fx_dec.c" -o "$OUT/sotto_fx_dec.o"
-$CC $CFLAGS -c "$ROOT/c/fixed/fx_math.c" -o "$OUT/fx_math.o"
+$CC $CFLAGS ${K6_SOTTO_DEC_OPT:-} -Dcalloc=sp_calloc -Dfree=sp_free -c "$ROOT/c/fixed/sotto_fx_dec.c" -o "$OUT/sotto_fx_dec.o"
+# Optionally isolate only the hot overlap-add block at -O2. This leaves
+# the rest of the fixed math compact, with an exact upstream arithmetic copy.
+OA_FAST=
+if [ "${K6_SOTTO_OA_FAST:-0}" = 1 ]; then
+  [ "${K6_CODEC:-}" = 1200 ] && [ "${K6_SOTTO_MATH_OPT:-}" = -Oz ] || {
+    echo "K6_SOTTO_OA_FAST requires K6_CODEC=1200 and math -Oz" >&2
+    exit 1
+  }
+  $CC $CFLAGS -Oz -Dfx_oa_block=fx_oa_block_compact_unused -c "$ROOT/c/fixed/fx_math.c" -o "$OUT/fx_math.o"
+  $CC $CFLAGS -O2 -c "$ROOT/c/k6/sotto_fx_oa_fast.c" -o "$OUT/sotto_fx_oa_fast.o"
+  OA_FAST="$OUT/sotto_fx_oa_fast.o"
+else
+  $CC $CFLAGS ${K6_SOTTO_MATH_OPT:-} -c "$ROOT/c/fixed/fx_math.c" -o "$OUT/fx_math.o"
+fi
 $CC $CFLAGS -c "$ROOT/c/fixed/fx_tables.c" -o "$OUT/fx_tables.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/sp_cb.c" -o "$OUT/sp_cb.o"
 $CC $CFLAGS -Oz -c "$ROOT/c/k6/sp_vlr.c" -o "$OUT/sp_vlr.o"
@@ -213,7 +238,7 @@ $CC $CFLAGS -DKP_PAGE=KP_SWEEP -c "$ROOT/c/k6/kp_tab.c" -o "$OUT/kp_sweep.o"
 $CC $CFLAGS -DKP_PAGE=KP_LISTEN -c "$ROOT/c/k6/kp_tab.c" -o "$OUT/kp_listen.o"
 $CC $CFLAGS -DKP_PAGE=KP_TABLE -c "$ROOT/c/k6/kp_tab.c" -o "$OUT/kp_table.o"
 $CC $CFLAGS -DKP_PAGE=KP_EDIT -c "$ROOT/c/k6/kp_tab.c" -o "$OUT/kp_edit.o"
-LIBOBJS="$OUT/sotto_pager.o $OUT/k6_mod.o $OUT/sotto_fx_dec.o $OUT/sp_cb.o $OUT/sp_vlr.o $OUT/fx_math.o $OUT/fx_tables.o $OUT/ifpager.o
+LIBOBJS="$OUT/sotto_pager.o $OUT/k6_mod.o $OUT/sotto_fx_dec.o $OUT/sp_cb.o $OUT/sp_vlr.o $OUT/fx_math.o $OA_FAST $OUT/fx_tables.o $OUT/ifpager.o
   $OUT/xscan.o $OUT/xscan_hot.o $OUT/xlisten.o $OUT/xdmr.o $OUT/explore.o $OUT/cwid.o $OUT/k6_rt.o $OUT/sted.o"
 if [ "${K6_EXPLORE_HOST:-0}" = 1 ]; then
   if [ "${K6_SCAN_SERVICE:-1}" = 1 ]; then
@@ -261,6 +286,16 @@ if [ "${K6_SERIAL_LAB:-0}" = 1 ] || [ "${K6_SERIAL_IQ:-0}" = 1 ]; then
     LIBOBJS="$LIBOBJS $OUT/$unit.o"
   done
   fi
+fi
+# Sotto development image: include the inert FDV1 guarded wire interface.
+# The object contains no hardware access and is only linked when referenced.
+if [ "${K6_DV_WIRE:-0}" = 1 ]; then
+  [ "${K6_CODEC:-}" = 1200 ] && [ "${K6_CB:-}" = spi ] || {
+    echo "K6_DV_WIRE requires Sotto-1200 with SPI-backed codebook" >&2
+    exit 1
+  }
+  $CC $CFLAGS -Oz -fno-builtin -c "$ROOT/c/k6/sotto_dv_wire.c" -o "$OUT/sotto_dv_wire.o"
+  LIBOBJS="$LIBOBJS $OUT/sotto_dv_wire.o"
 fi
 LIBOBJS="$LIBOBJS ${K6_LIBEXTRA:-}"
 # the images' memcpy family (c/k6/k6_mem.c): in the archive only, the bench links shim.c's
