@@ -20,9 +20,10 @@ def plan(queue, issues, registry, api, repo, owner):
     for line in queue["body"].splitlines():
         if not line.startswith("|"):
             continue
-        for n in re.findall(r"\[#(\d+)[^\]]*\]\(" + re.escape(prefix) + r"\d+\)", line):
-            if int(n) not in ranked:
-                ranked.append(int(n))
+        for display, destination in re.findall(
+                r"\[#(\d+)[^\]]*\]\(" + re.escape(prefix) + r"(\d+)\)", line):
+            if display == destination and int(display) not in ranked:
+                ranked.append(int(display))
     out = []
     for n in ranked + sorted(set(by_number) - set(ranked)):
         i = by_number.get(n)
@@ -36,6 +37,8 @@ def plan(queue, issues, registry, api, repo, owner):
             reason = "not ranked in coordination issue"
         elif not entry:
             reason = "needs locally reviewed harness and API qualification"
+        elif entry.get("kind") == "OFFLINE":
+            reason = "locally pinned OFFLINE harness; ready for trusted dispatcher"
         elif entry.get("validated_module_api") != api:
             reason = "needs retargeting or requalification"
         else:

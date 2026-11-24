@@ -152,3 +152,75 @@ experiment registry. Registry entries may record `validated_module_api`;
 a target change requires requalification. The preview is read-only, does not
 interpret issue text as commands, and does not establish a bench claim.
 It does not yet generate executable manifests or dispatch experiments.
+
+## Trusted queue dispatch and hardware handoff (2026-11-24)
+
+GitHub issue descriptions and comments are DATA ONLY, never an executable
+command source. Only open, ranked issues authored by tcarwash qualify; all
+commands, paths and hashes must come from locally reviewed files.
+
+### OFFLINE (target-emulator) dispatcher
+
+Local allowlist: config/k6-experiment-queue.json.
+Read-only preview: python3 tools/k6_experiment_dispatch.py --all
+Run one: python3 tools/k6_experiment_dispatch.py --issue 9 --run-offline
+Run all registered in ranked order:
+  python3 tools/k6_experiment_dispatch.py --all --run-offline
+Add --publish to post a sanitized result only on a freshly reverified issue.
+
+The dispatcher verifies the frozen worktree HEAD, clean tree, exact SHA256
+pins of reviewed tests/source/entrypoint; no shell evaluation. Execution
+has timeout and process-group kill, checks for source drift afterward,
+and stores private evidence with mode 0600 under ~/flux-bench/offline-queue.
+The K6_EXPERIMENT_OFFLINE environment flag is advisory, not a security sandbox:
+register ONLY manually reviewed offline harnesses.
+
+Initial registrations: #9 uses the original Cortex-M0 Unicorn firmware
+module simulator, 81 tests; #10 uses the FDV1/Sotto C-target-emulator,
+session and playout suite, 109 tests. Both passed via the actual dispatcher,
+and sanitized results were posted to the issues:
+#9 https://github.com/tcarwash/flux_radio/issues/9#issuecomment-7136807068
+#10 https://github.com/tcarwash/flux_radio/issues/10#issuecomment-7136852803
+
+Remaining issues require individual harness review and enrollment. Issue
+body text cannot self-enroll.
+
+### Hardware runner (not currently enrolled for live execution)
+
+Separate allowlist: config/k6-experiment-hardware.json. Hardware manifests
+are intentionally EMPTY until the first up-to-date manifest, exact radio
+build and verified restoration path are reviewed.
+
+A locally approved hardware manifest registration includes the absolute
+manifest file path plus its SHA256; it may not be supplied by an issue.
+Preview command: python3 tools/k6_experiment_hardware.py --issue 9
+(The current preview fails closed because #9 is not hardware-enrolled.)
+
+Future execution requires --execute, --approve-digest matching a local dry
+run, --ack-url, --operator, and --dummy-load-confirmed. The live ACK comment,
+posted on trusted issue #11 by tcarwash, MUST include this exact line after
+substituting values:
+
+    BENCH ACK | issue=9 | session=SESSION_ID | approval_sha256=DIGEST | operator=AG7SU | scope=whole-bench
+
+The handoff fetches that comment live, verifies issue/author, freshness
+(within 45 min), exact digest and session binding, and paginates all #11
+coordination comments to refuse conflicting claims or an ended lease.
+A merely syntactically valid comment link is not sufficient.
+
+The handoff holds a cooperative whole-bench flock at
+~/.cache/flux/bench.lock through the existing reviewed batch engine;
+child hardware harnesses still MUST acquire the canonical nonblocking
+serial_lock('/dev/ttyUSB0'), and independently enforce firmware/chip and
+VFO preflight, TX watchdog, SDR evidence, restoration and verification.
+A file lock cannot exclude other agents that have not adopted that same
+lock; GitHub claims alone are NOT atomic reservations.
+
+Compatibility BLOCKER: editable target API is 29 but the last reported
+live radio API on issue #11 was 25, and #9's frozen physical harness
+expects a different firmware build. Do not silently retarget or invoke
+physical #9 until up-to-date on-radio attestation and revised review.
+The passing hardware handoff tests use fake devices only, no real RF.
+
+Regression command:
+  python3 -m pytest -q tests/test_k6_experiment_queue.py tests/test_k6_experiment_dispatch.py tests/test_k6_experiment_hardware.py tests/test_k6_experiment_batch.py

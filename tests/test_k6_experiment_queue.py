@@ -15,3 +15,16 @@ def test_order_trust_and_api():
     assert "retargeting" in result[1]["status"]
     assert "not ranked" in result[2]["status"]
     assert "locally registered" in plan(q, issues, registry, 28, repo, "owner")[1]["status"]
+
+def test_offline_registration_not_blocked_by_hw_api():
+    q={"body":"| 1 | [#10](https://github.com/owner/project/issues/10) |"}
+    issues=[{"number":10,"state":"OPEN","title":"sotto",
+             "author":{"login":"owner"}}]
+    got=plan(q,issues,{"10":{"kind":"OFFLINE","head_sha":"abc"}},29,"owner/project","owner")
+    assert "locally pinned OFFLINE" in got[0]["status"]
+
+def test_mismatched_rank_link_not_approved():
+    q={"body":"| 1 | [#9](https://github.com/owner/project/issues/99) |"}
+    issues=[{"number":9,"state":"OPEN","title":"trick","author":{"login":"owner"}}]
+    got=plan(q,issues,{},29,"owner/project","owner")
+    assert not got[0]["ranked"]

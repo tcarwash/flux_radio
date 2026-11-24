@@ -2,5 +2,115 @@
   "repo": "tcarwash/flux_radio",
   "queue_issue": 11,
   "trusted_author": "tcarwash",
-  "experiments": {}
+  "experiments": {
+    "9": {
+      "kind": "OFFLINE",
+      "worktree": "/storage5/dev/flux-fsk-bchip-irq-qual-20261123",
+      "head_sha": "517fbf56f2a5280e1a725cb2c4c16b8177f27f4a",
+      "argv": [
+        "/usr/bin/bash",
+        "./tools/run_fsk09s_h_emulator.sh"
+      ],
+      "timeout_seconds": 180,
+      "pins": [
+        {
+          "path": "tools/run_fsk09s_h_emulator.sh",
+          "sha256": "4ded0d3ef8d5ad185efae6a119291e5b56521bcdcc0fec551e79e513b5ac3cc9"
+        },
+        {
+          "path": "tests/test_k6_fsk_bchip_ae_emulator.py",
+          "sha256": "bd8ba33aad203ebcafac0ca6a2768f6df74fcd825b4d1524ddce776ff23ea85f"
+        },
+        {
+          "path": "tests/test_k6_fsk_bchip_ae_end_to_end_emulator.py",
+          "sha256": "629a8503e4f99fe373acbe1bc34efe4f80e677804b5486b5e50a34a2ca05ea7a"
+        },
+        {
+          "path": "tests/test_k6_fsk_bchip_ae_qual.py",
+          "sha256": "276ddac0969e2108577d3b6b90af32b5080283711ba8652287c3d06032740154"
+        },
+        {
+          "path": "tests/test_k6_fsk_refill.py",
+          "sha256": "25396466b2bb42931f38fa9121050448ee83fad46ca783f25a292f0f1180e875"
+        },
+        {
+          "path": "tests/test_k6_fsklab.py",
+          "sha256": "1d6b7b369b1f57b4dea8ecdfc65be796b20ffff834df0e347fcc78bf4569bbd0"
+        },
+        {
+          "path": "tests/test_k6_fsk_boundary_bench.py",
+          "sha256": "7df5865eae4f45c6740073658c3bfc6a08c385604e62defd85e817e13cefb3b7"
+        },
+        {
+          "path": "c/k6/mod/fsk_bchip_ae_qual_armed.c",
+          "sha256": "7ebd2a4ac62314abee6781c8ca194a39607c667d1b1e0582a60fc6e5a65812cf"
+        }
+      ]
+    },
+    "10": {
+      "kind": "OFFLINE",
+      "worktree": "/storage5/dev/flux-guard33-rx-playout",
+      "head_sha": "b43c480f16c5c462d7a8ec718d6ae633d8735f16",
+      "argv": [
+        "/usr/bin/python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_k6_dv_guard33_session.py",
+        "tests/test_k6_dv_guard33_playout.py",
+        "tests/test_k6_dv_guard33_packet.py",
+        "tests/test_k6_dv_guard33_stream.py",
+        "tests/test_k6_fsk_guard33_mic_playout.py",
+        "tests/test_k6_sotto_fsk_capture_playout.py"
+      ],
+      "timeout_seconds": 240,
+      "pins": [
+        {
+          "path": "tests/test_k6_dv_guard33_session.py",
+          "sha256": "5a20470ba90a5472f53f3bd129d2105e7afd1f06656ebc98ffc504885d53b8e5"
+        },
+        {
+          "path": "tests/test_k6_dv_guard33_playout.py",
+          "sha256": "9b70b2d3f60e9d293213fb7094bb98f6dc6cc5b0db629281dbd46f5a8d4cb848"
+        },
+        {
+          "path": "tests/test_k6_dv_guard33_packet.py",
+          "sha256": "ef05da4052ffdf9f8770595be43497e1f87c3ce26cae1b582e1acb29a681efcc"
+        },
+        {
+          "path": "tests/test_k6_dv_guard33_stream.py",
+          "sha256": "83f29ffa7bfa18491f8be13c83122ebb4eef0265e71b78759f43e95d8543e838"
+        },
+        {
+          "path": "tests/test_k6_fsk_guard33_mic_playout.py",
+          "sha256": "9344eb296f3489deee7232f02d4f4570f803e0322387309c72895d01ec327495"
+        },
+        {
+          "path": "tests/test_k6_sotto_fsk_capture_playout.py",
+          "sha256": "566c2905ca494bec5b9d52cc5411c541b555b38fd50ae6deed04172403837872"
+        },
+        {
+          "path": "c/k6/mod/dv_guard33_session.h",
+          "sha256": "e5d4f4b7f8b1628f86a37a88561a044b698937535472bb912432222047f8ad6f"
+        },
+        {
+          "path": "c/k6/mod/dv_guard33_session_m0_probe.c",
+          "sha256": "d65b2feb4a62c40d36adc3a619183b523cbf2c3101b414e47c1a1467d1f887a8"
+        },
+        {
+          "path": "tools/k6_dv_guard33_session_unicorn.py",
+          "sha256": "ee18ed8f702598c7fb913739c51d9d01b5380e165896d6faac82ae423aec5df1"
+        },
+        {
+          "path": "tools/k6_dv_guard33_session.py",
+          "sha256": "470521fded8619a941b5950c2204edec837e6580d368be5f59da00b3a9bdf774"
+        },
+        {
+          "path": "tools/k6_dv_guard33_playout.py",
+          "sha256": "8b986d9e96cb9a43b9c78f82e5a319d4820355671089f15d5ed7819ee9415d53"
+        }
+      ]
+    }
+  },
+  "schema": 1
 }
