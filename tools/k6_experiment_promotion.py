@@ -179,6 +179,11 @@ def generate(n,recipe,record,p):
                      "--queue-lease-acknowledged"):
         if expected not in text:raise Refused(f"bench script lacks stage {expected}")
     if recipe["kind"]=="BOUNDED_TX":
+        # A spectral-power peak is NOT an RF public-sync correlation.
+        # The first #26 delegate mapped PSD peaks to invented 0.99
+        # correlation, which could score broadband noise as valid FSK.
+        if re.search(r"corrs\.append\(MIN_SYNC_CORR\s*\+",text):
+            raise Refused("RF scorer fabricates synchronization from PSD peak")
         if "--max-tx-ms" not in text or not any(word in text for word in (
                 "watchdog","WATCHDOG","TX_TIMEOUT")):
             raise Refused("bounded TX watchdog flag not implemented in bench entrypoint")

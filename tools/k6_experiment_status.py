@@ -383,8 +383,10 @@ def status(now=None, check_github=False):
             result["alerts"].append(f"{blocked} intake assessments require intervention")
     bstate=result.get("builder")
     if bstate:
-        blocked=bstate["counts"].get("BLOCKED_NO_AUTO_RETRY",0)
-        if blocked:result["alerts"].append(f"{blocked} generated candidates blocked; no auto-retry")
+        blocked=sum(bstate["counts"].get(st,0) for st in (
+            "BLOCKED_NO_AUTO_RETRY","BLOCKED_CANDIDATE_NEEDS_REPAIR"))
+        if blocked:result["alerts"].append(
+            f"{blocked} generated candidates need offline repair")
     if result["hardware"] and result["hardware"].get("waiting_independent_review"):
         ids=result["hardware"]["waiting_independent_review"]
         result["alerts"].append(f"physical candidates awaiting independent review: {ids}")
@@ -442,7 +444,8 @@ def display(data):
         counts=builder["counts"]
         print(f"  Builder     {counts.get('TESTED_NEEDS_INDEPENDENT_REVIEW',0)} tested"
               f" · {counts.get('MANIFEST_REGISTERED_FOR_REVIEW',0)} registered"
-              f" · {counts.get('BLOCKED_NO_AUTO_RETRY',0)} blocked")
+              f" · {counts.get('REPAIRING_DEVICE_FREE',0)} repairing"
+              f" · {counts.get('BLOCKED_NO_AUTO_RETRY',0)+counts.get('BLOCKED_CANDIDATE_NEEDS_REPAIR',0)} need repair")
     fixture=data.get("fixtures")
     if fixture:
         c=fixture["counts"]

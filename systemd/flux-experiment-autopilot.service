@@ -7,6 +7,7 @@ Type=oneshot
 WorkingDirectory=/storage5/dev/flux-batch-api-config
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_intake.py --once --max-new 4 --max-active 4 --max-daily 32 --hardware-only
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_builder.py --once
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_repair.py --once
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_promotion.py --once
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_autopilot.py --once --publish
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_review.py --once --config /home/tyler/.local/state/flux-experiment-autopilot/hardware-generated.json

@@ -174,7 +174,10 @@ def build_once(config=CONFIG,state_path=STATE,intake_path=INTAKE,
     triaged=current_triage(intake_path)
     state_path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
     with state_path.with_suffix(".lock").open("a+b") as lock:
-        fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {"mode":"BUILDER_BUSY_SKIP","events":[],"physical_runs":0}
         state=journal.state_load(state_path)
         today=datetime.now(timezone.utc).date().isoformat()
         submitted=sum(1 for x in state["jobs"].values()

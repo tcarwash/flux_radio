@@ -91,3 +91,20 @@ This proves the guarded RX-only fast-SPI readback primitive, **not** actual
 oversampled RRC-shaped 4-FSK transmitted RF. Keep follow-on TX/RRC physical
 qualification tracked separately; do not close all of #21's goals based on
 an RX-only test. Physical PASS is not an offline fixture PASS.
+
+
+## Device-free repair stage
+
+The active hardware pipeline includes a device-free repair step between
+candidate generation and physical manifest promotion. It inspects only
+locally trusted worktrees and preselected blocked candidate issues #26, #30,
+and #20 (in that priority order), allowing at most **two repairs per
+candidate**. A repair delegate has no shell, radio, USB or SDR access; it
+can edit only the candidate's allowlisted paths. The supervisor reruns the
+specified pytest suite in a no-network device-free sandbox, checks a real
+hardware CLI and actual run/module path (no explicit offline-only stub),
+freezes a local Git source commit and recomputes SHA256 pins. Only then
+can the existing independent review and one-shot hardware permission run.
+Failing software fixtures or incomplete hardware wrappers do **not** receive
+RF authority or synthetic success credit. Failed repairs remain recorded
+with the exact failure reason and finite attempts.
