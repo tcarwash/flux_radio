@@ -63,7 +63,7 @@ int k6_main(const k6_api_t*a){
     a->lcd_text(0,"SOTTO TX BENCH");
     a->lcd_text(1,"Dummy load only");
     a->lcd_text(2,"Unplug cable");
-    a->lcd_text(3,"Hold PTT to speak");
+    a->lcd_text(3,"Hold PTT");
     a->lcd_flush();
     a->say("Unplug cable; hold PTT");
     t0=a->ms();pressed=0;

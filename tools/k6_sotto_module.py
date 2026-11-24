@@ -65,6 +65,16 @@ struct slim_enc {
          "  int16_t *t=e->coder.target;\n  signed char *buf=e->coder.cb;\n  int32_t *bh=e->coder.best_dist;")
     once("    int32_t ph[IVF_MAXP];\n    unsigned char pc[IVF_MAXP];\n    signed char cbuf[IVF_BLK * IVF_CD];\n    int16_t vl[IVF_MAXN];",
          "    int32_t *ph=e->coder.cell_dist;\n    unsigned char *pc=e->coder.cell_id;\n    signed char *cbuf=e->coder.centroids;\n    int16_t *vl=e->coder.vectors;")
+    # Keep singleton-search winning codeword in coder centroid scratch.
+    # Its centroid data are dead by the time the vector search begins.
+    once("    bh[i] = (hsum), best[i] = (int16_t)(v); \\\n  }",
+         "    bh[i] = (hsum), best[i] = (int16_t)(v); \\\n    if (nb == 1) memcpy(e->coder.centroids, candidate, CBB); \\\n  }")
+    once("        hsum = cb_h(SLIM_CB_FETCH(s, v, buf), t);\n        KEEP(hsum, v)",
+         "        const signed char *candidate = SLIM_CB_FETCH(s, v, buf);\n        hsum = cb_h(candidate, t);\n        KEEP(hsum, v)")
+    once("    int32_t hsum = cb_h(SLIM_CB_FETCH(s, v, buf), t);\n    KEEP(hsum, v)",
+         "    const signed char *candidate = SLIM_CB_FETCH(s, v, buf);\n    int32_t hsum = cb_h(candidate, t);\n    KEEP(hsum, v)")
+    once("  const signed char *y = SLIM_CB_FETCH(s, v, buf);",
+         "  const signed char *y = s ? e->coder.centroids : SLIM_CB_FETCH(s, v, buf);")
     # The input block is consumed into x8 before lag_search/envelope ever
     # touches w. Reuse its first 80 samples for flush silence as well.
     # Keep the original upstream analysis and wire arithmetic unchanged.
