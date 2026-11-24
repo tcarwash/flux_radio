@@ -205,7 +205,8 @@ class Dispatcher:
         self.board.fd_regs[0x39]=hz>>16
 
     def execute(self,expected_return:int=6,require_rf:bool=True,
-                require_radio_tx:bool=False,min_api31_calls:int|None=None):
+                require_radio_tx:bool=False,min_api31_calls:int|None=None,
+                on_quantum=None):
         from unicorn.arm_const import (
             UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_SP,
             UC_ARM_REG_LR,UC_ARM_REG_PC,
@@ -220,6 +221,8 @@ class Dispatcher:
             b.uc.reg_write(reg,value)
         for _ in range(16000):
             b.run(2048,1024)
+            if on_quantum is not None and not b.fault and not self.returned:
+                on_quantum(self)
             if self.returned or b.fault:
                 break
         if b.fault:

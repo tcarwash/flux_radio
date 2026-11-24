@@ -315,18 +315,86 @@ opt-in gate using byte-matched ELF and application image:
     K6_AURA_RESET_GENERATED=1 K6_FSK4800_RX=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 K6_SOTTO_RESOURCES=1 K6_SOTTO_ASYNC_FSK=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-sotto-async29
     K6_SIM_SOTTO_RX31_IMAGE=firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin K6_SIM_SOTTO_RX31_ELF=firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura K6_SIM_SOTTO_ASYNC_FSK=1 ~/.local/share/flux-rf-venv/bin/python -m pytest -q tests/test_k6_sotto_api29_async_gate.py tests/test_k6_sotto_api29_overlay.py
 
+## Opt-in API30 PA11/TIM17 8-kHz microphone ISR (2026-11-24)
+
+The experimental Base+Data host now also supports
+**K6_SOTTO_MIC=1**, strictly dependent on the opt-in API29
+FSK transmitter, API28 resources, API31 receiver and API26/27
+mode/KISS tail. The module API30 slot is **reused in place**;
+no earlier callback, KISS mailbox scalar or API31 offset moved.
+Ordinary RX/packet firmware without the flag still has the original
+unavailable API30 stub.
+
+The port keeps the existing researched PA11 single-wire sigma-delta
+sampler in firmware/k6-aura/sotto-api30-pcm-capture.rs. It uses
+TIM17 at 8,000 sample interrupts/second (125us period), 48 PDM
+turns per interrupt and a 4x80-sample 16-bit PCM ring (644 bytes
+including volatile producer/consumer/offset/lost counters). The
+module API provides read-only physical PTT status (op=3), begin
+capture (op=0, only after a valid PA-muted TX lease and guarded
+0x4829 RFIC route), stop (op=1), and sample ISR peak cycles (op=2).
+It refuses unaligned/out-of-arena pointers, wrong ring size,
+reentrant start, unavailable watchdog vector remap and active
+live-serial ownership of the shared microphone/serial port.
+
+On a valid start, the firmware borrows the TIM17 interrupt vector
+from the armed SRAM txdog remap and verifies its alias writeback.
+The ISR doesn't write RF registers, own PTT or turn on PA.
+Explicit stop and every TX/module/txdog de-key restore the saved
+radio microphone registers, stop timer/IRQ, clear the ring pointer,
+restore the vector *before* the watchdog switches address zero back
+to flash, and release the transmitter.
+
+**Actual compiled ARM qualification:** The opt-in
+tools/k6_sotto_api30_mic_gate.py boots the real K6 firmware ELF
+and matching image in K6Board/Unicorn, installs a real CRC32
+cable module and invokes the normal stack-switching module
+dispatcher. It fixes **only the test simulator's** SRAM-zero
+alias fidelity: the original emulator copied the vector table
+only on remap, but hardware exposes a live alias and thus sees
+subsequent vector writes. Firmware vector guards are unchanged.
+
+The test invokes the **real compiled TIM17 Cortex-M0 ISR 95
+times** at the modeled 8-kHz cadence with a square-wave PDM
+GPIO source. It produced an 80-sample ring block (63 nonzero
+samples, no ring-loss flag) and observed a peak modeled ISR cost
+of **3,072 / 12,000 cycles** per sample window. A normal stop
+returns success (10), IRQ and timer stopped, module ring cleared,
+RFIC/PA restored. A second test deliberately returns from the
+module without stopping microphone or TX; the host reclaims
+both resources and returns code 11 with no timer, IRQ or PA leak.
+
+**Limitations:** This is *not a hardware PCM quality/SNR test*.
+The emulator's GPIO source is synthetic and its instruction-cycle
+estimate is not measured KD32F328 interrupt timing. It does not
+run a full microphone-encoded Sotto transmission or the on-radio
+RX decoder and speaker. Hardware microphone capture still requires
+an unplugged serial cable, fresh exclusive #11 bench lease and
+operator validation; this build did not touch the radio.
+
+Full four-service development firmware size (API28+29+30+31)
+is **113,584 / 122,880 bytes** (9,296 spare) in this opt-in
+Base+Data profile, SHA-256:
+3d88bc0a8ed2e992701596c4ce04e8959125abc914799ab7b7defa4b11670013.
+
+To rebuild with exact opt-in settings and run the offline gate:
+
+    K6_AURA_RESET_GENERATED=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 K6_FSK4800_RX=1 K6_SOTTO_RESOURCES=1 K6_SOTTO_ASYNC_FSK=1 K6_SOTTO_MIC=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-api30-sim
+    K6_SIM_SOTTO_RX31_IMAGE=firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin K6_SIM_SOTTO_RX31_ELF=firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura K6_SIM_SOTTO_MIC=1 ~/.local/share/flux-rf-venv/bin/python -m pytest -q tests/test_k6_sotto_api30_mic_gate.py tests/test_k6_sotto_api30_mic_overlay.py
+
 ## Boundaries remaining for flashable half-duplex voice
 
 1. Complete the UART/CPS and keyed install/SPI library path. The
    **actual run_module and km_run_on_stack execution is now tested**
    after CRC32 cable ingress, but on-device keyed SPI installation and
    normal selectable VFO binding remain open.
-2. **API28 resources and API29 bounded FSK TX now run in the same
-   experimental, opt-in firmware image**; the compiled ARM module
-   verifies RX / TX / RX with virtual IQ. The next service is API30
-   microphone capture, followed by the Sotto encoder, installed mode
-   binding and an on-K6 decoder/speaker. Do not treat an API30 stub as
-   usable voice.
+2. **API28 resources, API29 finite FSK TX, API30 microphone
+   sampling and API31 RX** now compile into one opt-in image.
+   Their individual ARM services pass offline qualification, including
+   the modeled PA11/TIM17 ISR. The remaining integration is the
+   *actual live Sotto encoder* calling these callbacks together,
+   installed VFO mode/PTT, and on-K6 decoder/speaker, followed by
+   silicon timing and combined memory/stack gates.
 3. Move the native fixed-point RX decode and 20-ms speaker PCM service
    into radio firmware or a loadable module, measure total SRAM and flash,
    qualify the paced ring and prebuffer against real 20-ms deadlines.

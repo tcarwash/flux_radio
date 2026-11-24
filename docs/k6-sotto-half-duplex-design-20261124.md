@@ -44,8 +44,11 @@ UART/CPS and VFO mode activation are still untested. API28 read-only K6CB/K6SC r
 now compiled and emulator-qualified with the normal ARM module runner
 under separate opt-in flags. The PA is muted until its FIFO has been
 fully loaded; RX -> TX -> RX now passes the SoapyFang virtual-IQ gate.
-API30 microphone and installed mode binding remain unimplemented:
-this is not the merged live two-way voice host.
+API30 PA11/TIM17 microphone ISR is now also installed and
+individually qualified under a virtual ARM board (95 simulated
+8-kHz interrupts and safe cleanup). **The live microphone/encoder,
+on-radio speaker/decoder and installed VFO mode are not yet tied into
+one real voice session**, so this is not a finished two-way voice host.
 
 The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
 adds a bounded PCM queue and failure/preemption semantics. Its
