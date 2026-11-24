@@ -40,7 +40,7 @@ def adapt(text):
 typedef struct {
   apath_t paths[SLIM_MAXP];
   int16_t target[20], vectors[IVF_MAXN];
-  signed char cb[20], centroids[16*IVF_CD];
+  signed char cb[20], centroids[32*IVF_CD];
   int32_t best_dist[SLIM_MAXP], cell_dist[IVF_MAXP];
   unsigned char cell_id[IVF_MAXP];
 } sotto_coder_work_t;
@@ -72,6 +72,10 @@ struct slim_enc {
         raise ValueError("Unexpected zero-imaginary FFT precondition")
     once("      t = im[i], im[i] = im[j], im[j] = t;",
          "      /* imaginary input is all zeros: skip dead bit-reversal swap */")
+    # Preserve the original centroid order while batching 32 at a time.
+    # The scratch union is 1024 B, so the doubled 256 B centroid buffer
+    # fits without increasing encoder arena or caller stack.
+    once("#define IVF_BLK 16", "#define IVF_BLK 32")
     # The input block is consumed into x8 before lag_search/envelope ever
     # touches w. Reuse its first 80 samples for flush silence as well.
     # Keep the original upstream analysis and wire arithmetic unchanged.

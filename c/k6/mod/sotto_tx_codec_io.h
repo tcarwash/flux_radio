@@ -161,10 +161,10 @@ static const signed char *sio_cb(sotto_io_t *c,int s,int v,signed char *buf){
 }
 static unsigned sio_cellbase(int s){return s==0?0u:s==1?64u:128u;}
 static const signed char *sio_cen(sotto_io_t *c,int s,int first,signed char *buf){
-    if(s<0||s>2||first<0||first+16>(s==2?32:64)){
+    if(s<0||s>2||first<0||first+32>(s==2?32:64)){
         c->fault=1;s=0;first=0;
     }
-    (void)sio_read(c,c->deck+16+(sio_cellbase(s)+(unsigned)first)*8u,buf,128);
+    (void)sio_read(c,c->deck+16+(sio_cellbase(s)+(unsigned)first)*8u,buf,256);
     return buf;
 }
 static int sio_cell(sotto_io_t *c,int s,int cell,int16_t *v){
