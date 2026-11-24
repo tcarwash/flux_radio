@@ -153,6 +153,12 @@ fi
 if [ "${K6_MODE_REGISTRY:-0}" = 1 ]; then
   CFLAGS="$CFLAGS -DK6_MODE_REGISTRY=1"
 fi
+# Host-owned V1 packet mailbox (API 27, k6_mod.h): only with the registry
+# opt-in (k6_mod.h errors otherwise); default images keep their ceiling.
+if [ "${K6_PACKET_MAILBOX:-0}" = 1 ]; then
+  [ "${K6_MODE_REGISTRY:-0}" = 1 ] || { echo "K6_PACKET_MAILBOX requires K6_MODE_REGISTRY=1" >&2; exit 1; }
+  CFLAGS="$CFLAGS -DK6_PACKET_MAILBOX=1"
+fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then
