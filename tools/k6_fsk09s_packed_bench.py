@@ -338,7 +338,7 @@ def run_transaction(port: str, prefix: Path, *, dummy_load_confirmed=False,
                         time.sleep(0.65)
                         report["tx_module_requests"] = 1
                         try:
-                            outcome = link.run_module(slot, timeout=12, allow_higher_api=True,
+                            outcome = link.run_module(slot, timeout=12, allow_higher_api=False,
                                                       on_report=lambda s: print("RF MODULE:", s, flush=True))
                             report["module_completion"] = outcome
                             report["transmission_confirmed_by_firmware"] = bool(
