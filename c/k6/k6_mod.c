@@ -165,8 +165,22 @@ int km_live_lib_verify(const uint8_t *a, unsigned n) {
   if (n < KM_HDR + KM_TAG + 1 || n > 10240 || a[12] < 1 || a[14])
     return KM_BAD_HDR;
   slot = a[15];
-  if (!(slot <= 8 || (slot >= 16 && slot < KL_SLOTS))) return KM_BAD_HDR;
   code = a[4] | a[5] << 8;
+#if KM_LEVEL >= 27
+  /* Typed immutable search resource. Never treat ordinary help cards as
+     installable resources or allow code pages/resident objects here. */
+  if (a[13] == (KM_F_LIB | KM_F_CARDS)) {
+    if (slot >= KL_SLOTS || (slot >= 9 && slot <= 12) ||
+        code != 4182 || n != KM_HDR + code + KM_TAG ||
+        a[6] || a[7] || a[16]!='K' || a[17]!='6' ||
+        a[18]!='S' || a[19]!='C' || a[20]!=1) return KM_BAD_HDR;
+    r=check(a,n,1);
+    if(r==KM_READY)km_arm(a,0);
+    km_reset();
+    return r==KM_READY ? (int)code : r;
+  }
+#endif
+  if (!(slot <= 8 || (slot >= 16 && slot < KL_SLOTS))) return KM_BAD_HDR;
   if (a[13] == (KM_F_LIB | KM_F_REMOVE)) {
     static const uint8_t del[7] = {'K','6','E','R','A','S','E'};
     if (code != 7 || a[6] || a[7] || n != KM_HDR + 7 + KM_TAG) return KM_BAD_HDR;

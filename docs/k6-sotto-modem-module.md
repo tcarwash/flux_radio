@@ -257,3 +257,71 @@ Remaining gaps:
   remap disables flash prefetch; a permanent SRAM mapping for the LED
   would slow the RF path, so do not enable it by default or allow it
   during timing-sensitive activity. No firmware flash performed.
+
+### API 27 resource/arena qualification
+
+The previous installation and execution memory barriers are now removed for
+the non-radiating encoder qualification module. API 26 is reserved for the
+existing experimental MICIN TX callback (standard host supplies a refusing
+stub); API 27 appends resource_open and resource_read. These are available
+on balanced packed lean live hosts only. Existing modules retain the old
+stack convention. An API 27 foreground image opts into the main stack with
+a 2,304-byte free-stack admission check and a full arena minus 16 bytes;
+LCD flush uses the existing host framebuffer, not an arena callback stack.
+The full encoder test has not yet exercised LCD rendering concurrently.
+
+Resource read kind 0 is bounded to the 30,752-byte K6CB header and payload;
+kind 1 accesses an explicitly opened K6SC deck. No calibration, raw SPI
+write, firmware, or system partition access is added. Deck opening reuses
+the host's validated packed directory. The module checks pinned table CRCs
+before encoding. A missing or damaged resource aborts without RF.
+
+Live capability bit 22 (resource_deck) permits a signed/tagged K6SC v1
+4,182-byte payload in an otherwise eligible free resource/user slot, or
+replacement of a matching typed K6SC resource. Normal help cards, modules,
+pages, resident objects and reserved slots 9–12 cannot be overwritten by
+this operation. Existing 10 KiB ordinary-module live mutations are unchanged.
+The Sotto installer selects free slots, reuses exact matching resources,
+checks the complete codebook CRC, and never automatically overwrites an
+unrelated object or flashes the firmware.
+
+```sh
+python3 tools/k6_sotto_module.py --host-resources --out /tmp/sotto-qual
+# read-only plan; requires compatible firmware and pinned codebook:
+python3 tools/k6_sotto_live_install.py /tmp/sotto-qual --port /dev/ttyUSB0
+# explicitly authorize live installation of the two objects:
+python3 tools/k6_sotto_live_install.py /tmp/sotto-qual --port /dev/ttyUSB0 --install
+```
+
+The resulting SOTTO TEST entry is a non-radiating self-test, NOT the voice
+modem. The compiled firmware emulator installed the deck and the module
+over live serial, loaded from KUL2, used real SPI callbacks, returned 26
+frames and digest a1471c22, and left the full SPI image unchanged during
+execution. The independent 10 KiB install/replace/remove lifecycle passed.
+The algorithm regression suite retains the old API 5 variant.
+
+Measured resource version:
+
+- 107,712-byte firmware (15,168 bytes of application flash free)
+- 9,231-byte module, 9,255-byte signed/tagged envelope
+- 4,182-byte deck, 4,206-byte envelope
+- 14,400-byte arena; 5,128 bytes of aligned scratch (16-byte end guard)
+- 3,984-byte main stack reservation; measured encoder workload high-water
+  2,840 bytes, 1,144 bytes remaining; no emulator faults or out-of-range SP.
+- About 1,416 bytes of scratch remain after the ~3,712-byte encoder/stage
+  state. Do not mistake this for the measured microphone ring requirement.
+
+### Next microphone integration
+
+The existing B-chip real-mic/host-codec/guarded-RF results
+(be6edd3a, e3540bd0) remain independent evidence, not an end-to-end on-radio
+encoder/capture proof. Upstream micsotto used TIM17 8 kHz sampling and
+reported no lost blocks at 48 turns/sample on the original chip. Our
+B-chip 200-turn sampler exceeds the real-time budget; characterize shorter
+sampler windows, queue depth and worst-case SPI latency before choosing
+the production capture method. Reuse the watchdog/vector owner, not a
+second remap. This is also the point to integrate the optional TIM16
+notification driver: suspend PB7 PWM throughout audio capture and modem
+work, preserve flash prefetch when no ISR is needed, and keep the timer
+ownership explicit. No physical firmware flash or transmission was made
+by this integration pass.

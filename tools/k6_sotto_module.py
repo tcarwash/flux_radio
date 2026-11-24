@@ -72,7 +72,7 @@ struct slim_enc {
          "    int16_t *z = e->w;\n    memset(z, 0, HOP * sizeof(*z));")
     return text
 
-def build():
+def build(host_resources=False):
     import subprocess
     rev=subprocess.check_output(["git","-C",str(ROOT/"sotto"),"rev-parse","HEAD"],text=True).strip()
     if rev!=PIN:raise ValueError("Unexpected Sotto pin; requalify codec and SPI tables")
@@ -82,15 +82,16 @@ def build():
         code,entry=k6mod.build(str(SRC),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
-            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"])
+            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []))
     if entry!=k6mod.bin_entry(code):raise ValueError("Unexpected module entry")
     return code,entry
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--out",required=True,type=Path)
+    p.add_argument("--host-resources",action="store_true",help="build API 27 balanced host module")
     a=p.parse_args()
-    code,entry=build()
+    code,entry=build(a.host_resources)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
@@ -98,7 +99,7 @@ def main():
     manifest={"format":1,"build":"Sotto qualification module (no RF)",
               "build_id":"0000000000000000",
               "library":[{"id":"sotto-test","kind":"module","name":"SOTTO TEST",
-                          "file":"module.bin","level":5}],
+                          "file":"module.bin","level":27 if a.host_resources else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),

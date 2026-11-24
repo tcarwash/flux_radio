@@ -376,7 +376,7 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     # ordinary non-packed host image, whose same slot is deliberately invalid.
     if "lib_large" not in features:
         pytest.skip("requires packed user store (K6_USER_STORE=1)")
-    assert link.module_capabilities()["module_api_max"]==25
+    assert link.module_capabilities()["module_api_max"] in (25,27)
     code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/
                                   "c/k6/mod/live_cancel_demo.c"))
     env=k6mod.image(code,entry,100,None,level=25,lib=26)
@@ -402,3 +402,47 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     assert not link.status()["transmitting"]
     assert bytes(port.board.flash_data)==before
     assert objects(port.board.flash_data[BASE:END])=={26:env}
+
+def test_compiled_sotto_resource_module(simulated_radio,monkeypatch):
+    """Real host, real packed directory, real live install, no RF."""
+    image=os.environ.get("K6_SIM_LIVE_IMAGE")
+    if not image:pytest.skip("set K6_SIM_LIVE_IMAGE")
+    import ctypes,struct,zlib,subprocess
+    from modem import k6mod
+    from tools.k6_sotto_module import build,FIXED
+    from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
+    from k6_user_store_migrate import compact,objects,BASE,END
+    import tempfile
+    code,entry=build(host_resources=True)
+    with tempfile.TemporaryDirectory() as d:
+        so=Path(d)/"tables.so"
+        subprocess.run(["cc","-shared","-fPIC",str(FIXED/"fx_tables.c"),"-o",str(so)],check=True)
+        c=ctypes.CDLL(str(so))
+        table=b"".join(bytes((ctypes.c_char*n).in_dll(c,f"fx_cb{i}")) for i,n in enumerate((10240,10240,5120,5120)))
+    assert zlib.crc32(table)==0xd5856ecd
+    h=bytearray(32)
+    struct.pack_into("<4sHHI",h,0,b"K6CB",1,20,len(table))
+    h[12:17]=bytes([4,9,9,8,8])
+    struct.pack_into("<I",h,24,zlib.crc32(table))
+    struct.pack_into("<I",h,28,zlib.crc32(h[:28]))
+    deck=k6mod.image(build_deck(SLIM_CELLS.read_text()),0,1,None,level=5,lib=14,cards=True)
+    port=simulated_radio(Path(image).read_bytes(),cable_only=True)
+    port.board.flash_data[0x100000:0x100000+len(h)+len(table)]=bytes(h)+table
+    port.board.flash_data[BASE:END]=compact({})[0]
+    monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
+    port.baudrate=115200
+    link=LiveLink(port,timeout=3,initial_seq=0)
+    if link.module_capabilities()["module_api_max"]<27:pytest.skip("requires balanced API 27")
+    floor=link.serial_watermark()
+    deck=k6mod.image(build_deck(SLIM_CELLS.read_text()),0,floor+1,None,level=5,lib=14,cards=True)
+    assert link.mutate_library(deck)["verified"]
+    env=k6mod.image(code,entry,floor+2,None,level=27,lib=24)
+    assert link.mutate_library(env)["verified"]
+    before=bytes(port.board.flash_data)
+    result=link.run_module(24,allow_higher_api=True,timeout=180)
+    print("SOTTO real host:",result)
+    assert result["returned"] and result["result"]==26,result
+    assert any("a1471c22" in str(s) for s in result["reports"]),result
+    assert bytes(port.board.flash_data)==before
+    assert objects(port.board.flash_data[BASE:END])=={14:deck,24:env}
+    assert not link.status()["transmitting"]

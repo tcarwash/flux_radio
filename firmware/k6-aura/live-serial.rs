@@ -813,7 +813,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(feature="spilib") {131072} else {0}
                 | if cfg!(all(k6_live_serial,k6_lean_txdog)) {262144} else {0}
                 | if cfg!(k6_remote_ui) {524288 | 1048576} else {0}
-                | if cfg!(all(feature="spilib",k6_ram0_balanced,k6_user_store)) {2097152} else {0};
+                | if cfg!(all(feature="spilib",k6_ram0_balanced,k6_user_store)) {2097152} else {0}
+                | if cfg!(all(feature="spilib",k6_ram0_balanced,k6_user_store,feature="lean",feature="blowfang-host")) {4194304} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;

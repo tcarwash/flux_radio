@@ -26,7 +26,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt", "screenshot", "virtual_keys", "lib_10k")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt", "screenshot", "virtual_keys", "lib_10k", "resource_deck")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -429,10 +429,13 @@ class LiveLink(CpsLink):
         if not 25<=len(image)<=LIB_MAX or image[:4]!=b"K6M\x01":
             raise ValueError("Expected K6M envelope up to 10240 bytes")
         code,entry,serial,level,flags,tlm,slot=struct.unpack_from("<HHIBBBB",image,4)
+        resource=(flags==5 and slot in (*range(9),*range(13,32))
+                  and entry==0 and code==4182 and image[16:21]==b"K6SC\x01")
+        regular=(flags in (1,9) and slot in (*range(9),*range(16,32)))
         if (code+24!=len(image) or entry>=code or entry&1 or not serial
-            or not level or tlm or flags not in (1,9) or slot not in (*range(9),*range(16,32))
+            or not level or tlm or not (resource or regular)
             or (flags==9 and (entry or image[16:-8]!=b"K6ERASE"))):
-            raise ValueError("Expected ordinary module or exact removal envelope in a user slot")
+            raise ValueError("Expected ordinary module, K6SC resource or exact removal envelope in an allowed slot")
         return image,slot,serial,flags
 
     def verify_library_mutation(self,image):
@@ -461,6 +464,8 @@ class LiveLink(CpsLink):
         features=self.capabilities()["features"]
         if "lib_mutate" not in features or self.info()["protocol"]!=5:
             raise InstallError("Live mutation requires packed KUL2 firmware")
+        if flags==5 and "resource_deck" not in features:
+            raise InstallError("Firmware lacks typed resource deck installation")
         if len(image)>self.library_limit(features):
             raise InstallError("Envelope exceeds advertised live library staging limit")
         if serial<=self.serial_watermark():
@@ -470,9 +475,12 @@ class LiveLink(CpsLink):
         directory=self.library_directory()
         if slot in directory:
             hdr=self.library_read(slot,16)
-            if (hdr[:4]!=b"K6M\x01" or hdr[13]!=1 or hdr[15]!=slot or not hdr[12]
+            expected_flags=5 if flags==5 else 1
+            if (hdr[:4]!=b"K6M\x01" or hdr[13]!=expected_flags or hdr[15]!=slot or not hdr[12]
                 or int.from_bytes(hdr[4:6],"little")+24!=directory[slot][1]):
-                raise InstallError("Destination is not an ordinary module")
+                raise InstallError("Destination contains a protected or incompatible object")
+            if flags==5 and (directory[slot][1]!=4206 or self.library_read(slot,21)[16:21]!=b"K6SC\x01"):
+                raise InstallError("Destination is not a K6SC resource")
         elif flags==9:
             raise InstallError("Cannot remove an empty module slot")
         self._stage_image(image,features,baseline,LIB_BEGIN,LIB_FAST_BEGIN)

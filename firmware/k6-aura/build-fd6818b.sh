@@ -39,6 +39,14 @@ if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
   K6_LEAN_TXDOG=1
 fi
 export K6_THEME K6_TX_PROFILE K6_OTA_SERVICE K6_SOTTO_SERVICE
+# Resource ABI only exists in the balanced packed lean host.
+K6_RESOURCE_API=0
+if [ "$K6_LIVE_SERIAL" = 1 ] && [ "${K6_RAM0:-0}" = balanced ] && [ "${K6_USER_STORE:-0}" = 1 ]; then
+  case ",$FEATURES," in
+    *,lean,*) case ",$FEATURES," in *,spilib,*) K6_RESOURCE_API=1;; esac;;
+  esac
+fi
+export K6_RESOURCE_API
 
 case "$FEATURES" in
   *[!a-zA-Z0-9_,-]*) echo "Use a comma-separated list of Cargo features." >&2; exit 1 ;;
@@ -165,6 +173,7 @@ python3 "$HERE/apply-configurable-fsk.py"
 python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
 python3 "$HERE/apply-live-serial.py"
+python3 "$HERE/apply-module-resources.py"
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then
   [ "${K6_LIVE_SERIAL:-0}" = 1 ] || { echo "Remote UI requires live serial" >&2; exit 1; }
   case ",$FEATURES," in

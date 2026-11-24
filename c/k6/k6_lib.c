@@ -94,8 +94,17 @@ int kl_live_mutate(const uint8_t *img, unsigned n, const kl_flash_t *fl) {
   r=kl_locate(slot,fl,&addr,&extent);
   if(r==0) {
     r=kl_info(slot,fl,&info);
-    if(r || info.flags!=KM_F_LIB || !info.level ||
-       extent!=KM_HDR+info.code_len+KM_TAG) return KL_NOT_MODULE;
+    if(r || !info.level || extent!=KM_HDR+info.code_len+KM_TAG) return KL_NOT_MODULE;
+#if KM_LEVEL >= 27
+    if(img[13] == (KM_F_LIB|KM_F_CARDS)) {
+      uint8_t h[5];
+      if(info.flags!=img[13] || info.code_len!=4182 ||
+         fl->read(addr+KM_HDR,h,sizeof h) ||
+         h[0]!='K'||h[1]!='6'||h[2]!='S'||h[3]!='C'||h[4]!=1)
+        return KL_NOT_MODULE;
+    } else
+#endif
+    if(info.flags!=KM_F_LIB) return KL_NOT_MODULE;
   } else if(r!=KL_EMPTY) return r;
   if(img[13] & KM_F_REMOVE) return r==KL_EMPTY ? KL_NOT_MODULE : kl_remove(slot,fl);
   return kl_install(img,fl);

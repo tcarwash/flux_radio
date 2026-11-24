@@ -5,7 +5,11 @@
  * Build using tools/k6_sotto_module.py (explicit-context upstream adaptation).
  * SPDX-License-Identifier: MIT
  */
+#ifdef SOTTO_HOST_RESOURCES
+#define K6_MODULE_LEVEL 27
+#else
 #define K6_MODULE_LEVEL 5
+#endif
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 #include "sotto_m0rt.h"
@@ -95,6 +99,15 @@ static int sotto_call_stack(void *top,const k6_api_t *a,uint8_t *scratch){
                    "pop {r4, pc}\n");
 }
 int k6_main(const k6_api_t *a){
+#ifdef SOTTO_HOST_RESOURCES
+    uint32_t room=0;
+    if(!a||a->abi!=1||a->level<27||!a->resource_open||!a->resource_read)return -3;
+    uint8_t *scratch=a->scratch(&room);
+    if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(sotto_stage_t)+slim_enc_bytes()){
+        a->say("SOTTO insufficient scratch");return -8;
+    }
+    return sotto_dry_run(a,scratch);
+#else
     uint32_t room=0,need,i;
     uint8_t *scratch,*top,*guard;
     int rc;
@@ -113,4 +126,5 @@ int k6_main(const k6_api_t *a){
         a->say("SOTTO stack guard damaged");return -13;
     }
     return rc;
+#endif
 }

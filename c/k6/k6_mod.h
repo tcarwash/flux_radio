@@ -245,6 +245,14 @@ typedef struct k6_api {
      module should return cleanly (typically -125) when it sees 1.
      Do not use concurrently with level-14 exclusive KISS serial mode. */
   int (*cancel_poll)(void);
+  /* Level 26: experimental MICIN TX (unavailable in standard firmware). */
+  int (*micin_tx)(int enable);
+  /* Level 27: balanced host main-stack execution, full scratch arena.
+     Open a read-only K6SC resource deck by logical slot; returns payload
+     bytes or negative. Resource read kind 0=K6CB codebook (incl header),
+     1=opened deck payload. Neither grants flash write access. */
+  int (*resource_open)(uint32_t slot);
+  int (*resource_read)(uint32_t kind, uint32_t off, void *buf, uint32_t n);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

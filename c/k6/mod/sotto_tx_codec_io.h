@@ -21,7 +21,12 @@ typedef struct {
 
 static int sio_read(sotto_io_t *c,uint32_t addr,void *buf,unsigned n) {
     unsigned i;
+#ifdef SOTTO_HOST_RESOURCES
+    if(!c->fault && addr>=SOTTO_CB_BASE &&
+        c->api->resource_read(addr>=0x110000u,addr-(addr>=0x110000u?0x110000u:SOTTO_CB_BASE),buf,n)==0) return 0;
+#else
     if(!c->fault && c->api->fl_read(addr,buf,n)==0) return 0;
+#endif
     c->fault=1;
     for(i=0;i<n;i++)((uint8_t*)buf)[i]=0;
     return -1;
@@ -103,6 +108,19 @@ static int sio_init(sotto_io_t *c,const k6_api_t *api){
        sio_le32(h+24)!=SOTTO_CB_CRC||
        ~sio_crc(~0u,h,28)!=sio_le32(h+28)||
        sio_check(c,SOTTO_CB_BASE+32,SOTTO_CB_SIZE,SOTTO_CB_CRC))goto bad;
+#ifdef SOTTO_HOST_RESOURCES
+    /* Prefer the original deck slot, but never require replacing a
+       user's existing help deck. All resources are verified by CRC. */
+    for(slot=0;slot<33u;slot++){
+        unsigned id=slot?slot-1u:14u;
+        if(slot && id==14u)continue;
+        if(api->resource_open(id)==SOTTO_DECK_SIZE &&
+           sio_check(c,0x110000u,SOTTO_DECK_SIZE,SOTTO_DECK_CRC)==0){
+            c->deck=0x110000u;return 0;
+        }
+        if(c->fault)goto bad;
+    }
+#else
     {
         uint32_t base=0x110000u,g0=0,g1=0,c0=0,c1=0,dir=0;
         int d0,d1,packed;
@@ -129,6 +147,7 @@ static int sio_init(sotto_io_t *c,const k6_api_t *api){
             if(r<0)goto bad;
         }
     }
+#endif
 bad:
     c->fault=1;return -1;
 }
