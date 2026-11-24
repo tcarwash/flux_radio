@@ -85,9 +85,15 @@ def test_build_requires_api27_and_data_with_watchdog():
     assert 'K6_LEAN_TXDOG' in shell and 'K6_FSK_RX_SERVICE' in shell
     assert 'apply-sotto-rx4800.py' in shell
     assert 'k6_fsk4800_rx' in shell
+    assert 'K6_AURA_RESET_GENERATED' in shell
+    assert 'git -C "$WORK" reset --hard "$REV"' in shell
+    assert 'git -C "$WORK" clean -fd' in shell
     assert 'mod_tx_pa(' not in rx and 'pa_enable(' not in rx
     assert 'async_fsk' not in rx
     assert 'RX4800_DEADLINE' in rx
+    assert 'RX4800_FRAME_READY' in rx
+    assert 'fd.reg_write(syst,0x59,0x40f8)' in rx
+    assert 'RX4800_FRAME_READY=true' in rx
     assert 'rx4800_stop();' in rx
     assert 'REG_5E' not in rx or '0x5e' in rx
     assert '0x2000' in rx and '0x1000' in rx

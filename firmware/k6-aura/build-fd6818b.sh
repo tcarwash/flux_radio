@@ -64,6 +64,22 @@ fi
   echo "checkout at $WORK is not pinned to $REV; preserve it and choose another AURA_FD6818B_REV" >&2
   exit 1
 }
+# API31 research overlays are append-only and not all legacy patch scripts
+# can be reapplied incrementally to an already generated level-31 host.
+# Rebuild from the PINNED upstream source only on explicit request; never
+# reset a user's normal source repo or any tree on the default path.
+case "${K6_AURA_RESET_GENERATED:-0}" in
+  0) ;;
+  1)
+    [ -z "$(git -C "$WORK" symbolic-ref -q --short HEAD || true)" ] || {
+      echo "K6_AURA_RESET_GENERATED refused: generated Aura checkout is on a branch" >&2
+      exit 1
+    }
+    git -C "$WORK" reset --hard "$REV" >/dev/null
+    git -C "$WORK" clean -fd >/dev/null
+    ;;
+  *) echo "K6_AURA_RESET_GENERATED must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ ! -f "$WORK/src/app/pager.rs" ]; then
   git -C "$WORK" apply "$HERE/aura-pager.patch"
   git -C "$WORK" apply "$HERE/aura-pager-fd6818b.patch"

@@ -86,16 +86,70 @@ model. It exercises exact 33-word draining, snapshot restoration,
 low-active PTT, timeout, key/cancel/power off, malformed pointers,
 other-RF-owner preservation, and the complete six-packet dataset
 independently recovered from SoapyFang virtual IQ. The Rust callback
-**has been directly executed in a native host process**, but **not
-inside the compiled ARM firmware**: real peripheral timing,
+**has executed natively and as a direct callback within the compiled ARM firmware**, but not through a normally launched module: real peripheral timing,
 Cortex-M0 stack and full-board dispatcher remain open gates.
+
+## Linked ARM firmware RX qualification and fast rearm
+
+The opt-in API31 receiver now implements a fast rearm of consecutive 33-word
+FSK frames. Following a completed frame, the receiver retains ownership of
+the originally saved FD6818B register snapshot and keeps the radio in RX,
+rather than restoring and reconfiguring all nine registers on every packet.
+The next matching arm operation writes only FIFO clear (0x59), IRQ
+acknowledgment (0x02), and FSK RX enable (0x59). Calling the pump again
+without rearming returns -3 rather than returning stale packet data.
+Explicit stop, PTT, cancellation, power-off, invalid buffer, timeout and
+module return still restore the original radio registers. This uses the
+existing half-duplex receive path; it neither keys nor accesses the PA.
+
+The original ARM callback with full restoration recovered 5 of 6 Sotto
+packets in the continuous virtual RF session: the final 1.8-ms gap was
+too short for the simulated restore/reconfiguration interval. Fast
+rearm lowered modeled MCU rearm from approximately 1.8 ms to 0.4 ms.
+The exact linked ARM firmware callback now receives **all six packets
+(198 FIFO words)** from the actual compiled ARM Sotto TX waveforms
+through SoapyFang virtual IQ, with zero FIFO overrun/underflow and
+exact agreement with the independently clocked RX oracle.
+
+The reproducible test is tools/k6_sotto_rx4800_firmware_gate.py. It checks
+that the ELF and firmware image bytes match, boots the real firmware in
+K6Board/Unicorn, reads the registered API31 callback pointer from the
+linked firmware table, and directly invokes that Thumb function using
+a **test-initialized module context**. It then verifies the real B-chip
+register traffic against SoapyFang's RFIC behavioral model, FDV1 CRC
+and packet/session ordering, a simulated PTT press, chip-ID rejection,
+finite timeout, PA exclusion and complete register restoration. The
+matching-image refusal and ARM plus SoapyFang integration are also
+covered by tests/test_k6_sotto_rx4800_firmware_gate.py.
+
+A freshly rebuilt Base+Data API31 RX-only firmware image uses
+**110,852 of 122,880 application flash bytes**, leaving **12,028 B**.
+The reported measurements include only that RX-only development build,
+not the integrated voice TX services, on-radio fixed-point RX decoder,
+speaker service, or a complete installable Sotto module.
+
+For the existing matching ELF/image, run this from the project root:
+
+    ~/.local/share/flux-rf-venv/bin/python tools/k6_sotto_rx4800_firmware_gate.py --image firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin --elf firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura --sotto-tree . --json /tmp/flux-sotto-rx31-firmware-gate.json
+
+To run the opt-in pytest gate, set K6_SIM_SOTTO_RX31_IMAGE and
+K6_SIM_SOTTO_RX31_ELF to those exact two matching paths. Ordinary
+test runs skip the whole-firmware case unless the pair is supplied.
+
+**Boundary:** The callback is directly executed as real compiled ARM
+instructions and reads modeled physical register transactions; the
+test does not call the actual km_run module dispatcher or prove real
+K6 silicon timing. The test harness aligns the independently generated
+transmitter's timeline with the receiver's boot clock and supplies
+its simulated chip ID and VFO frequency. Actual installed VFO binding,
+interrupt scheduling, audio PWM and MIC/FSK TX services remain open.
 
 ## Boundaries remaining for flashable half-duplex voice
 
-1. Execute and instrument the **compiled ARM firmware's Rust API31
-   callback through its real dispatcher** under Unicorn and SoapyFang's
-   FSK FIFO. The exact callback code has native-Rust test coverage,
-   but that is not a full MCU instruction/peripheral execution.
+1. Execute the now ARM-exercised API31 callback through the normal
+   installed-module km_run dispatcher. Its direct ABI call passes
+   full-board virtual RF; module installation and real VFO handoff
+   are not yet validated.
 2. Join the API28 resource, API29 finite FSK async TX and API30 mic
    callbacks into a **single append-only host**, then bind installed
    Sotto to `RX → PTT TX → RX`. Never expose stubbed callbacks to
