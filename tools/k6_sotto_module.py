@@ -65,6 +65,13 @@ struct slim_enc {
          "  int16_t *t=e->coder.target;\n  signed char *buf=e->coder.cb;\n  int32_t *bh=e->coder.best_dist;")
     once("    int32_t ph[IVF_MAXP];\n    unsigned char pc[IVF_MAXP];\n    signed char cbuf[IVF_BLK * IVF_CD];\n    int16_t vl[IVF_MAXN];",
          "    int32_t *ph=e->coder.cell_dist;\n    unsigned char *pc=e->coder.cell_id;\n    signed char *cbuf=e->coder.centroids;\n    int16_t *vl=e->coder.vectors;")
+    # `envelope` zeroes every im[i] before its only fft256 call. Swapping
+    # two zeros during bit-reversal is unnecessary but costs ARMv6-M cycles.
+    # Fail closed if upstream changes the FFT's exact precondition or body.
+    if text.count("    im[i] = 0;") != 1 or text.count("  fft256(re, im);") != 1:
+        raise ValueError("Unexpected zero-imaginary FFT precondition")
+    once("      t = im[i], im[i] = im[j], im[j] = t;",
+         "      /* imaginary input is all zeros: skip dead bit-reversal swap */")
     # The input block is consumed into x8 before lag_search/envelope ever
     # touches w. Reuse its first 80 samples for flush silence as well.
     # Keep the original upstream analysis and wire arithmetic unchanged.
