@@ -142,3 +142,13 @@ be unattended. The runner does not mean these jobs are all hardware
 ready now. Each individual proposed job needs a frozen executable
 harness, independent SDR criteria, and explicit safe restoration.
 No physical batch has been claimed or run by this implementation.
+
+## GitHub intake preview
+
+Run `python tools/k6_experiment_queue.py` to discover open experiments from
+the configured repository and coordination issue. The local
+`config/k6-experiment-queue.json` holds the trusted issue author and reviewed
+experiment registry. Registry entries may record `validated_module_api`;
+a target change requires requalification. The preview is read-only, does not
+interpret issue text as commands, and does not establish a bench claim.
+It does not yet generate executable manifests or dispatch experiments.
