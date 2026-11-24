@@ -135,3 +135,11 @@ evidence, not new hardware evidence.
 - Next: compare model predictions with a small frozen hardware parameter
   matrix; calibrate deviation and FIFO timing, then connect actual
   production modules and implement interleaved bidirectional scheduling.
+
+## Actual live Sotto module
+
+The same virtual RF path now accepts the actual API29 live Sotto TX
+module from a selected development checkout, with modeled microphone
+capture, resource reads and asynchronous FSK, and the actual C DV wire
+decoder on the receive side. See [integrated codec/transport timing
+sweeps](k6-sotto-virtual-link-20261124.md).

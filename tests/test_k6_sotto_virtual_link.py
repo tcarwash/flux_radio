@@ -1,0 +1,73 @@
+"""Offline FDV1 session oracle and opt-in actual Sotto development integration."""
+import os
+from pathlib import Path
+import shutil
+import pytest
+from modem import pager
+from sim.k6emu.rf.virtual_link import Channel
+from tools.k6_sotto_virtual_link import decode_session,prepare,trial,wire_decode,wire_records_session
+
+ROOT=Path(__file__).resolve().parents[1]
+
+def seal(p):
+    p=bytes(p)+pager.crc16_ccitt(p).to_bytes(2,"big")
+    return bytes(a^b for a,b in zip(p,pager.pn9(64)))+b"\x5a\xa5"
+
+def control(kind,last=0,tail=0,count=0):
+    p=bytearray(62);p[:4]=bytes([0xe2,1,kind,0]);p[4:12]=b"TESTTAG!"
+    p[12:16]=bytes([112,last,tail,count]);p[16:20]=b"FDV1"
+    return seal(p)
+
+def voice(bits):
+    p=bytearray(62);p[:6]=bytes([0xa9,112,0xc0,0,0,len(bits)//6]);p[6:6+len(bits)]=bits
+    return seal(p)
+
+def test_strict_session_oracle():
+    bits=bytes(range(12))
+    frames=[control(1),voice(bits),control(2,112,2,1)]
+    assert decode_session(frames)==(bits,dict(valid=3,invalid=0,complete=True,offset_2=0))
+    shifted=[b"\xf8\x00"+x[:-2] for x in frames]
+    assert decode_session(shifted)==(bits,dict(valid=3,invalid=0,complete=True,offset_2=3))
+    assert not decode_session(frames[:-1])[1]["complete"]
+    assert not decode_session([frames[0],frames[2]])[1]["complete"]
+    assert not decode_session([frames[0],frames[1],control(2,112,3,1)])[1]["complete"]
+    assert decode_session([control(1,112,2,1)])[1]["valid"]==0
+    assert decode_session([control(2,113,2,1)])[1]["valid"]==0
+    damaged=bytearray(frames[1]);damaged[7]^=1
+    assert decode_session([frames[0],damaged,frames[2]])[1]["invalid"]==1
+
+@pytest.fixture(scope="module")
+def actual(tmp_path_factory):
+    tree=Path(os.environ.get("FLUX_SOTTO_TREE",ROOT))
+    if not (tree/"c/k6/mod/sotto_live_tx.c").is_file():
+        pytest.skip("API29 Sotto source not on this checkout; set FLUX_SOTTO_TREE")
+    if not all(shutil.which(x) for x in ("clang","ld.lld","llvm-objcopy","llvm-nm","cc")):
+        pytest.skip("ARM/native build tools unavailable")
+    return prepare(tree,tmp_path_factory.mktemp("actual-sotto"))
+
+def test_actual_wire_decoder(actual):
+    bits=bytes(range(12));frames=[control(1),voice(bits),control(2,112,2,1)]
+    frames[1]=b"\xf8\x00"+frames[1][:-2]
+    records=wire_decode(actual,frames)
+    assert [r[0] for r in records]==[2,1,3]
+    assert [r[1] for r in records]==[0,2,0]
+    assert wire_records_session(records)==(bits,True)
+    assert not wire_decode(actual,[control(1,112,2,1)])[0][0]
+
+@pytest.mark.parametrize("prefix",[0,2])
+def test_actual_live_module_rf(actual,prefix):
+    r=trial(actual,Channel(prefix_every=prefix),cpi=1.5,spi_us=34)
+    assert r["module_return"]==r["codec_frames"]==26
+    assert r["samples"]==8320 and not r["pcm_lost"]
+    assert r["tx"]["completed"]==r["received"]==6
+    assert r["tx_before_release"]>0 and r["codec_exact"]
+    assert r["session"]["complete"] and r["wire_decoder_agrees"]
+    assert r["session"]["offset_2"]==(3 if prefix else 0)
+    assert r["rx"]["overruns"]==r["rx"]["underflows"]==0
+
+def test_actual_cpu_contention(actual):
+    good=trial(actual,cpi=1.5,spi_us=10,adc_cycles=4800)
+    assert good["codec_exact"] and good["pcm_highwater"]<4
+    bad=trial(actual,cpi=1.5,spi_us=34,adc_cycles=5745)
+    assert bad["module_return"]<0 and bad["pcm_lost"] and bad["pcm_highwater"]==4
+    assert not bad["codec_exact"] and not bad["tx"]["active"]
