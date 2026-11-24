@@ -257,6 +257,15 @@ if [ "${K6_VFO_SELECTOR:-0}" = 1 ]; then
   [ "${K6_VFO_SPI_PROBE:-0}" = 1 ] || { echo "VFO selector requires SPI probe" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_vfo_selector"
 fi
+if [ "${K6_SOTTO_VFO:-0}" = 1 ]; then
+  [ "${K6_VFO_SELECTOR:-0}" = 1 ] || { echo "SOTTO VFO mode requires the VFO selector (K6_VFO_SELECTOR=1)" >&2; exit 1; }
+  python3 "$HERE/apply-sotto-installed-vfo-mode.py"
+  PACK_CFG="$PACK_CFG --cfg k6_sotto_vfo"
+fi
+if [ "${K6_SOTTO_RFTEST:-0}" = 1 ]; then
+  [ "${K6_SOTTO_VFO:-0}" = 1 ] || { echo "SOTTO RFTEST requires SOTTO VFO mode (K6_SOTTO_VFO=1)" >&2; exit 1; }
+  PACK_CFG="$PACK_CFG --cfg k6_sotto_rftest"
+fi
 if [ "${K6_SCHEDULED_PROBE:-0}" = 1 ]; then
   [ "${K6_VFO_SELECTOR:-0}" = 1 ] || { echo "Scheduled probe requires selector" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_scheduled_probe"
