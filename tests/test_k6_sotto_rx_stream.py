@@ -99,3 +99,41 @@ def test_finish_rejects_unprimed_or_undrained_stream(built):
     with pytest.raises(BufferError,match="too full"):
         r.finish()
     assert r.ctx is None and r.queued_blocks==0
+
+
+def test_maximum_bounded_session_stays_within_playout_ring(built):
+    _,lib=built
+    # 144 voice segments x 8 codec superframes. This does not establish
+    # real-time decoding, only bounded queue behavior and exact frame count.
+    rx=SottoRxStream(lib,capacity_blocks=16,max_frames=1152)
+    pulled=0
+    try:
+        for segment in range(144):
+            for i in range(8):
+                rx.feed(b'\x23\x14\x9a\xbe\x6f\x80')
+            while rx.speaker_next() is not None:
+                pulled+=1
+            assert rx.queued_blocks==0 and rx.peak_blocks<=16
+        rx.finish()
+        while rx.speaker_next() is not None:
+            pulled+=1
+        assert rx.frames==1152
+        assert pulled==rx.output_blocks==2304
+        assert rx.peak_blocks==16
+        assert rx.ctx is None and rx.state=='finished'
+    finally:
+        rx.close()
+
+
+def test_frame_limit_preempts_any_additional_codec_input(built):
+    _,lib=built
+    rx=SottoRxStream(lib,max_frames=3)
+    try:
+        for i in range(3):
+            rx.feed(b'\x23\x14\x9a\xbe\x6f\x80')
+        with pytest.raises(BufferError,match='session limit'):
+            rx.feed(b'\x23\x14\x9a\xbe\x6f\x80')
+        assert rx.state=='aborted' and rx.ctx is None
+        assert rx.speaker_next() is None
+    finally:
+        rx.close()
