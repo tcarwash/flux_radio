@@ -65,3 +65,29 @@ remain in the local sweep. Hardware titles are intake-eligible. An
 explicitly prepared local candidate from an older OFFLINE research issue
 may be promoted to a physical session only after its tested, pinned
 hardware harness exists. That promotion is distinct from fixture results.
+
+## First successful end-to-end unattended physical run (2026-11-24)
+
+Issue #21 (fast-SPI, RX-only capability gate) was independently validated from
+candidate commit bdd04879cf03e0695a10b050629b5214e3a76a82. Earlier
+KUL2 `-104` was conclusively mapped to wrong envelope authentication:
+installed firmware reports cable_only, thus needs a CRC/complement tag
+(`key=None`), not SipHash. This was corrected by live capability selection,
+with 23/23 isolated harness tests PASS and frozen fresh physical manifest
+SHA256 16139ef7df3ed1288c6859d2174ba8a5c1e4af8c4852ba1f3f2dc24b502106d2.
+Independent read-only review APPROVED the exact manifest. The recurring
+**physical systemd scheduler itself** obtained bench ACK, executed the real
+K6 module once and verified all stages. Session
+`auto-21-20261124T233851Z`: **PASS**; actual K6 returned exactly
+10,000 write/readbacks, zero errors, TX OFF; temporary slot30 removed;
+original VFO restored. Job restore/verify both PASS, and independent
+session-level complete module-hash/VFO restore and verify both PASS. Bench
+released on GitHub #11; owner issue #21 carries hardware result comment
+https://github.com/tcarwash/flux_radio/issues/21#issuecomment-7147725799.
+Raw private evidence:
+`~/flux-bench/batches/auto-21-20261124T233851Z/result.json`.
+
+This proves the guarded RX-only fast-SPI readback primitive, **not** actual
+oversampled RRC-shaped 4-FSK transmitted RF. Keep follow-on TX/RRC physical
+qualification tracked separately; do not close all of #21's goals based on
+an RX-only test. Physical PASS is not an offline fixture PASS.
