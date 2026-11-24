@@ -257,6 +257,9 @@ typedef struct k6_api {
      wait. op 0=start, 1=poll, 2=abort. Caller owns the guarded TX lease.
      Start returns 0; poll returns 0 busy / 1 completed / negative failure. */
   int (*fsk_async)(uint32_t op, const uint16_t *words, uint32_t n);
+  /* Experimental API29: mic_stream start into caller-owned 644-byte PCM
+     ring, stop, peak ISR cycles, physical PTT state (ops 0,1,2,3). */
+  int (*mic_stream)(uint32_t op, void *ring, uint32_t bytes);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

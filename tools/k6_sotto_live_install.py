@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan or explicitly provision an API-27 SOTTO TEST module and its K6SC resource.
+"""Plan or explicitly provision Sotto API27/29 modules and their K6SC resource.
 
 Codebook installation is intentionally separate: only an exact pinned K6CB
 is accepted, and this tool cannot write the codebook, flash firmware, or TX.
@@ -35,8 +35,8 @@ def load_bundle(path):
     for filename,blob in (("module.bin",code),("sotto-ivf.k6sc",deck)):
         if hashlib.sha256(blob).hexdigest()!=manifest["sha256"][filename]:
             raise InstallError(f"{filename}: SHA256 mismatch")
-    if manifest["library"][0]["level"]!=27 or k6mod.module_name(code)!="SOTTO TEST":
-        raise InstallError("Expected API-27 SOTTO TEST qualification bundle")
+    if (manifest["library"][0]["level"],k6mod.module_name(code)) not in ((27,"SOTTO TEST"),(27,"SOTTO LIVE"),(29,"SOTTO TX")):
+        raise InstallError("Expected Sotto qualification or API29 bench TX bundle")
     if len(deck)!=4182 or deck[:5]!=b"K6SC\x01" or zlib.crc32(deck)!=0x0de43427:
         raise InstallError("Unexpected search deck")
     return code,deck
@@ -48,13 +48,18 @@ def check_codebook(blob):
         and struct.unpack_from("<II",blob,24)==(0xd5856ecd,zlib.crc32(blob[:28]))
         and zlib.crc32(blob[32:])==0xd5856ecd)
 
-def provision(link,code,deck,*,install=False,module_slot=None,deck_slot=None):
+def provision(link,code,deck,*,install=False,module_slot=None,deck_slot=None,accept_experimental_tx=False):
+    level=29 if k6mod.module_name(code)=="SOTTO TX" else 27
+    # Never permit RF-capable bench provisioning through the ordinary
+    # non-radiating module installation path by accident.
+    if install and level==29 and not accept_experimental_tx:
+        raise InstallError("Experimental TX module requires --accept-experimental-tx")
     caps=link.module_capabilities()
     features=link.capabilities()["features"]
-    if (caps["module_api_max"]<27 or not caps["cable_only"]
+    if (caps["module_api_max"]<level or not caps["cable_only"]
         or "resource_deck" not in features or "lib_10k" not in features
         or link.info()["protocol"]!=5):
-        raise InstallError("Requires cable-only balanced API-27 packed firmware")
+        raise InstallError("Requires compatible cable-only balanced packed firmware")
     if not link.status()["standby_idle"]:
         raise InstallError("Return radio to idle standby")
     if len(code)+24>link.library_limit(features):
@@ -80,12 +85,12 @@ def provision(link,code,deck,*,install=False,module_slot=None,deck_slot=None):
                 return slot,False
         raise InstallError("No compatible free slot; no existing object will be overwritten")
     ds,dr=choose(deck,DECK_SLOTS,deck_slot,5,5)
-    ms,mr=choose(code,MODULE_SLOTS,module_slot,1,27,(ds,))
+    ms,mr=choose(code,MODULE_SLOTS,module_slot,1,level,(ds,))
     plan={"module_slot":ms,"deck_slot":ds,"module_bytes":len(code)+24,
           "deck_bytes":len(deck)+24,"module_reused":mr,"deck_reused":dr,
           "codebook_verified":True,"installed":False}
     if not install:return plan
-    for slot,payload,level,flags,reused in ((ds,deck,5,5,dr),(ms,code,27,1,mr)):
+    for slot,payload,level,flags,reused in ((ds,deck,5,5,dr),(ms,code,level,1,mr)):
         if reused:continue
         serial=link.serial_watermark()+1
         if not 0<serial<=0xffffffff:raise InstallError("Serial watermark exhausted")
@@ -101,6 +106,8 @@ def main():
     p.add_argument("bundle",type=Path)
     p.add_argument("--port",required=True)
     p.add_argument("--install",action="store_true")
+    p.add_argument("--accept-experimental-tx",action="store_true",
+                   help="explicitly authorize installing TX-capable bench module (no RF by installer)")
     p.add_argument("--module-slot",type=int)
     p.add_argument("--deck-slot",type=int)
     a=p.parse_args()
@@ -108,7 +115,8 @@ def main():
     with serial_lock(a.port),open_port(SimpleNamespace(port=a.port)) as port:
         link=LiveLink(port)
         print(json.dumps(provision(link,code,deck,install=a.install,
-                   module_slot=a.module_slot,deck_slot=a.deck_slot),indent=2))
-    print("Qualification module only. No RF or firmware flash.")
+                   module_slot=a.module_slot,deck_slot=a.deck_slot,
+                   accept_experimental_tx=a.accept_experimental_tx),indent=2))
+    print("Installation only; no RF or firmware flash. SOTTO TX is bench-only, requires dummy load and physical PTT.")
 
 if __name__=="__main__":main()

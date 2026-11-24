@@ -32,7 +32,7 @@ if designer not in ("0", "1"): raise SystemExit("invalid Designer gate")
 sotto = os.environ.get("K6_SOTTO_SERVICE", "0")
 if sotto not in ("0", "1"): raise SystemExit("invalid Sotto gate")
 mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if scan == '1' else 0) | (4 if fsk == '1' else 0) | (64 if sotto == "1" else 0)
-level = 28 if os.environ.get("K6_ASYNC_FSK") == "1" else 27 if os.environ.get("K6_RESOURCE_API") == "1" else 25 if os.environ.get("K6_LIVE_SERIAL") == "1" else (24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23)
+level = 29 if os.environ.get("K6_LIVE_VOICE") == "1" else 28 if os.environ.get("K6_ASYNC_FSK") == "1" else 27 if os.environ.get("K6_RESOURCE_API") == "1" else 25 if os.environ.get("K6_LIVE_SERIAL") == "1" else (24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23)
 # Shared record keeps legacy and live capability reporting identical.
 helper = f'''// FLUX_CAP_RECORD_BEGIN
 #[cfg(feature = "spilib")]

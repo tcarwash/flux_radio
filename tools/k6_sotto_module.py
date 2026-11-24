@@ -72,7 +72,8 @@ struct slim_enc {
          "    int16_t *z = e->w;\n    memset(z, 0, HOP * sizeof(*z));")
     return text
 
-def build(host_resources=False,live_test=False):
+def build(host_resources=False,live_test=False,live_tx=False):
+    if live_tx and (not host_resources or live_test):raise ValueError("live TX requires API29 resources and separate build")
     if live_test and not host_resources:raise ValueError("live test requires API 27")
     import subprocess
     rev=subprocess.check_output(["git","-C",str(ROOT/"sotto"),"rev-parse","HEAD"],text=True).strip()
@@ -80,7 +81,7 @@ def build(host_resources=False,live_test=False):
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
         inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text()))
-        code,entry=k6mod.build(str(SRC),cflags=[*k6mod.CFLAGS,"-I"+d,
+        code,entry=k6mod.build(str(SRC.with_name("sotto_live_tx.c") if live_tx else SRC),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
             "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_LIVE_TEST"] if live_test else []))
@@ -92,21 +93,22 @@ def main():
     p.add_argument("--out",required=True,type=Path)
     p.add_argument("--host-resources",action="store_true",help="build API 27 balanced host module")
     p.add_argument("--live-test",action="store_true",help="bounded streaming qualification, no RF")
+    p.add_argument("--live-tx",action="store_true",help="EXPERIMENTAL attended physical PTT TX module")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_test)
+    code,entry=build(a.host_resources,a.live_test,a.live_tx)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
     for f,b in files.items():(a.out/f).write_bytes(b)
-    manifest={"format":1,"build":"Sotto qualification module (no RF)",
+    manifest={"format":1,"build":"Sotto experimental attended TX" if a.live_tx else "Sotto qualification module (no RF)",
               "build_id":"0000000000000000",
-              "library":[{"id":"sotto-live-test" if a.live_test else "sotto-test","kind":"module","name":"SOTTO LIVE" if a.live_test else "SOTTO TEST",
-                          "file":"module.bin","level":27 if a.host_resources else 5}],
+              "library":[{"id":"sotto-tx-bench" if a.live_tx else "sotto-live-test" if a.live_test else "sotto-test","kind":"module","name":"SOTTO TX" if a.live_tx else "SOTTO LIVE" if a.live_test else "SOTTO TEST",
+                          "file":"module.bin","level":29 if a.live_tx else 27 if a.host_resources else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),
                       "arena_11776_scratch_upper":11776-len(code)-24,
                       "arena_15408_scratch_upper":15408-len(code)-24,
-                      "sha256":manifest["sha256"],"rf_enabled":False},indent=2))
+                      "sha256":manifest["sha256"],"rf_enabled":a.live_tx},indent=2))
 
 if __name__=="__main__":main()

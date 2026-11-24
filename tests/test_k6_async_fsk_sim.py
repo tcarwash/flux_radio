@@ -62,7 +62,7 @@ def test_async_fsk_compiled(simulated_radio,monkeypatch,tmp_path,fault):
     b.flash_data[BASE:END]=compact({24:k6mod.image(code,entry,123,None,level=28,lib=24)})[0]
     monkeypatch.setattr(k6_live,"time",SimpleNamespace(monotonic=port.monotonic,sleep=port.sleep))
     link=LiveLink(port,timeout=3,initial_seq=0)
-    assert link.module_capabilities()["module_api_max"]==28
+    assert link.module_capabilities()["module_api_max"] in (28,29)
     link.tune(433500000)
     r=link.run_module(24,allow_higher_api=True,timeout=30)
     print(fault,r)

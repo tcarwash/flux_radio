@@ -2,7 +2,7 @@
 """Level 27: balanced-host read-only resources and full arena execution."""
 from pathlib import Path
 p=Path(__file__).parent/'build/aura-fd6818b-port/src/app/pager.rs'
-s=p.read_text().replace('matches!(*arena::base().add(12),27|28)','*arena::base().add(12) == 27')
+s=p.read_text().replace('matches!(*arena::base().add(12),27|28|29)','*arena::base().add(12) == 27').replace('matches!(*arena::base().add(12),27|28)','*arena::base().add(12) == 27')
 def add(old,new):
  global s
  if new in s:return

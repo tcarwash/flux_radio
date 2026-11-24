@@ -51,3 +51,18 @@ def test_refuse_wrong_codebook_or_occupied_slot(artifacts):
     with pytest.raises(InstallError,match="No compatible free slot"):
         provision(link,code,deck,deck_slot=14,install=True)
     assert not link.writes
+
+def test_bench_tx_provision_requires_explicit_authorization(artifacts):
+    from tools.k6_sotto_module import build
+    code,_=build(host_resources=True,live_tx=True)
+    _,_,cb,deck_env,_=artifacts
+    deck=deck_env[16:-8]
+    link=Link(cb)
+    link.module_capabilities=lambda: {"module_api_max":29,"cable_only":True}
+    plan=provision(link,code,deck)
+    assert not plan["installed"] and not link.writes
+    with pytest.raises(InstallError,match="accept-experimental-tx"):
+        provision(link,code,deck,install=True)
+    assert not link.writes
+    plan=provision(link,code,deck,install=True,accept_experimental_tx=True)
+    assert plan["installed"] and len(link.writes)==2

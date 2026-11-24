@@ -376,7 +376,7 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     # ordinary non-packed host image, whose same slot is deliberately invalid.
     if "lib_large" not in features:
         pytest.skip("requires packed user store (K6_USER_STORE=1)")
-    assert link.module_capabilities()["module_api_max"] in (25,27)
+    assert link.module_capabilities()["module_api_max"] in (25,27,28,29)
     code,entry=k6mod.build(str(Path(__file__).resolve().parents[1]/
                                   "c/k6/mod/live_cancel_demo.c"))
     env=k6mod.image(code,entry,100,None,level=25,lib=26)
