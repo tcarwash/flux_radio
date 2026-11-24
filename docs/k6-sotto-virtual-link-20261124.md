@@ -120,3 +120,37 @@ Next: measure actual ADC and SPI transaction cost, test shorter sampling
 loops for fidelity, optimize encoder and read transactions, and repeat
 with longer/multiple speech fixtures. Freeze a small hardware matrix
 only after the model candidates pass with meaningful headroom.
+
+## First compiled optimization candidate
+
+[Candidate a21765a7](https://github.com/tcarwash/flux_radio/commit/a21765a786f5c1e79f77b4ef933b710a1914ab28)
+on research/sotto-dct-fast-20261124 replaces the compact DCT phase
+reduction's repeated subtraction with exact reciprocal arithmetic.
+The expression m - ((m*205)>>14)*80 equals m modulo 80 for every
+integer 0..741, the complete 20x20 input domain. The native C test
+compares all 380 non-DC coefficients actually used by the encoder to
+the upstream table. The unused DC row has a different normalization
+in the original compact implementation; it is deliberately excluded.
+Module size increases 10192 -> 10200 bytes, still within the 10240-byte
+object budget including 24-byte overhead (16 bytes spare).
+
+At CPI 1.5, compare the actual baseline and candidate binaries:
+
+| ADC cycles/sample | SPI read cost | Baseline | Candidate |
+|---|---:|---|---|
+| 0 | 10 us | Pass | Pass |
+| 4800 | 10 us | Pass | Pass |
+| 5745 | 10 us | Fail at 3280 samples | Pass, exact 26/26 |
+| 0 | 34 us | Pass | Pass |
+| 4800 | 34 us | Fail at 1600 samples | Pass, exact 26/26 |
+| 5745 | 34 us | Fail at 1040 samples | Fail at 2560 samples |
+
+The candidate's successful trials preserve all codec bytes and complete
+FDV1 delivery. The DCT-specific test passed after restricting the table
+comparison to the actual non-DC domain; 64 other Sotto regressions
+passed, two skipped in that run. This is a real source optimization,
+not merely a changed model parameter. It is on a separate branch
+based on the experimental live Sotto module, ready for the Sotto
+integration owner to cherry-pick after review. No radio flash or
+hardware validation. The remaining W80-like 34 us SPI case still
+overflows; do not treat the candidate as a real-time qualification.
