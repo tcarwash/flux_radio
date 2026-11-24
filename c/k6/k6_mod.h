@@ -56,6 +56,73 @@ extern "C" {
 #ifndef KM_LEVEL
 #define KM_LEVEL 23
 #endif
+/* Optional read-only installed-provider discovery (build opt-in
+   K6_MODE_REGISTRY=1): API level 26 appends k6_api_t.mode_info below.
+   The default image is unchanged (level 23 here; tools/k6_build.sh raises
+   the ceiling for live/Data images, and the registry ceiling applies on
+   top of that). No packet transmit path is involved. */
+#if defined(K6_MODE_REGISTRY) && KM_LEVEL < 26
+#undef KM_LEVEL
+#define KM_LEVEL 26
+#endif
+/* Host-owned V1 KISS packet mailbox (build opt-in K6_PACKET_MAILBOX=1):
+   API level 27 appends mb_version/stage_packet/poll_result/take_rx below.
+   Requires K6_MODE_REGISTRY=1: the level-26 mode_info tail precedes the
+   level-27 tail, so a 27 image always carries the 26 layout first. Levels
+   1..25 are untouched, and 27 stays clear of the dev radio's different
+   API29 extension slots: a module must call the tail only when
+   api->level == 27, never merely >= 26. */
+#if defined(K6_PACKET_MAILBOX) && !defined(K6_MODE_REGISTRY)
+#error "K6_PACKET_MAILBOX requires K6_MODE_REGISTRY=1 (level-26 tail first)"
+#endif
+#if defined(K6_PACKET_MAILBOX) && KM_LEVEL < 27
+#undef KM_LEVEL
+#define KM_LEVEL 27
+#endif
+
+/* API 26 installed-provider record: mode ID u16LE, capability flags,
+   name length + 12 name bytes, max packet payload u16LE. Naturally aligned
+   (18 bytes, no padding); repr(C)-compatible with the Rust host side. */
+#define K6_MODE_PACKET_TX 0x01u
+#define K6_MODE_PACKET_RX 0x02u
+#define K6_MODE_VOICE 0x04u
+#define K6_MODE_SOTTO_TEST 0x0100u
+#define K6_MODE_SOTTO_RFTEST 0x0101u
+/* Non-APRS packet-capable emulated provider (RAM loopback, no RF).
+   Outside the native APRS range and the Sotto voice reservations. */
+#define K6_MODE_LOOPBACK_EMU 0x0200u
+/* Level-27 mailbox wire constants (mirrored from
+   c/k6/mod/k6_packet_mailbox.h, which is authoritative for semantics;
+   guarded so a module may include both headers). */
+#ifndef K6MB_VERSION
+#define K6MB_VERSION 1u
+#endif
+#ifndef K6MB_MAX_PAYLOAD
+#define K6MB_MAX_PAYLOAD 128u
+#endif
+#ifndef K6MB_EMPTY
+#define K6MB_EMPTY 0u
+#define K6MB_STAGED 1u
+#define K6MB_CLAIMED 2u
+#define K6MB_COMPLETE 3u
+#define K6MB_FAILED 4u
+#endif
+#ifndef K6MB_TX_SENT
+#define K6MB_TX_SENT 0
+#define K6MB_TX_FAILED 1
+#define K6MB_TX_REFUSED 2
+#endif
+#ifndef K6MB_TNC_STAGED
+/* k6_main return: exactly one packet staged, foreground released. */
+#define K6MB_TNC_STAGED (-40)
+#endif
+typedef struct k6_mode_info {
+  uint16_t mode_id;
+  uint8_t flags;
+  uint8_t name_len;
+  char name[12];
+  uint16_t max_payload;
+} k6_mode_info_t;
 
 struct km_explore_frame;
 typedef struct k6_api {
@@ -232,7 +299,11 @@ typedef struct k6_api {
   int (*aprs_position_set)(int32_t lat, int32_t lon);
   /* Level 24: raw 2FSK. op 0 configure RX, 1 receive, 2 send while keyed.
      n=1..128 FIFO words; config=baud | (gain<<16), baud 1200/2400.
-     Buffer must be in module scratch/arena. Caller supplies CRC/framing. */
+     Data-pack 4800 TX extension: op=2, n=33, gain=21 only; success
+     returns 0 with PA off, failure returns negative. Caller supplies any
+     sacrificial guard word and must tx_off after the session. No 4800 RX.
+     Older hosts refuse the extension. Buffer must be in module scratch/arena.
+     Caller supplies CRC/framing. */
   int (*fsk_configured)(uint32_t op, uint16_t *words, uint32_t n, uint32_t config);
   /* Level 25: cooperative cancellation for a live, token-bound foreground
      launch. Returns -1 when not launched with a cancellation token, 0
@@ -241,6 +312,47 @@ typedef struct k6_api {
      module should return cleanly (typically -125) when it sees 1.
      Do not use concurrently with level-14 exclusive KISS serial mode. */
   int (*cancel_poll)(void);
+  /* Level 26 (opt-in K6_MODE_REGISTRY=1 only): read-only discovery of
+     installed library module providers. mode_info(index, out) fills *out
+     for the index-th validated provider in slot order and returns 1, 0
+     past the end, or -1 on a null caller pointer, a busy SPI read, or a
+     corrupted library entry. Only explicitly validated identities
+     enumerate (SOTTO TEST voice, ID 0x0100; SOTTO RFTEST, ID 0x0101, only
+     with the RFTEST opt-in); anything else yields no entry. The host
+     performs SPI reads only (kl_info); it never loads or runs module code,
+     asserts no packet TX, and never transmits. A module must feature-test
+     api->level >= 26 and never call this with api->mode_info == NULL on
+     older images. */
+  int (*mode_info)(uint32_t index, k6_mode_info_t *out);
+  /* Level 27 (opt-in K6_PACKET_MAILBOX=1 only): host-owned V1 packet
+     mailbox (c/k6/mod/k6_packet_mailbox.h). mb_version must read exactly
+     K6MB_VERSION (1); the TNC refuses to stage otherwise. Phase split,
+     never nested: stage_packet/poll_result/take_rx are the TNC phase
+     (called only while the TNC module runs, tnc_active==1);
+     claim_packet/complete_packet/publish_rx are the provider phase
+     (called only from the K6_ACTION(35) provider run after the TNC
+     returned, tnc_active==0). stage_packet copies mode_id's frame (at
+     most 128 bytes) into host storage and returns 0, or negative
+     fail-closed (busy/too long/refused). The TNC then RETURNS -40
+     (K6MB_TNC_STAGED, releasing UART/foreground); the host runs the
+     provider entry action afterwards, never nested. poll_result fills
+     the TX slot generation/state/result without consuming them.
+     claim_packet copies the staged payload for the exact (mode_id,
+     generation) pair into out (at most cap bytes) and moves the slot
+     STAGED->CLAIMED; complete_packet records the provider TX result
+     (K6MB_TX_*); publish_rx queues one received frame into the RX ring
+     for a later take_rx. Every callback is NULL on images below level
+     27; dev-radio API29 images assign different functions to tail
+     slots, so a module must feature-test api->level == 27 exactly and
+     never call any of these when the test fails. */
+  uint32_t mb_version;
+  int (*stage_packet)(uint16_t mode_id, const uint8_t *bytes, uint16_t len);
+  int (*poll_result)(uint32_t *generation, uint32_t *state, int32_t *result);
+  int (*take_rx)(uint8_t *out, uint16_t cap, uint16_t *mode_id, unsigned *len);
+  int (*claim_packet)(uint16_t mode_id, uint32_t generation, uint8_t *out,
+                       uint16_t cap, unsigned *len);
+  int (*complete_packet)(uint32_t generation, int32_t result);
+  int (*publish_rx)(uint16_t mode_id, const uint8_t *bytes, uint16_t len);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u
@@ -358,6 +470,11 @@ typedef struct {
 #define K6_ACTION_SURF_OPEN 32
 #define K6_ACTION_VFO_OPEN 33
 #define K6_ACTION_EXPLORE_OPEN 34
+/* Provider packet entry: the host dispatcher runs this action in the
+   selected installed provider module after the TNC returned (never
+   nested). The provider claims the staged mailbox packet, verifies
+   identity/capability, transmits, and reports a result. */
+#define K6_ACTION_PACKET_PROVIDER 35
 /* REG 0x67 bits 8:1 = RSSI in dB above -174 dBm (as Aura's get_rssi) */
 #define KM_RSSI_DBM(reg67) ((int)(((reg67) & 0x1FF) >> 1) - 174)
 

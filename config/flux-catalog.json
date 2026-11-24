@@ -405,6 +405,17 @@
     "explore-scan-fit": {
       "status": "wip",
       "summary": "Archived development probe; not intended for normal FD6818B radio operation."
+    },
+    "flux-tnc": {
+      "title": "Flux KISS TNC",
+      "summary": "Versioned KISS mode-control interface and bounded APRS-1200 AX.25 TX. Exclusive programming UART. Additional installed modem packet adapters and native APRS receive are not yet implemented; radio RF validation pending.",
+      "status": "experimental",
+      "required_packs": [
+        "data"
+      ],
+      "source_module": "fluxtnc",
+      "expected_api": 14,
+      "native_flux": true
     }
   }
 }
