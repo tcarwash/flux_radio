@@ -10,6 +10,28 @@ The implementation is tools/k6_experiment_batch.py. It accepts a
 experiments run **sequentially**. It does not take automatic action
 on GitHub issues and does not issue hardware leases.
 
+## Editable API target
+
+The development-host API target is in `config/k6-experiment-runner.json`
+(`target_module_api`, initially **29**). Change that file when the bench
+firmware API advances; do not hardcode 29 into individual runner scripts.
+Each job manifest may declare `minimum_module_api` as an integer. The
+GitHub-intake path and any new manifests **must** populate it. A job needing
+a newer API than the configured target is blocked, but an older minimum API
+remains compatible (subject to host capability checks). Missing minimum
+API values are reported as execution blockers, not silently assumed to be
+compatible.
+
+The CLI's dry run prints the configured API, per-job minimum API, blockers,
+and an `approval_sha256` that covers both the manifest and configuration.
+Changing either requires fresh approval. The editable target is **not**
+proof of the API actually installed on the radio. Each runnable hardware
+preflight must verify the device's live API/capabilities and fail closed on
+mismatch; it must not assume API29 solely because the JSON file says 29.
+The original coordinator still requires manual manifests and an ACK; GitHub
+issue ingestion and shared radio/SDR resource locking are separate pending
+integration tasks.
+
 ## The execution contract
 
 1. An experiment owner submits to the shared queue issue #11 an
@@ -79,6 +101,7 @@ The commands and expiry here are placeholders; DO NOT run them.
     {
       "id": "whisper-01",
       "issue_url": "https://github.com/tcarwash/flux_radio/issues/29",
+      "minimum_module_api": 29,
       "cwd": "/storage5/dev/flux-whisper8-mfsk-offline",
       "pins": [{"path": "/ABSOLUTE/whisper_bench.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
       "preflight": {"argv": ["/usr/bin/python3", "/ABSOLUTE/whisper_bench.py", "preflight"], "timeout_seconds": 30},

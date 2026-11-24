@@ -30,10 +30,44 @@ STEPS = ("preflight", "run", "restore", "verify")
 GLOBAL_STEPS = ("session_preflight", "session_restore", "session_verify")
 MAX_JOBS = 20
 MAX_TIMEOUT = 300
+API_CONFIG = Path(__file__).resolve().parents[1] / "config/k6-experiment-runner.json"
 
 
 class Refused(RuntimeError):
     """Fail closed: no claim of authorization, safe state, or successful test."""
+
+
+def read_api_config(path: Path) -> tuple[dict[str, Any], bytes]:
+    """Load the editable API target; do not mistake it for radio attestation."""
+    raw = path.read_bytes()
+    try:
+        cfg = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise Refused(f"invalid API configuration: {exc}") from exc
+    if (not isinstance(cfg, dict) or set(cfg) != {"schema", "target_module_api", "notes"}
+            or type(cfg["schema"]) is not int or cfg["schema"] != 1
+            or type(cfg["target_module_api"]) is not int
+            or not 1 <= cfg["target_module_api"] <= 255
+            or not isinstance(cfg["notes"], str)):
+        raise Refused("API configuration must declare schema=1 and target_module_api=1..255")
+    return cfg, raw
+
+
+def check_api_compatibility(m: dict, cfg: dict) -> list[str]:
+    """Return execution blockers; older minimum APIs remain valid on newer hosts.
+
+    A module requesting newer API cannot run on the configured development host.
+    Missing requirements are not silently treated as compatible.
+    """
+    blockers = []
+    target = cfg["target_module_api"]
+    for job in m["jobs"]:
+        required = job.get("minimum_module_api")
+        if required is None:
+            blockers.append(f"{job['id']}: minimum_module_api missing")
+        elif required > target:
+            blockers.append(f"{job['id']}: requires API {required}, configured host target is {target}")
+    return blockers
 
 
 def read_manifest(path: Path) -> tuple[dict[str, Any], str, bytes]:
@@ -109,8 +143,10 @@ def validate_manifest(m: Any) -> None:
         raise Refused(f"manifest: expected 1..{MAX_JOBS} jobs")
     seen = set()
     for i, j in enumerate(jobs):
-        if not isinstance(j, dict) or set(j) != {"id", "issue_url", "cwd", "pins", *STEPS}:
+        if not isinstance(j, dict) or not {"id", "issue_url", "cwd", "pins", *STEPS}.issubset(j) or set(j) - {"id", "issue_url", "cwd", "pins", "minimum_module_api", *STEPS}:
             raise Refused(f"jobs[{i}]: missing or unknown keys")
+        if "minimum_module_api" in j and (type(j["minimum_module_api"]) is not int or not 1 <= j["minimum_module_api"] <= 255):
+            raise Refused(f"jobs[{i}]: minimum_module_api must be 1..255")
         if not isinstance(j["id"], str) or not ID_RE.fullmatch(j["id"]) or j["id"] in seen:
             raise Refused(f"jobs[{i}]: invalid or duplicate job ID")
         seen.add(j["id"])
@@ -213,7 +249,12 @@ def _run_step(step: dict, *, cwd: Path, name: str, output: Path) -> dict:
 
 def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
                 lock_root: Path, approved_digest: str, ack_url: str,
-                operator: str, dummy_load_confirmed: bool) -> dict:
+                operator: str, dummy_load_confirmed: bool,
+                api_config: dict | None = None) -> dict:
+    if api_config is not None:
+        blockers = check_api_compatibility(m, api_config)
+        if blockers:
+            raise Refused("API compatibility blocked: " + "; ".join(blockers))
     authorize(m, digest, approved_digest=approved_digest, ack_url=ack_url,
               operator=operator, dummy_load_confirmed=dummy_load_confirmed)
     lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -233,7 +274,8 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
         _write_private(directory / "manifest.json", raw)
         result = {
             "session_id": m["session_id"],
-            "manifest_sha256": digest,
+            "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+            "approval_sha256": digest,
             "queue_issue_url": m["queue_issue_url"],
             "ack_url": ack_url,
             "operator": operator,
@@ -316,6 +358,8 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("manifest", type=Path)
+    ap.add_argument("--api-config", type=Path, default=API_CONFIG,
+                    help="editable development-host API target file")
     ap.add_argument("--execute", action="store_true", help="opt into approved, real commands")
     ap.add_argument("--approve-digest", help="exact SHA256 printed by dry run")
     ap.add_argument("--ack-url", help="independent GitHub lease ACK comment URL")
@@ -325,21 +369,33 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lock-root", type=Path, default=Path.home() / ".cache" / "flux" / "batch-locks")
     args = ap.parse_args(argv)
     try:
-        m, digest, raw = read_manifest(args.manifest)
+        m, manifest_digest, raw = read_manifest(args.manifest)
+        cfg, cfg_raw = read_api_config(args.api_config)
+        # The approval digest commits to both source manifest and API policy.
+        digest = hashlib.sha256(raw + b"\nAPI-CONFIG\n" + cfg_raw).hexdigest()
+        blockers = check_api_compatibility(m, cfg)
         if not args.execute:
             print(json.dumps({
                 "mode": "DRY_RUN_NO_COMMANDS",
                 "session_id": m["session_id"],
-                "manifest_sha256": digest,
-                "jobs": [{"id": j["id"], "issue": j["issue_url"]} for j in m["jobs"]],
+                "approval_sha256": digest,
+                "manifest_sha256": manifest_digest,
+                "api_config_sha256": hashlib.sha256(cfg_raw).hexdigest(),
+                "target_module_api": cfg["target_module_api"],
+                "api_blockers": blockers,
+                "jobs": [{"id": j["id"], "issue": j["issue_url"],
+                           "minimum_module_api": j.get("minimum_module_api")} for j in m["jobs"]],
                 "expiry": m["lease_expires_utc"],
                 "execution_requirements": "fresh ACK, approved digest, operator, dummy load",
             }, indent=2))
             return 0
+        if blockers:
+            raise Refused("API compatibility blocked: " + "; ".join(blockers))
         result = run_session(m, raw, digest, output_root=args.output_root,
                              lock_root=args.lock_root, approved_digest=args.approve_digest,
                              ack_url=args.ack_url, operator=args.operator,
-                             dummy_load_confirmed=args.dummy_load_confirmed)
+                             dummy_load_confirmed=args.dummy_load_confirmed,
+                             api_config=cfg)
         print(json.dumps({
             "session_id": result["session_id"],
             "result": result["result"],

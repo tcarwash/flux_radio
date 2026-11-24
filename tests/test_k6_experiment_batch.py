@@ -213,3 +213,62 @@ def test_same_session_id_refuses_to_overwrite_evidence(tmp_path):
     assert invoke(m, tmp_path)["result"] == "PASS"
     with pytest.raises(FileExistsError):
         invoke(m, tmp_path)
+
+
+def test_editable_api_config_and_minimum_compatibility(tmp_path):
+    config_path = ROOT / "config/k6-experiment-runner.json"
+    cfg, raw = batch.read_api_config(config_path)
+    assert cfg["target_module_api"] == 29
+    assert raw and cfg["schema"] == 1
+    m, _, _ = fresh(tmp_path, jobs=1)
+    assert "minimum_module_api missing" in batch.check_api_compatibility(m, cfg)[0]
+    m["jobs"][0]["minimum_module_api"] = 27
+    assert batch.check_api_compatibility(m, cfg) == []
+    m["jobs"][0]["minimum_module_api"] = 30
+    assert "requires API 30" in batch.check_api_compatibility(m, cfg)[0]
+    new = {**cfg, "target_module_api": 30}
+    changed = tmp_path / "api.json"
+    changed.write_text(json.dumps(new))
+    assert batch.read_api_config(changed)[0]["target_module_api"] == 30
+    assert batch.check_api_compatibility(m, new) == []
+
+
+def test_api_config_rejects_invalid_target(tmp_path):
+    p = tmp_path / "bad.json"
+    for value in (0, True, "29", 256):
+        p.write_text(json.dumps({"schema": 1, "target_module_api": value, "notes": ""}))
+        with pytest.raises(batch.Refused, match="target_module_api"):
+            batch.read_api_config(p)
+
+
+def test_cli_api_preflight_blocks_execution_without_hardware(tmp_path, capsys):
+    m, trace, _ = fresh(tmp_path, jobs=1)
+    m["jobs"][0]["minimum_module_api"] = 30
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps(m))
+    assert batch.main([str(manifest)]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["target_module_api"] == 29
+    assert preview["api_blockers"]
+    assert preview["jobs"][0]["minimum_module_api"] == 30
+    assert len(preview["approval_sha256"]) == 64
+    assert batch.main([str(manifest), "--execute"]) == 2
+    assert "API compatibility blocked" in capsys.readouterr().err
+    assert not trace.exists()
+
+
+def test_approval_digest_includes_editable_api_config(tmp_path, capsys):
+    m, trace, _ = fresh(tmp_path, jobs=1)
+    m["jobs"][0]["minimum_module_api"] = 27
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps(m))
+    assert batch.main([str(manifest)]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    cfg, _ = batch.read_api_config(ROOT / "config/k6-experiment-runner.json")
+    p = tmp_path / "api.json"
+    p.write_text(json.dumps({**cfg, "target_module_api": 30}))
+    assert batch.main([str(manifest), "--api-config", str(p)]) == 0
+    updated = json.loads(capsys.readouterr().out)
+    assert updated["approval_sha256"] != preview["approval_sha256"]
+    assert updated["manifest_sha256"] == preview["manifest_sha256"]
+    assert not trace.exists()

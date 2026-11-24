@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "target_module_api": 29,
+  "notes": "Development host API target, not an attestation of the installed radio firmware. Each experiment must declare minimum_module_api; live session preflight must verify actual firmware API before any writes or RF."
+}
