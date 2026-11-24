@@ -93,3 +93,21 @@ adaptation was ported back to main, and the main adaptation's focused tests
 also pass. This is a code/CPU work reduction, not yet evidence of a measurable
 improvement in hardware throughput. The integrated worktree does not enable
 physical Sotto voice TX or change the guarded TNC API27 dispatcher.
+
+## Experimental timing parameter: SPI transfer-length sensitivity
+
+The virtual resource service now supports an optional **per-byte** SPI delay,
+`--spi-byte-us X`, alongside its previous fixed `--spi-us N` per-read delay.
+For a successful uncached `resource_read(kind, off, buf, n)`, the modeled cost
+is `N + X*n` microseconds. The default `X=0` is backwards-compatible with
+previous constant-per-transaction sweeps. Hypothetical SRAM cache hits keep
+the separate `--spi-hit-us` cost. Both `spi_read_bytes` and
+`keyed_read_bytes` accompany transaction counts in each trial's JSON result.
+
+The comparison tool accepts `--spi-byte-us` as well, with the same value
+passed to baseline and candidate. **N is per-request overhead when X is
+nonzero**, not a measurement of the entire physical request; choosing both
+as all-in cost would double count transfer time. Measure the real NOR read
+setup and throughput before choosing values to predict hardware behavior.
+This is a more defensible model for evaluating 128-byte vs 256-byte centroid
+reads, but it does not by itself validate large transactions on the device.

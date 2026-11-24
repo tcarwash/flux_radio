@@ -65,11 +65,13 @@ def main():
     p.add_argument('--wav',type=Path,action='append',default=[],help='additional 8k mono PCM16 fixture; repeat as needed')
     p.add_argument('--include-mixed',action='store_true',help='include 1.2s deterministic mixed-frequency/silence stimulus')
     p.add_argument('--case',type=parse_case,action='append',default=[],help='ADC_CYCLES:SPI_US; repeat, defaults include passing/failing controls')
+    p.add_argument('--spi-byte-us',type=float,default=0,help='modeled additional microseconds per SPI byte; 0 is old fixed-per-read assumption')
     p.add_argument('--cpi',type=float,default=1.5,help='modeled cycles per instruction (not calibrated)')
     p.add_argument('--json',type=Path,help='write detailed machine-readable results')
     p.add_argument('--strict',action='store_true',help='exit nonzero if any prior success regresses')
     a=p.parse_args()
     if not 0.2<=a.cpi<=20 or not np.isfinite(a.cpi):p.error('cpi must be finite and 0.2..20')
+    if not 0<=a.spi_byte_us<=100 or not np.isfinite(a.spi_byte_us):p.error('spi-byte-us must be finite and 0..100')
     try:
         audio=[('triangle-1.04s',None)]
         if a.include_mixed:audio.append(('mixed-1.2s',mixed_pcm()))
@@ -85,7 +87,7 @@ def main():
                 work=Path(d)/kind;work.mkdir()
                 artifacts[kind]=prepare(tree,work,pcm=pcm)
             for adc,spi in cases:
-                r={kind:trial(artifact,Channel(),cpi=a.cpi,spi_us=spi,adc_cycles=adc)
+                r={kind:trial(artifact,Channel(),cpi=a.cpi,spi_us=spi,spi_byte_us=a.spi_byte_us,adc_cycles=adc)
                    for kind,artifact in artifacts.items()}
                 for v in r.values():v['accepted']=accepted(v)
                 results.append(dict(fixture=name,adc_cycles=adc,spi_us=spi,**r))
@@ -95,7 +97,7 @@ def main():
                       f' ({r["candidate"]["samples"]}/{r["candidate"]["samples_expected"]})',flush=True)
     scores=tally([(r['baseline'],r['candidate']) for r in results])
     out=dict(format_version=1,method='compiled Sotto + Unicorn TX + virtual IQ + compiled RX; modeled not calibrated',
-             cpi=a.cpi,summary=scores,results=results)
+             cpi=a.cpi,spi_byte_us=a.spi_byte_us,summary=scores,results=results)
     print('Summary:',json.dumps(scores,sort_keys=True),flush=True)
     if a.json:a.json.write_text(json.dumps(out,indent=2)+'\n')
     if a.strict and not scores['no_regressions']:

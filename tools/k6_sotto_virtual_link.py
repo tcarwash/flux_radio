@@ -95,13 +95,13 @@ PCM=np.array([(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)],dt
 
 
 class LiveTx(Emu):
-    def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2):
+    def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0):
         self.pcm=artifact.get("pcm")
         if self.pcm is None:self.pcm=PCM
         self.capture=None;self.capture_start=None;self.sample=0;self.highwater=0
         self.adc_cycles=adc_cycles;self.wall_delay=False
         self.lost=False;self.lease_expired=False;self.keyed=False;self.lease_end=0;self.saved=None
-        self.pre_release=0;self.spi_reads=0;self.spi_us=spi_us;self.tx_frames=[]
+        self.pre_release=0;self.spi_reads=0;self.spi_us=spi_us;self.spi_byte_us=spi_byte_us;self.spi_read_bytes=0;self.keyed_read_bytes=0;self.tx_frames=[]
         self.cache=OrderedDict();self.cache_bytes=cache_bytes;self.cache_used=0
         self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter();self.codebook_reads=[]
         self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"];self.deck_opened=False
@@ -217,9 +217,9 @@ class LiveTx(Emu):
             src=self.cb if r0==0 else self.deck if r0==1 else b""
             if (r0==1 and not self.deck_opened) or r1+r3>len(src) or not r3:ret=-1
             else:
-                uc.mem_write(r2,src[r1:r1+r3]);self.spi_reads+=1
+                uc.mem_write(r2,src[r1:r1+r3]);self.spi_reads+=1;self.spi_read_bytes+=r3
                 if self.keyed:
-                    self.keyed_reads+=1;self.read_sizes[r3]+=1
+                    self.keyed_reads+=1;self.keyed_read_bytes+=r3;self.read_sizes[r3]+=1
                     if r0==0 and r3==20 and r1>=32 and (r1-32)%20==0:
                         self.codebook_reads.append((r1-32)//20)
                     key=(r0,r1,r3)
@@ -229,13 +229,13 @@ class LiveTx(Emu):
                         self.cache.move_to_end(key);self.cache_hits+=1
                         us=self.spi_hit_us
                     else:
-                        us=self.spi_us
+                        us=self.spi_us+self.spi_byte_us*r3
                         cost=r3+12
                         if cost<=self.cache_bytes:
                             while self.cache_used+cost>self.cache_bytes:
                                 _,old=self.cache.popitem(last=False);self.cache_used-=old
                             self.cache[key]=cost;self.cache_used+=cost
-                else:us=self.spi_us
+                else:us=self.spi_us+self.spi_byte_us*r3
         elif name=="mic_stream":
             if r0==3:
                 ret=int(self.cyc>=FCPU*.02 and (self.capture_start is None or
@@ -317,13 +317,13 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2):
-    if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or (cache_bytes and spi_hit_us>spi_us):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0):
+    if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
     t=time.perf_counter()
     try:
-        e=LiveTx(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us)
+        e=LiveTx(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us)
         result=e.run()
         if result is None:raise RuntimeError("live module exceeded virtual deadline")
         ret,stack=result
@@ -349,9 +349,9 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
     return dict(revision=artifact["revision"],source_dirty=artifact["dirty"],
                 module_sha256=hashlib.sha256(artifact["code"]).hexdigest(),
                 module_bytes=len(artifact["code"]),module_return=ret,
-                stack_bytes=stack,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
+                stack_bytes=stack,cpi=cpi,spi_us=spi_us,spi_byte_us=spi_byte_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
                 channel=channel.__dict__,samples=e.sample,samples_expected=len(e.pcm),pcm_highwater=e.highwater,pcm_lost=e.lost,lease_expired=e.lease_expired,
-                spi_reads=e.spi_reads,keyed_reads=e.keyed_reads,read_sizes=dict(e.read_sizes),
+                spi_reads=e.spi_reads,keyed_reads=e.keyed_reads,spi_read_bytes=e.spi_read_bytes,keyed_read_bytes=e.keyed_read_bytes,read_sizes=dict(e.read_sizes),
                 codebook_profile=codebook_profile(e.codebook_reads),
                 cache_bytes=cache_bytes,cache_hits=e.cache_hits,spi_hit_us=spi_hit_us,tx_before_release=e.pre_release,first_rf_ms=e.first_rf_ms,
                 tx=tx,rx=rx.get("fsk"),received=len(frames),session=session,
@@ -403,6 +403,7 @@ def main():
                   ("prefix-every",int,[0])]:
         p.add_argument("--"+n,type=values(k),default=d)
     p.add_argument("--spi-hit-us",type=float,default=2)
+    p.add_argument("--spi-byte-us",type=float,default=0,help="additional modeled SPI us per returned byte; 0 preserves legacy constant-per-read timing")
     p.add_argument("--json",type=Path)
     p.add_argument("--pcm-wav",type=Path,help="optional 8kHz mono PCM16 WAV fixture (0.1-3s, multiples of 10ms)")
     p.add_argument("--strict",action="store_true",help="exit nonzero if any trial fails acceptance")
@@ -427,7 +428,7 @@ def main():
         artifact=prepare(a.sotto_tree,Path(d),pcm=pcm)
         for cpi,spi,fd,adc,cache,threshold,poll,cn,prefix in product(*axes):
             r=trial(artifact,Channel(cn_db=cn,prefix_every=prefix),cpi=cpi,spi_us=spi,
-                    fd_us=fd,adc_cycles=adc,cache_bytes=cache,spi_hit_us=a.spi_hit_us,threshold=threshold,poll_us=poll)
+                    fd_us=fd,adc_cycles=adc,cache_bytes=cache,spi_hit_us=a.spi_hit_us,spi_byte_us=a.spi_byte_us,threshold=threshold,poll_us=poll)
             r["accepted"]=accepted(r)
             rows.append(r);print(json.dumps(r),flush=True)
     if a.json:a.json.write_text(json.dumps(rows,indent=2)+"\n")

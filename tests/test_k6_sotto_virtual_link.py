@@ -156,3 +156,29 @@ def test_no_wrap_fdv1_control(actual):
     packet=seal(p)
     assert decode_session([packet])[1]["valid"]==0
     assert wire_decode(actual,[packet])[0][0]==0
+
+def test_resource_spi_byte_time(actual):
+    """Fixed setup + transfer length is charged per successful resource read."""
+    import pytest
+    from sim.k6emu.rf.virtual_link import VirtualAir,VirtualTxBackend
+    from tools.k6_sotto_virtual_link import HZ,LiveTx,trial
+    air=VirtualAir(Channel())
+    b=VirtualTxBackend(air,240000,HZ)
+    try:
+        e=LiveTx(actual,b,spi_us=4,spi_byte_us=.5)
+        a=e.A
+        regs=(a.UC_ARM_REG_R0,a.UC_ARM_REG_R1,a.UC_ARM_REG_R2,a.UC_ARM_REG_R3)
+        def resource_read(n):
+            for reg,val in zip(regs,(0,32,e.scr,n)):e.mu.reg_write(reg,val)
+            start=e.cyc
+            e.on_stub(e.mu,e.stubs+16*e.names.index('resource_read')+1,2,None)
+            assert e.mu.reg_read(regs[0])==0
+            return e.cyc-start
+        assert resource_read(20)==(4+.5*20)*96
+        assert resource_read(128)==(4+.5*128)*96
+        assert e.spi_reads==2 and e.spi_read_bytes==148
+        assert e.keyed_reads==0 and e.keyed_read_bytes==0
+    finally:b.close()
+    with pytest.raises(ValueError):trial(actual,spi_byte_us=float('nan'))
+    with pytest.raises(ValueError):trial(actual,spi_byte_us=-1)
+    with pytest.raises(ValueError):trial(actual,spi_byte_us=101)
