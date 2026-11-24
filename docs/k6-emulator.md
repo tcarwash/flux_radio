@@ -150,8 +150,31 @@ The tool prints frame counts, independent software L64 CRC checks, hashes,
 first words, stack use and FIFO diagnostics. It does not open a physical
 device. It requires the existing Cortex-M0 module build tools (clang, lld,
 llvm-objcopy, llvm-nm). See [archived replay evidence](k6-fsk-emulator-replay-20261124.md).
-The model does not implement native TX, hardware CRC, FFSK, 1200/2400-baud
-direct FSK, DMA/GP0 or a complete production Sotto receiver.
+The ordinary RF backend remains receive-only. A separate offline virtual TX
+backend now supports finite preloaded direct 4800-baud bursts. It does not
+implement hardware CRC, FFSK, 1200/2400-baud direct FSK, DMA/GP0 or a complete
+production Sotto receiver.
+
+### Offline virtual link and parameter sweeps
+
+Run two compiled Cortex-M0 module fixtures against a shared virtual RF
+timeline, with no physical SDR or radio:
+
+```sh
+python tools/k6_fsk_virtual_link.py --packets 4 \
+  --threshold 4,6 --poll-us 1000,5000,10000 --gap-us 0,12000 \
+  --seed 1,2 --csv sweep.csv --summary-json ranked.json
+```
+
+Sweep deviation, carrier offset, C/N, clock error, FIFO threshold, polling
+interval, interpacket gap, initial timing phase and explicit leading-word
+fault injection. CSV/JSON include exact packet delivery, CRC, raw bit
+errors, FIFO diagnostics and timing. Ranked summaries use worst-case
+delivery across tested seeds and start phases. The same RX fixture can
+replay physical archives with `--frame-bytes`, `--threshold`, `--poll-us`.
+See [virtual-link workflow and initial sweeps](k6-fsk-virtual-link-20261124.md).
+This is one-way timestamped replay, not a live duplex network or a
+calibrated silicon model.
 
 ## Test a library module
 
