@@ -1,5 +1,7 @@
 # K6 CW register-write replay → SoapyFang (offline)
 
+The frequency-modem follow-on is documented in [`k6-frequency-modem-soapyfang-20261124.md`](k6-frequency-modem-soapyfang-20261124.md).
+
 **2026-11-24. Research-only, no physical TX or installable CW firmware change.**
 
 This builds on `sim/k6emu/rf/tx_trace.py` and the five-mode SoapyFang
