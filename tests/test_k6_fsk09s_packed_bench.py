@@ -107,7 +107,9 @@ def test_mocked_single_shot_and_verified_restoration(monkeypatch,tmp_path,radio_
         def status(self):return baseline
         def read(self,off,n):return img if off==bench.LIB_BASE+3000 else bytes(n)
         def run_module(self,slot,**kwargs):
-            assert slot==30; commands.append("run")
+            assert slot==30
+            assert kwargs.get("allow_higher_api") is True  # API3 requires 0x100
+            commands.append("run")
             if radio_fail:
                 raise RuntimeError("simulated radio TX failure")
             return {"returned":True,"result":98,"reports":[]}
@@ -190,3 +192,8 @@ def test_restoration_verifier_uses_only_read_only_operations(monkeypatch,tmp_pat
     monkeypatch.setattr(bench,"directory",lambda link:{0:(0,3),30:(10,2),31:(50,4)})
     with pytest.raises(RuntimeError,match="remains occupied"):
         bench.verify_restored("/dev/fake",prefix)
+
+def test_live_firmware_requires_explicit_level3_override():
+    root=ROOT/"firmware/k6-aura/apply-live-serial.py"
+    source=root.read_text()
+    assert "(higher || info.level <= 2)" in source

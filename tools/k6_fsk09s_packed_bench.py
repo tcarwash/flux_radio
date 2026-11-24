@@ -338,7 +338,10 @@ def run_transaction(port: str, prefix: Path, *, dummy_load_confirmed=False,
                         time.sleep(0.65)
                         report["tx_module_requests"] = 1
                         try:
-                            outcome = link.run_module(slot, timeout=12, allow_higher_api=False,
+                            # Firmware live_module_allowed permits level >2
+                            # only with the explicit 0x100 override. The fixed
+                            # manifest and exact firmware/API guards vet level3.
+                            outcome = link.run_module(slot, timeout=12, allow_higher_api=True,
                                                       on_report=lambda s: print("RF MODULE:", s, flush=True))
                             report["module_completion"] = outcome
                             report["transmission_confirmed_by_firmware"] = bool(
