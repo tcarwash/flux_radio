@@ -40,11 +40,12 @@ CABLE="km_cable_packet"
 STACK="km_run_on_stack"
 RUN="km_run"
 ENTER_TX="<aura::device::radio::Radio>::enter_tx"
+ENTER_TX_PA="<aura::device::radio::Radio>::enter_tx_with_pa"
 SRC=ROOT/"tests/data/k6/sotto_rx31_call_emu.c"
 
 
 def linked_symbols(elf:Path):
-    names=(CALLBACK,ENTRY,CABLE,STACK,RUN,ENTER_TX)
+    names=(CALLBACK,ENTRY,CABLE,STACK,RUN)
     rows=subprocess.check_output(["llvm-nm","--demangle",str(elf)],
                                  text=True,timeout=20).splitlines()
     found={}
@@ -60,6 +61,16 @@ def linked_symbols(elf:Path):
             found[f[2]]=v
     if len(found)!=len(names):
         raise RuntimeError(f"Missing linked ARM symbols: {sorted(set(names)-set(found))}")
+    # The normal RX-only image has the original Radio::enter_tx symbol.
+    # A PA-muted async-FSK build also exports Radio::enter_tx_with_pa,
+    # and the ordinary wrapper may be inlined. Require one real entry.
+    for line in rows:
+        f=line.split(maxsplit=2)
+        if len(f)!=3 or f[2] not in (ENTER_TX,ENTER_TX_PA): continue
+        try:found[f[2]]=int(f[0],16)
+        except ValueError:continue
+    if ENTER_TX not in found and ENTER_TX_PA not in found:
+        raise RuntimeError("Missing linked Radio TX entry in firmware ELF")
     return found
 
 
@@ -93,9 +104,14 @@ class Dispatcher:
                 self.trace[key]+=1
             return record
         for symbol,key in ((ENTRY,"run_module"),(STACK,"km_run_on_stack"),
-                           (RUN,"km_run"),(CALLBACK,"api31"),(ENTER_TX,"radio_enter_tx")):
+                           (RUN,"km_run"),(CALLBACK,"api31")):
             addr=self.linked[symbol]
             self.board.uc.hook_add(UC_HOOK_CODE,on_entry(key),begin=addr,end=addr)
+        for symbol in (ENTER_TX,ENTER_TX_PA):
+            if symbol in self.linked:
+                addr=self.linked[symbol]
+                self.board.uc.hook_add(
+                    UC_HOOK_CODE,on_entry("radio_enter_tx"),begin=addr,end=addr)
         # km_run_on_stack is a fixed naked ARM/Thumb ABI trampoline.
         # +0x14 is the first instruction after its bl km_run, with module
         # result in R0; asserted against compiled code in this exact image.
@@ -188,7 +204,8 @@ class Dispatcher:
         self.board.fd_regs[0x38]=hz&0xffff
         self.board.fd_regs[0x39]=hz>>16
 
-    def execute(self,expected_return:int=6,require_rf:bool=True):
+    def execute(self,expected_return:int=6,require_rf:bool=True,
+                require_radio_tx:bool=False,min_api31_calls:int|None=None):
         from unicorn.arm_const import (
             UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_SP,
             UC_ARM_REG_LR,UC_ARM_REG_PC,
@@ -213,8 +230,11 @@ class Dispatcher:
                 and self.trace["km_run"]==1
                 and self.trace["km_run_on_stack"]==1
                 and self.trace["consumer"]==1
-                and (self.trace["api31"]>100 if require_rf else self.trace["api31"]==0)
-                and self.trace["radio_enter_tx"]==0):
+                and (self.trace["api31"]>100 if require_rf else
+                     (self.trace["api31"]>=min_api31_calls if min_api31_calls is not None
+                      else self.trace["api31"]==0))
+                and (self.trace["radio_enter_tx"]>0 if require_radio_tx
+                     else self.trace["radio_enter_tx"]==0)):
             raise RuntimeError(f"Normal execution/PA trace unexpected: {self.trace}")
         if self.module_ret!=[expected_return]:
             raise RuntimeError(f"Real compiled C module returned unexpected value: {self.module_ret}")

@@ -182,6 +182,15 @@ K6_MODE_RFTEST=${K6_MODE_RFTEST:-0}
 K6_PACKET_MAILBOX=${K6_PACKET_MAILBOX:-0}
 K6_FSK4800_RX=${K6_FSK4800_RX:-0}
 K6_SOTTO_RESOURCES=${K6_SOTTO_RESOURCES:-0}
+K6_SOTTO_ASYNC_FSK=${K6_SOTTO_ASYNC_FSK:-0}
+case "$K6_SOTTO_ASYNC_FSK" in
+  0|1) ;;
+  *) echo "K6_SOTTO_ASYNC_FSK must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_RESOURCES" != 1 ]; then
+  echo "API29 requires the opt-in API28 resources and API31 RX host" >&2
+  exit 1
+fi
 case "$K6_SOTTO_RESOURCES" in
   0|1) ;;
   *) echo "K6_SOTTO_RESOURCES must be 0 or 1" >&2; exit 1 ;;
@@ -217,6 +226,9 @@ fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
   python3 "$HERE/apply-sotto-api28-resources.py"
 fi
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then
+  python3 "$HERE/apply-sotto-api29-async-fsk.py"
+fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
 fi
@@ -251,6 +263,7 @@ if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbox"; fi
 if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi

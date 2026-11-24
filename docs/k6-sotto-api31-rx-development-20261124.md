@@ -254,17 +254,79 @@ Build/test entirely offline:
     K6_AURA_RESET_GENERATED=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 K6_FSK4800_RX=1 K6_SOTTO_RESOURCES=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-sotto-resources-host
     K6_SIM_SOTTO_RX31_IMAGE=firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin K6_SIM_SOTTO_RX31_ELF=firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura K6_SIM_SOTTO_API28_RESOURCES=1 ~/.local/share/flux-rf-venv/bin/python -m pytest -q tests/test_k6_sotto_api28_resource_gate.py
 
+## Opt-in real API29 PA-muted async FSK TX (2026-11-24)
+
+The same Base+Data research host now supports **K6_SOTTO_ASYNC_FSK=1**,
+which requires K6_SOTTO_RESOURCES=1 and the existing API31 receiver
+configuration. This enables the pre-existing *append-only* API29
+fsk_async callback without moving the API26/27 mode registry/mailbox,
+API28 resources, API30 microphone slot or API31 receive slot.
+
+**TX safety contract** (compiled Cortex-M0 host, not merely a mock):
+
+- For level-30/31 Sotto modules in this **explicitly opt-in build**,
+  tx_on enters normal licensed/band-locked FM TX **with its PA muted**.
+  Other firmware builds and older modules retain their original TX
+  paths. In the RX-only build, new-tail modules still cannot key TX.
+- fsk_async op=0 accepts **exactly 33 aligned, module-arena u16
+  words** whose final guard is 0xa55a. It checks the B-chip identity,
+  active TX lease, module key/cancel/power state and existing FSK owner;
+  snapshots the nine affected FD6818B registers; resets FIFO; loads
+  33 words; checks for stale TX-complete; and **only then enables PA**
+  and starts the transmitter. A second start is an error, not a refill.
+- op=1 returns 0 while busy, 1 **only after the modeled hardware
+  TX-done IRQ**, or -2 on a bad lease, state, PA or **700ms** finite
+  burst timeout. Success immediately mutes PA and restores RF
+  registers, but leaves the module's own TX lease active until tx_off.
+- op=2 aborts and releases the lease; module return, tx_off and
+  txdog timeout also call cleanup. Cleanup cannot recursively invoke
+  the TX watchdog. No ISR, FIFO refill, unchecked PA transition or
+  new writeable RF register API is introduced.
+
+The new executable offline gate
+tools/k6_sotto_api29_async_gate.py uses the **linked ARM firmware**
+and normal C CRC32 cable loader/Rust run_module/ARM stack switch
+rather than callback injection. It qualifies five compiled C modules:
+a successful 33-word burst, explicit **RX -> TX -> RX** transition,
+guard-word refusal **before any RF**, early abort after start, and a
+**900ms delayed completion poll** that must fail its 700ms deadline
+and release the transmitter while preserving normal RX.
+It traces physical-model PA register writes to prove all **33 FIFO
+words precede PA enable**, requires RF return to its observed normal
+RX value and no active virtual transmitter after each case. The
+successful modules' virtual IQ is independently sampled and decoded
+by the native FSK Cortex-M0 receive fixture, which recovered each
+66-byte transmitted payload **bit-for-bit** with no modeled FIFO
+overrun or underflow. The fake-radio test does not key the actual K6.
+
+A fresh **API28+API29+API31 development app** is **112,136 bytes** of
+122,880, leaving **10,744 B** flash headroom (848 bytes over the
+API28+API31 image). Tested binary SHA-256:
+945613041eab4a21984566d8028e0e16deefbe799bc7f35f91288e554a012dc2.
+The finite burst profile and completion timing are **model timing**,
+not verified FD6818B hardware measurements. Production keyed
+installation, actual microphone ISR, selectable mode and on-device
+decoder/speaker remain outstanding. API30 remains an explicit -1
+stub: this is **not a live two-way Sotto voice release**.
+
+Rebuild with an isolated disposable Aura checkout and run the
+opt-in gate using byte-matched ELF and application image:
+
+    K6_AURA_RESET_GENERATED=1 K6_FSK4800_RX=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 K6_SOTTO_RESOURCES=1 K6_SOTTO_ASYNC_FSK=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-sotto-async29
+    K6_SIM_SOTTO_RX31_IMAGE=firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin K6_SIM_SOTTO_RX31_ELF=firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura K6_SIM_SOTTO_ASYNC_FSK=1 ~/.local/share/flux-rf-venv/bin/python -m pytest -q tests/test_k6_sotto_api29_async_gate.py tests/test_k6_sotto_api29_overlay.py
+
 ## Boundaries remaining for flashable half-duplex voice
 
 1. Complete the UART/CPS and keyed install/SPI library path. The
    **actual run_module and km_run_on_stack execution is now tested**
    after CRC32 cable ingress, but on-device keyed SPI installation and
    normal selectable VFO binding remain open.
-2. **API28 read-only resources are now linked and emulator-qualified**
-   behind an opt-in flag. Next add API29 finite async FSK TX and API30
-   microphone callbacks to the *same* append-only host, then bind
-   installed Sotto to the half-duplex RX / PTT TX / RX mode transition.
-   Never expose stubbed callbacks as supported.
+2. **API28 resources and API29 bounded FSK TX now run in the same
+   experimental, opt-in firmware image**; the compiled ARM module
+   verifies RX / TX / RX with virtual IQ. The next service is API30
+   microphone capture, followed by the Sotto encoder, installed mode
+   binding and an on-K6 decoder/speaker. Do not treat an API30 stub as
+   usable voice.
 3. Move the native fixed-point RX decode and 20-ms speaker PCM service
    into radio firmware or a loadable module, measure total SRAM and flash,
    qualify the paced ring and prebuffer against real 20-ms deadlines.
