@@ -73,38 +73,42 @@ struct slim_enc {
          "      /* skip swapping two known-zero imaginary samples */")
     return text
 
-def build():
+def build(host_resources=False,live_tx=False):
+    if live_tx and not host_resources:
+        raise ValueError("level30 live TX requires typed host resources")
     import subprocess
     rev=subprocess.check_output(["git","-C",str(ROOT/"sotto"),"rev-parse","HEAD"],text=True).strip()
     if rev!=PIN:raise ValueError("Unexpected Sotto pin; requalify codec and SPI tables")
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
         inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text()))
-        code,entry=k6mod.build(str(SRC),cflags=[*k6mod.CFLAGS,"-I"+d,
+        code,entry=k6mod.build(str(SRC.with_name("sotto_live_tx.c") if live_tx else SRC),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
-            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"])
+            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []))
     if entry!=k6mod.bin_entry(code):raise ValueError("Unexpected module entry")
     return code,entry
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--out",required=True,type=Path)
+    p.add_argument("--host-resources",action="store_true",help="read only typed K6CB/K6SC resource API")
+    p.add_argument("--live-tx",action="store_true",help="EXPERIMENTAL live Sotto TX level30, no RF on install")
     a=p.parse_args()
-    code,entry=build()
+    code,entry=build(a.host_resources,a.live_tx)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
     for f,b in files.items():(a.out/f).write_bytes(b)
-    manifest={"format":1,"build":"Sotto qualification module (no RF)",
+    manifest={"format":1,"build":"Sotto experimental live TX" if a.live_tx else "Sotto qualification module (no RF)",
               "build_id":"0000000000000000",
-              "library":[{"id":"sotto-test","kind":"module","name":"SOTTO TEST",
-                          "file":"module.bin","level":5}],
+              "library":[{"id":"sotto-tx-live" if a.live_tx else "sotto-test","kind":"module","name":"SOTTO TX" if a.live_tx else "SOTTO TEST",
+                          "file":"module.bin","level":30 if a.live_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),
                       "arena_11776_scratch_upper":11776-len(code)-24,
                       "arena_15408_scratch_upper":15408-len(code)-24,
-                      "sha256":manifest["sha256"],"rf_enabled":False},indent=2))
+                      "sha256":manifest["sha256"],"rf_enabled":a.live_tx},indent=2))
 
 if __name__=="__main__":main()

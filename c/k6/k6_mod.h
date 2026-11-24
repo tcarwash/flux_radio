@@ -353,6 +353,21 @@ typedef struct k6_api {
                        uint16_t cap, unsigned *len);
   int (*complete_packet)(uint32_t generation, int32_t result);
   int (*publish_rx)(uint16_t mode_id, const uint8_t *bytes, uint16_t len);
+  /* API 28+ LIVE SOTTO: appended AFTER API26 discovery and API27 KISS mailbox.
+     ABI versions 26 and 27 must retain their exact sizes/offsets. The
+     experimental API29 radio test has an INCOMPATIBLE header at slots 26..29;
+     never load that binary against this host or reinterpret its pointers. */
+  /* Level 28: read-only typed codebook K6CB and selected K6SC resource deck.
+     The host validates an authorized slot, bounds and CRC. None of these
+     callbacks may be used to write flash. */
+  int (*resource_open)(uint32_t slot);
+  int (*resource_read)(uint32_t kind, uint32_t off, void *buf, uint32_t n);
+  /* Level 29: guarded 33-word finite FSK start(0)/poll(1)/abort(2). Caller
+     owns a bounded TX lease. No refilling or continuous RF is implied. */
+  int (*fsk_async)(uint32_t op, const uint16_t *words, uint32_t n);
+  /* Level 30: typed 644-byte microphone ISR ring (start0/stop1/peak2/PTT3).
+     Requires independently guarded timer vector, cable/PTT and PA checks. */
+  int (*mic_stream)(uint32_t op, void *ring, uint32_t bytes);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

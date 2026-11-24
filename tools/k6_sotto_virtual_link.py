@@ -81,6 +81,12 @@ def prepare(tree,d,pcm=None):
     subprocess.run(args,cwd=tree,check=True)
     h=(tree/"c/k6/k6_mod.h").read_text().split("typedef struct k6_api {")[1].split("} k6_api_t;")[0]
     names=re.findall(r"\(\*(\w+)\)\(",re.sub(r"/\*.*?\*/","",h,flags=re.S))
+    # Main API27 has a scalar mb_version *between* callback pointers.
+    # Model the real 4-byte ABI slot, never mistake it for a function.
+    if re.search(r"\buint32_t\s+mb_version\s*;",h):
+        if names.count("stage_packet")!=1 or "mb_version" in names:
+            raise ValueError("unexpected KISS mailbox ABI layout")
+        names.insert(names.index("stage_packet"),"mb_version")
     rev=subprocess.check_output(["git","-C",str(tree),"rev-parse","HEAD"],text=True).strip()
     dirty=bool(subprocess.check_output(["git","-C",str(tree),"status","--porcelain","--untracked-files=no"],text=True).strip())
     wire=k6mod.build(str(ROOT/"tests/data/k6/sotto_wire_rx_emu.c"),
@@ -108,8 +114,9 @@ class LiveTx(Emu):
         self.tx_backend=backend;self.deadline=0
         room=arena-len(artifact["code"])-24
         if room<=0:raise ValueError("module exceeds arena")
+        self.api_level=30 if "mb_version" in artifact["names"] else 29
         super().__init__(artifact["code"],artifact["entry"],np.zeros(1,np.uint8),0,1,
-                         cpi=cpi,max_s=35,rf_backend=backend,rf_hz=HZ,level=29,
+                         cpi=cpi,max_s=35,rf_backend=backend,rf_hz=HZ,level=self.api_level,
                          scratch=room,fd_us=fd_us,stack_win=704)
         old=len(self.names)
         if len(artifact["names"])> (self.stop-self.stubs)//16:
@@ -118,11 +125,12 @@ class LiveTx(Emu):
             raise ValueError("unsupported API layout")
         self.names=artifact["names"]
         if not all(n in self.names for n in ("mic_stream","fsk_async","resource_read")):
-            raise ValueError("API29 live module required")
+            raise ValueError("API29/30 live Sotto module required")
         for i in range(old,len(self.names)):
             self.mu.mem_write(self.stubs+16*i,b"\x70\x47")
-        self.mu.mem_write(self.api,struct.pack("<HH",1,29)+b"".join(
-            struct.pack("<I",self.stubs+16*i|1) for i in range(len(self.names))))
+        self.mu.mem_write(self.api,struct.pack("<HH",1,self.api_level)+b"".join(
+            struct.pack("<I",0 if n=="mb_version" else (self.stubs+16*i|1))
+            for i,n in enumerate(self.names)))
         self.mu.hook_add(self.U.UC_HOOK_CODE,self.on_stub,begin=self.stubs+16*old+1,
                          end=self.stubs+16*len(self.names))
         self.fd_regs[0]=0x4829
@@ -397,7 +405,7 @@ def accepted(r):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--sotto-tree",type=Path,default=ROOT,help="checkout containing API29 live Sotto source")
+    p.add_argument("--sotto-tree",type=Path,default=ROOT,help="checkout containing API29 experimental or API30 main-layout live Sotto source")
     for n,k,d in [("cpi",float,[1.5]),("spi-us",float,[34]),("fd-us",float,[20]),
                   ("adc-cycles",int,[0]),("cache-bytes",int,[0]),("threshold",int,[4]),("poll-us",int,[1000]),("cn",float,[25]),
                   ("prefix-every",int,[0])]:
