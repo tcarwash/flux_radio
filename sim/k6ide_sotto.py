@@ -233,6 +233,8 @@ class SottoVoiceLab:
                     "wire_decoder_agrees": bool(raw["wire_decoder_agrees"]),
                     "audio_samples": int(len(radio.rx_audio)) if passed else 0,
                     "speaker_blocks_20ms": int(len(pcm_blocks)) if passed else 0,
+                    "stream_rx_peak_blocks": int(radio.stream_peak_blocks) if passed else 0,
+                    "stream_rx_capacity_blocks": 16,
                     "tx_idle": not raw["tx"]["active"] and not radio.ptt,
                     "radio_returned_to_rx": radio.radio_state == "RX",
                     "spi_reads": raw["spi_reads"],

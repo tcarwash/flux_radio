@@ -33,6 +33,10 @@ or move into an installed module with safe load/unload behavior.
 
 ## Offline proof and missing real-firmware boundaries
 
+The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
+adds a bounded PCM queue and failure/preemption semantics. Its
+host-memory budget is not a verified K6 SRAM measurement.
+
 The [SoapyFang browser lab](k6-soapyfang-sotto-lab-20261124.md)
 exposes the full virtual voice loop and accepted receiver PCM for repeated,
 parameterized test runs, with source-aware cached compilation. It remains a
