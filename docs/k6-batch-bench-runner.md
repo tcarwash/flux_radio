@@ -224,3 +224,51 @@ The passing hardware handoff tests use fake devices only, no real RF.
 
 Regression command:
   python3 -m pytest -q tests/test_k6_experiment_queue.py tests/test_k6_experiment_dispatch.py tests/test_k6_experiment_hardware.py tests/test_k6_experiment_batch.py
+
+## Autonomous coordinator + delegated validation (2026-11-24)
+
+The user-level scheduler is installed by the local k6_experiment_service.py
+installer and runs every ten minutes using a systemd user timer. The systemd
+user manager on this workstation has lingering enabled and a real one-shot
+service run returned success.
+
+Two trusted, non-hardware jobs run automatically:
+
+1. k6_experiment_autopilot.py --once --publish reads only trusted tcarwash
+   issues ranked by issue #11 and runs locally pinned, reviewed OFFLINE
+   harnesses. Private journal:
+   ~/.local/state/flux-experiment-autopilot/state.json.
+   One attempt per exact registration digest, journaled BEFORE execution;
+   failure or crash halts further queue execution. Earlier completed tests
+   are imported from valid local evidence rather than repeated.
+2. k6_experiment_review.py --once discovers locally registered hardware
+   manifests, submits a read-only Muse review, and records its independent
+   verdict. Agent opinions are advisory vetoes, never authorization to
+   execute unregistered commands.
+
+Command: python3 tools/k6_experiment_service.py status
+Disable: python3 tools/k6_experiment_service.py remove
+Install: python3 tools/k6_experiment_service.py install
+
+Direct --execute on k6_experiment_batch.py is intentionally disabled.
+Only the outer k6_experiment_hardware.py wrapper may invoke its internal
+batch runner after issue author, manifest/hash, ACK/lease, bench, capability
+and restoration checks. Invocation entrypoints themselves must be pinned.
+
+The nonmutating read-only physical probe
+tools/k6_experiment_bench_probe.py uses canonical serial and whole-bench
+flocks. Live evidence on November 24 around 08:06 PST reported K6
+build 339e08a2b77c7679, API29, standby idle, FM-wide VFO A433.500MHz
+and B144.390MHz; a second check agreed. No TX, SDR device, flash, SPI
+or module slot access was performed.
+
+Hardware TX is **NOT** yet automatically enabled. Local hardware
+manifest registry is deliberately empty. Old FSK-09S-H #9 RF harness
+expects a different radio build, VFO A and slot30 layout. An independent
+read-only Muse audit recommended a new packed-safe harness; this is being
+developed in an isolated API29 worktree and must pass emulator/source
+qualification and physical lease gates before enrollment.
+
+Whole-bench flock excludes only agents that honor it; GitHub claim comments
+are not atomic reservations. Other hardware agents must adopt the same
+whole-bench reservation. No unattended hardware retry after unknown state.

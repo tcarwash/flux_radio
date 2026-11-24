@@ -178,6 +178,32 @@ def _utc_now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+def check_command_pins(m: dict) -> None:
+    """Every invoked program/script must appear in the corresponding file pins.
+
+    This is a review invariant, NOT a sandbox. Python imports and child
+    executables remain the responsibility of the audited local harness.
+    """
+    interpreters={"/usr/bin/python3", "/usr/bin/python3.14", "/usr/bin/bash", "/bin/bash", sys.executable}
+    for steps, pins, label in [
+        (GLOBAL_STEPS, m["session_pins"], "session"),
+        *[(STEPS, j["pins"], j["id"]) for j in m["jobs"]],
+    ]:
+        reviewed={str(Path(p["path"]).resolve()) for p in pins}
+        container=m if label=="session" else next(j for j in m["jobs"] if j["id"]==label)
+        for stage in steps:
+            argv=container[stage]["argv"]
+            executable=str(Path(argv[0]).resolve())
+            if argv[0] in interpreters:
+                if len(argv)<2 or argv[1].startswith("-"):
+                    raise Refused(f"{label}.{stage}: unreviewed interpreter arguments")
+                script=str((Path(container.get("cwd", Path(__file__).resolve().parents[1]))/argv[1]).resolve())
+                if script not in reviewed:
+                    raise Refused(f"{label}.{stage}: entrypoint must be SHA256-pinned")
+            elif executable not in reviewed:
+                raise Refused(f"{label}.{stage}: executable must be SHA256-pinned")
+
+
 def _check_lease(m: dict) -> None:
     expiry = dt.datetime.fromisoformat(m["lease_expires_utc"].replace("Z", "+00:00"))
     if _utc_now() >= expiry:
@@ -251,6 +277,7 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
                 lock_root: Path, approved_digest: str, ack_url: str,
                 operator: str, dummy_load_confirmed: bool,
                 api_config: dict | None = None) -> dict:
+    check_command_pins(m)
     if api_config is not None:
         blockers = check_api_compatibility(m, api_config)
         if blockers:
@@ -391,18 +418,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if blockers:
             raise Refused("API compatibility blocked: " + "; ".join(blockers))
-        result = run_session(m, raw, digest, output_root=args.output_root,
-                             lock_root=args.lock_root, approved_digest=args.approve_digest,
-                             ack_url=args.ack_url, operator=args.operator,
-                             dummy_load_confirmed=args.dummy_load_confirmed,
-                             api_config=cfg)
-        print(json.dumps({
-            "session_id": result["session_id"],
-            "result": result["result"],
-            "jobs": result["jobs"],
-            "output": str(args.output_root / m["session_id"]),
-        }, indent=2))
-        return 0 if result["result"] == "PASS" else 1
+        # The public batch CLI is a preview tool. Only the trusted hardware
+        # wrapper may invoke run_session after real issue, lease and bench checks.
+        raise Refused("direct batch execution disabled; use k6_experiment_hardware.py")
     except (Refused, OSError, ValueError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
