@@ -1,5 +1,7 @@
 # Flux K6-B modulation expansion: parallel implementation plan
 
+Non-Sotto constant-envelope DQPSK via hypothetical signed-FM and finite SPI: [`k6-dqpsk-signed-fm-feasibility-20261124.md`](k6-dqpsk-signed-fm-feasibility-20261124.md).
+
 Non-Sotto AM driver envelope timing and AM-to-PM feasibility: [`k6-am-driver6-register-lab-20261124.md`](k6-am-driver6-register-lab-20261124.md).
 
 Transmit-source/envelope combination matrix: [`k6-tx-path-combination-lab-20261124.md`](k6-tx-path-combination-lab-20261124.md).
