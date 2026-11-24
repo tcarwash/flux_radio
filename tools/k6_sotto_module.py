@@ -65,6 +65,12 @@ struct slim_enc {
          "  int16_t *t=e->coder.target;\n  signed char *buf=e->coder.cb;\n  int32_t *bh=e->coder.best_dist;")
     once("    int32_t ph[IVF_MAXP];\n    unsigned char pc[IVF_MAXP];\n    signed char cbuf[IVF_BLK * IVF_CD];\n    int16_t vl[IVF_MAXN];",
          "    int32_t *ph=e->coder.cell_dist;\n    unsigned char *pc=e->coder.cell_id;\n    signed char *cbuf=e->coder.centroids;\n    int16_t *vl=e->coder.vectors;")
+    # The sole fft256 caller zeroes im[0:256] before bit reversal, so the
+    # imaginary load/store swap is dead. Keep the upstream source untouched.
+    if text.count("    im[i] = 0;") != 1 or text.count("  fft256(re, im);") != 1:
+        raise ValueError("Unexpected zero-imaginary FFT precondition")
+    once("      t = im[i], im[i] = im[j], im[j] = t;",
+         "      /* skip swapping two known-zero imaginary samples */")
     return text
 
 def build():

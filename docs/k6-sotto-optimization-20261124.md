@@ -72,3 +72,24 @@ of a tight 10,240-B bundle limit (including a 24-byte envelope: 16 B spare).
   and is **not** included in this change.
 - Natural speech clips and bench-calibrated peripheral latencies are required
   before calling the modem real-time-qualified on physical hardware.
+
+## Second optimization: zero-imaginary FFT bit reversal
+
+The encoder's only `fft256(re, im)` caller initializes every `im[i]` to zero.
+The original FFT bit-reversal unnecessarily swapped pairs of these zeros.
+A guarded generated-source adaptation removes only the imaginary swap while
+retaining the real-input permutation and all later butterfly operations.
+It fails closed if upstream changes the single-caller zero-imaginary
+precondition or the exact swap pattern, and does not modify the pinned source.
+
+In the separately built API29 live module with DCT active, this reduces
+module size **10,200 → 10,192 B** (restoring 8 B of space) with no extra RAM.
+The same modeled CPI=1.5 4800:34, 5745:10, and 5745:34 timing scenarios
+were tested on both triangle and mixed-frequency input: **four passes remain
+passes, two failures remain failures**. No new pass threshold was crossed and
+there were zero regressions, while both independent codec/packet oracles
+remained exact. Offline native/module tests passed 14/14 before the source
+adaptation was ported back to main, and the main adaptation's focused tests
+also pass. This is a code/CPU work reduction, not yet evidence of a measurable
+improvement in hardware throughput. The integrated worktree does not enable
+physical Sotto voice TX or change the guarded TNC API27 dispatcher.
