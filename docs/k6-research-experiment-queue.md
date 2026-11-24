@@ -1,5 +1,8 @@
 # Flux RF research — shared experiment queue and acknowledgment
 
+Agents should check the [recent-result inbox](k6-experiment-agent-result-inbox.md)
+at the start of each task using this experiment queue.
+
 **Canonical queue:** [Flux RF shared experiment queue — issue #11](https://github.com/tcarwash/flux_radio/issues/11)  
 **Date:** 2026-11-23  
 **Coordination status:** *Acknowledgment from active RF experiment agent requested; not yet confirmed.*
