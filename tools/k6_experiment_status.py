@@ -28,8 +28,12 @@ UNIT = "flux-experiment-autopilot"
 STATEDIR = Path.home() / ".local/state/flux-experiment-autopilot"
 BENCH_LOCK = Path.home() / ".cache/flux/bench.lock"
 QUEUE_CONFIG = ROOT / "config/k6-experiment-queue.json"
-HARDWARE_CONFIG = ROOT / "config/k6-experiment-hardware.json"
-STANDING_CONFIG = ROOT / "config/k6-experiment-hardware-standing.json"
+HARDWARE_CONFIG = (STATEDIR/"hardware-generated.json" if
+                   (STATEDIR/"hardware-generated.json").exists() else
+                   ROOT / "config/k6-experiment-hardware.json")
+STANDING_CONFIG = (STATEDIR/"hardware-generated-standing.json" if
+                   (STATEDIR/"hardware-generated-standing.json").exists() else
+                   ROOT / "config/k6-experiment-hardware-standing.json")
 LAST_RUN_MAX_AGE = timedelta(minutes=30)
 
 
@@ -190,6 +194,9 @@ def hardware_status():
                        "session_id": previous.get("session_id") if previous else None})
     history = local["jobs"]
     return {
+        "registered_manifests":len(cfg["manifests"]),
+        "waiting_independent_review":[int(k) for k in cfg["manifests"]
+                                       if k not in standing["approved"]],
         "active": sum(v.get("state") == "STARTED_NO_AUTO_RETRY"
                       for v in history.values()),
         "blocked_total": sum(v.get("state") == "BLOCKED_NO_AUTO_RETRY"
@@ -290,18 +297,33 @@ def intake_status():
             "submitted_today":snapshot.get("submitted_today")}
 
 
+def builder_status():
+    doc=read_jobs(STATEDIR / "builder.json")
+    counts={}
+    for r in doc["jobs"].values():
+        key=r.get("state","UNKNOWN")
+        counts[key]=counts.get(key,0)+1
+    return {"counts":counts,"issues":[
+        {"issue":int(key.split(":",1)[0].removeprefix("issue-")),
+         "state":r.get("state","UNKNOWN"),
+         "frozen_commit":r.get("frozen_commit")}
+        for key,r in doc["jobs"].items() if key.startswith("issue-")],
+        "journal_missing":doc["missing"]}
+
+
 def status(now=None, check_github=False):
     now = now or datetime.now().astimezone()
     result = {"timestamp": now.isoformat(), "health": "UNKNOWN",
               "scheduler": scheduler_status(now),
               "bench": bench_status(check_github=check_github),
               "offline": None, "hardware": None, "reviews": None,
-              "intake": None, "alerts": []}
+              "intake": None, "builder": None, "alerts": []}
     try:
         result["offline"] = offline_status()
         result["hardware"] = hardware_status()
         result["reviews"] = review_status()
         result["intake"] = intake_status()
+        result["builder"] = builder_status()
     except (OSError, ValueError, KeyError) as exc:
         result["alerts"].append(f"local state unreadable: {exc}")
     if not result["scheduler"]["healthy"]:
@@ -337,6 +359,13 @@ def status(now=None, check_github=False):
             "CONTRADICTORY_EVIDENCE"))
         if blocked:
             result["alerts"].append(f"{blocked} intake assessments require intervention")
+    bstate=result.get("builder")
+    if bstate:
+        blocked=bstate["counts"].get("BLOCKED_NO_AUTO_RETRY",0)
+        if blocked:result["alerts"].append(f"{blocked} generated candidates blocked; no auto-retry")
+    if result["hardware"] and result["hardware"].get("waiting_independent_review"):
+        ids=result["hardware"]["waiting_independent_review"]
+        result["alerts"].append(f"physical candidates awaiting independent review: {ids}")
     if result["offline"] and result["offline"]["pending"]:
         result["alerts"].append(f"{result['offline']['pending']} offline jobs pending")
     manifest_drift = False
@@ -386,6 +415,12 @@ def display(data):
         print(f"              {counts.get('TRIAGED',0)} triaged"
               f" · {counts.get('REVIEW_SUBMITTED',0)} preparing"
               f" · {counts.get('PUBLISH_PENDING',0)} awaiting publication")
+    builder=data.get("builder")
+    if builder:
+        counts=builder["counts"]
+        print(f"  Builder     {counts.get('TESTED_NEEDS_INDEPENDENT_REVIEW',0)} tested"
+              f" · {counts.get('MANIFEST_REGISTERED_FOR_REVIEW',0)} registered"
+              f" · {counts.get('BLOCKED_NO_AUTO_RETRY',0)} blocked")
     offline = data["offline"]
     if offline:
         print(f"  Offline     {offline['passed']}/{offline['registered']} complete"
@@ -395,6 +430,9 @@ def display(data):
         print(f"  Hardware    {hardware['active']} active"
               f" · {hardware['blocked_total']} blocked attempts"
               f" · {hardware['approved_in_policy']} registered")
+        if hardware.get("waiting_independent_review"):
+            print(f"              awaiting independent review: "
+                  f"{hardware['waiting_independent_review']}")
         for issue in hardware["current"]:
             print(f"              #{issue['issue']}: {issue['state']}")
     reviews = data["reviews"]

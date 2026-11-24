@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "operator": "AG7SU",
+  "dummy_load": true,
+  "expected_build": "339e08a2b77c7679",
+  "exact_api": 29,
+  "permitted_kinds": [
+    "RX_ONLY",
+    "BOUNDED_TX"
+  ],
+  "max_sessions_per_day": 6,
+  "rf_session_limit_ms": 1900
+}

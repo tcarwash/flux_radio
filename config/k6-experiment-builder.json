@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "repo": "tcarwash/flux_radio",
+  "max_daily": 2,
+  "recipes": {
+    "20": {
+      "base_ref": "origin/research/tx27-reg51-signed-dac-offline-20261123",
+      "kind": "BOUNDED_TX",
+      "allowed_paths": [
+        "tools/k6_tx27_reg51_bench.py",
+        "tests/test_k6_tx27_reg51_bench.py",
+        "docs/k6-tx27-reg51-physical-bench.md",
+        "c/k6/mod/tx27_reg51_signed_probe.c"
+      ],
+      "tests": [
+        "tests/test_k6_tx27_reg51_bench.py"
+      ],
+      "objective": "Build a one-shot dummy-loaded low power bounded signed REG51 subaudio frequency-step physical experiment, observe RF through independent SDR, strict 1900ms TX watchdog, no unattended repeats, verify complete REG51/REG08/VFO/slots restore and TX/PA off."
+    },
+    "21": {
+      "base_ref": "origin/research/tx28-fastspi-rrc-offline-20261123",
+      "kind": "RX_ONLY",
+      "allowed_paths": [
+        "tools/k6_tx28_fastspi_rx_bench.py",
+        "tests/test_k6_tx28_fastspi_rx_bench.py",
+        "docs/k6-tx28-fastspi-rx-bench-20261124.md",
+        "c/k6/mod/tx28_fastspi_probe.c"
+      ],
+      "tests": [
+        "tests/test_k6_tx28_fastspi_rx_bench.py",
+        "tests/test_k6_tx28_fastspi.py"
+      ],
+      "objective": "Implement a finite RX-only physical 10,000-write/readback test for REG5A based on the existing TX28 level2 module, with preflight-only, run, verify-only, strict TX/PA/FSK-off checks, full peripheral/slot/VFO restore, watchdog and no retry. Delegate may edit only predeclared paths. Do not operate hardware."
+    },
+    "26": {
+      "base_ref": "origin/research/tx24b-fsk-reg40-offline-20261123",
+      "kind": "BOUNDED_TX",
+      "allowed_paths": [
+        "tools/k6_tx24b_bench.py",
+        "tests/test_k6_tx24b_bench.py",
+        "docs/k6-tx24b-reg40-physical-bench.md",
+        "c/k6/mod/tx24b_fsk_reg40_probe.c"
+      ],
+      "tests": [
+        "tests/test_k6_tx24b_bench.py"
+      ],
+      "objective": "Prepare independently scored two bounded native 4800baud FSK bursts with REG40 fixed for each entire burst, dummy-loaded at permitted safe bench frequency, firmware TX watchdog max 1900 ms, independent SDR sync scorer, exact restoration, no mid-frame register writing, no re-transmit on fail. Stop if source/API unsupported."
+    },
+    "30": {
+      "base_ref": "origin/research/dv-guard33-rx-playout-20261123",
+      "kind": "BOUNDED_TX",
+      "allowed_paths": [
+        "tools/k6_fdv1_six_frame_bench.py",
+        "tests/test_k6_fdv1_six_frame_bench.py",
+        "docs/k6-fdv1-sotto-physical-sixframe.md",
+        "c/k6/mod/fdv1_six_frame_probe.c"
+      ],
+      "tests": [
+        "tests/test_k6_fdv1_six_frame_bench.py"
+      ],
+      "objective": "Create a finite six-frame half-duplex BEGIN + 4 encoded Sotto voice + END dummy-loaded physical TX experiment, independent SDR exact six-frame CRC and ordering scorer, bounded TX watchdog 1900ms and complete packed slot/VFO restore. No mic or live duplex claim."
+    }
+  }
+}

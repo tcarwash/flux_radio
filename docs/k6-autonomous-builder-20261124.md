@@ -1,0 +1,26 @@
+# Autonomous Flux bench: candidate authoring through one-shot radio tests
+
+Updated 2026-11-24. The installed user service `flux-experiment-autopilot.service` owns the radio-test workflow on the developer bench; the K6 is connected to a dummy load. The owner AG7SU authorized finite RF transmit experiments, under the safety controls below. Every ten minutes the timer launches one **bounded** controller cycle.
+
+## Eight-stage pipeline
+
+1. GitHub intake: discover owner-authored `[Flux RF]` issues, gather trusted author’s prior results as untrusted *data*, cap read-only preparation assessments, publish durable issue-level gates.
+2. Candidate builder: only explicitly approved local recipes in `config/k6-experiment-builder.json`, never arbitrary GitHub executable instructions. A separate detached Git worktree is created from an exact local remote ref; a Muse delegate can edit **only** the listed files. It runs in bubblewrap with `/dev` replaced by a fresh empty device tree and the shell tool disabled. The delegate cannot operate the K6, USB/serial port, or SDR. Bounded time and daily budgets; ambiguous jobs never auto-retry.
+3. Candidate promotion: supervisor reruns allowlisted tests in a no-network, device-free sandbox, verifies source paths and SHA-256 hashes, and makes a local frozen commit. `tools/k6_experiment_promotion.py --once` creates a pinned, single-use physical session manifest only if the candidate is tested and frozen. It enrolls the trusted owner’s issue in queue #11 if needed, without reading commands from the issue.
+4. Existing locally registered OFFLINE runner: deterministic pinned emulator/simulator tests; never hardware.
+5. Existing independent read-only Muse hardware review: must inspect exact manifest and source hash; APPROVED or reject. Source/ABI/watchdogs, dummy load, RF/SDR requirements and complete slot/VFO/PA restore remain required.
+6. Exact grant: policy `config/k6-autonomous-radio-policy.json` allows only RX_ONLY or BOUNDED_TX on the dummy-loaded AG7SU bench. One-shot permission is bound to the independently APPROVED manifest hash, specific build/API, expiry, and rate cap. BOUNDED_TX additionally requires actual firmware watchdog ≤1900 ms and fixed permitted test frequency 433.500 MHz.
+7. Existing read-only postmortem; publishes findings for research without authorizing repeats.
+8. Existing hardware autopilot: verifies live firmware, GH whole-bench ACK, independent review and exact grant; claims the exclusive entire-bench and canonical serial locks; runs each finite step without shell commands; checks exact pre/post module hashes, VFO, TX OFF. Error/timeout/restore uncertainty is **BLOCKED_NO_AUTO_RETRY**, never a silent retransmission. Session evidence and SHA hashes are retained privately.
+
+**Running service:** templates in `systemd/flux-experiment-autopilot.{service,timer}`; installed user service under `~/.config/systemd/user/` with eight ExecStart stages. `systemctl --user daemon-reload` after any edits.
+
+**Command-line:** `python3 tools/k6_experiment_builder.py --preview`, `python3 tools/k6_experiment_promotion.py --once`, `python3 tools/k6_experiment_promotion.py --once --grants`, `python3 tools/k6_experiment_status.py status --json` or `flux-queue status`, and `journalctl --user -u flux-experiment-autopilot.service`.
+
+**Private records:** `~/.local/state/flux-experiment-autopilot/builder.json`, `hardware-generated.json`, `hardware-generated-standing.json`, `generated-manifests/`, and existing attempt/review journals. Pinning and one-shot authorizations are immutable per session. Completed/blocked physical sessions remain consumed even when a later corrected candidate is submitted.
+
+## First complete end-to-end qualification
+
+Issue [#21](https://github.com/tcarwash/flux_radio/issues/21) candidate [`automation/tx28-fastspi-rx-bench-20261124`](https://github.com/tcarwash/flux_radio/tree/automation/tx28-fastspi-rx-bench-20261124) was written by two device-free delegates and independently corrected/tested. Original fast-SPI module performed 384 readbacks; FULL_BENCH implements 10,000 in one finite RX-only module invocation (compiled Cortex-M0 1,420 bytes, bit-level Unicorn modeled 10,000 writes/10,000 reads, 0 errors and complete modeled restore). Twenty offline tests passed. The independent reviewer approved the exact frozen first hardware manifest SHA256 `b0c6fd58...4517`; a fresh GH bench ACK led to a **real one-shot on-radio preflight** on Nov 24. It **BLOCKED before module installation** because the generated RX harness incorrectly assumed packed KUL2 slot images were at most 7168 bytes, but live populated system slots are up to 16384 bytes. The original 31 module hashes and VFO, original build/API, empty slot30 and TX OFF were independently confirmed by the whole-bench locked probe; bench was released. That old grant is consumed forever. Any corrected follow-up must use a new committed source, new manifest and independent review, not repeat the first.
+
+This pipeline is autonomous but not unrestricted. Code-writing agents do not receive device access; only reviewed, pinned and bounded physical controllers may use the dummy-loaded radio. A clean timer alone is not proof the research queue is being worked; status must show intake/build/review/physical states.
