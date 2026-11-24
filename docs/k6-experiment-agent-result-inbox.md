@@ -16,6 +16,10 @@ The inbox defaults to the canonical Flux repo, trusted author and queue #11
 when a normal firmware checkout has no local runner registry. A different
 repository requires an explicit existing trusted registry.
 
+The autonomous intake assessor also publishes INTAKE ASSESSMENT comments.
+These are preparation gates (for example NEEDS_PINNED_HARNESS), not PASS
+or RF approvals. Agents should incorporate those gates into their next plan.
+
 The result inbox searches the repository-wide GitHub comments endpoint,
 including comments from experiments not in the current local execution
 allowlist. It recognizes only explicit *trusted-author result markers*

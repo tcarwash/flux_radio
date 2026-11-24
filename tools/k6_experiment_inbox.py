@@ -30,6 +30,7 @@ QUEUE_RESULT = re.compile(
 )
 OFFLINE_RESULT = re.compile(r"^OFFLINE RUNNER RESULT \| (PASS|FAIL|BLOCKED)\b")
 HARDWARE_RESULT = re.compile(r"^HARDWARE RUNNER RESULT \| (PASS|FAIL|BLOCKED)\b")
+INTAKE_RESULT = re.compile(r"^INTAKE ASSESSMENT \| ([a-f0-9]{16}) \| ([A-Z_]+)$")
 MANUAL_RESULT = re.compile(
     r"^(?:PHYSICAL RESULT /|PHYSICAL RESULT \||OFFLINE RESULT \|)\s*(PASS|FAIL|BLOCKED)\b"
 )
@@ -133,6 +134,9 @@ def marker(comment, *, repo, owner, queue):
         issue = int(m.group(2))
         category = "BENCH"
         state = "PASS" if m.group(1).startswith("PASS") else "BLOCKED"
+    elif m := INTAKE_RESULT.match(first):
+        category = "INTAKE"
+        state = m.group(2)
     elif m := MANUAL_RESULT.match(first):
         category = "REPORTED"
         state = m.group(1)

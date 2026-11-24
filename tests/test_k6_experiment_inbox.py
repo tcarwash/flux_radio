@@ -145,3 +145,11 @@ def test_canonical_checkout_without_local_runner_registry(tmp_path):
         inbox.read_config(path)
     if not inbox.REGISTRY.exists():
         assert inbox.read_config()==(REPO,OWNER,11)
+
+
+def test_intake_preparation_assessment_is_not_an_rf_pass():
+    item=comment(30,"INTAKE ASSESSMENT | 0123456789abcdef | NEEDS_PINNED_HARNESS",ident=5642)
+    r=inbox.marker(item,repo=REPO,owner=OWNER,queue=11)
+    assert r["issue"]==30 and r["category"]=="INTAKE"
+    assert r["state"]=="NEEDS_PINNED_HARNESS"
+    assert r["state"]!="PASS"
