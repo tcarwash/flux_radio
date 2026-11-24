@@ -484,17 +484,52 @@ def module_bundle_catalog(include_experimental=False):
     return bundles
 
 
-def create_app(workbench: RadioAdapter):
+def create_app(workbench: RadioAdapter, *, sotto_lab=None):
     from flask import Flask, jsonify, render_template, request
     app = Flask(__name__, template_folder=str(TEMPLATES))
     app.config["workbench"] = workbench
+    app.config["sotto_lab"] = sotto_lab
     @app.get("/")
     def index():
-        return render_template("index.html", state=workbench.state())
+        return render_template("index.html", state=workbench.state(), sotto_lab_enabled=sotto_lab is not None)
 
     @app.get("/api/state")
     def api_state():
         return jsonify(workbench.state())
+
+    @app.get("/api/sotto/state")
+    def api_sotto_state():
+        if sotto_lab is None:
+            return jsonify(enabled=False, error="Sotto lab is not enabled")
+        return jsonify(sotto_lab.state())
+
+    @app.post("/api/sotto/run")
+    def api_sotto_run():
+        if sotto_lab is None:
+            return jsonify(ok=False, error="Sotto lab is not enabled"), 404
+        try:
+            body = request.get_json(force=True)
+            if not isinstance(body, dict):
+                raise ValueError("Expected an object of bounded test parameters")
+            allowed = {"fixture", "cn_db", "offset_hz", "prefix_every",
+                       "adc_cycles", "spi_us", "spi_byte_us"}
+            if set(body) - allowed:
+                raise ValueError("Unknown Sotto lab settings")
+            report = sotto_lab.run(**body)
+            return jsonify(ok=report["passed"], report=report), 200 if report["passed"] else 422
+        except (ValueError, TypeError, RuntimeError) as exc:
+            return jsonify(ok=False, error=str(exc)), 400
+
+    @app.get("/api/sotto/audio.wav")
+    def api_sotto_audio():
+        if sotto_lab is None:
+            return jsonify(ok=False, error="Sotto lab is not enabled"), 404
+        from flask import Response
+        try:
+            return Response(sotto_lab.wav(), mimetype="audio/wav",
+                            headers={"Cache-Control": "no-store"})
+        except (ValueError, RuntimeError) as exc:
+            return jsonify(ok=False, error=str(exc)), 409
 
     @app.get("/api/rf/audio.wav")
     def api_rf_audio():
@@ -642,6 +677,8 @@ def main():
                         help="HTTP bind address (default: all interfaces for remote browser access)")
     parser.add_argument("--port", type=int, default=5056)
     parser.add_argument("--cpi", type=float, default=1.5)
+    parser.add_argument("--sotto-lab-tree", type=Path,
+                        help="opt-in offline Sotto ARM/virtual-IQ voice lab; development checkout only")
     from sim.k6emu.rf_options import add_rf_args, rf_options
     add_rf_args(parser)
     args = parser.parse_args()
@@ -671,7 +708,12 @@ def main():
     print(f"On this host: http://127.0.0.1:{args.port}")
     print("On your LAN, use this host's LAN address; Ctrl-C stops the workbench.")
     try:
-        create_app(board).run(host=args.host, port=args.port, threaded=True, debug=False)
+        sotto_lab = None
+        if args.sotto_lab_tree:
+            from sim.k6ide_sotto import SottoVoiceLab
+            sotto_lab = SottoVoiceLab(args.sotto_lab_tree)
+        create_app(board, sotto_lab=sotto_lab).run(host=args.host, port=args.port,
+                                                  threaded=True, debug=False)
     finally:
         board.close()
 
