@@ -19,6 +19,8 @@ class FskRx:
         self.fifo = deque()
         self.pending = self.latched = self.sync_status = 0
         self.frames = self.words = self.overruns = self.underflows = self.gaps = 0
+        self.last_acquired_clock_ppm = 0.0
+        self.clock_fits = 0
         self.reset_demod()
 
     def reset_demod(self):
@@ -29,6 +31,9 @@ class FskRx:
         self.locked = False
         self.bits = []
         self.received = 0
+        self.clock_step = float(PHASES)
+        self.symbol_fraction = 0.0
+        self.estimated_clock_ppm = 0.0
 
     def discontinuity(self):
         if self.armed:
@@ -121,7 +126,7 @@ class FskRx:
         # and one symbol of lookahead before choosing the earliest strong lock.
         m = len(self.marker)
         span = (m-1)*PHASES+1
-        if len(self.buf) < span+PHASES:
+        if len(self.buf) < span+5*PHASES:
             return
         candidates = []
         for phase in range(PHASES):
@@ -149,18 +154,78 @@ class FskRx:
         earliest = min(c[0] for c in candidates)
         start, _, self.mid, self.pol = max((c for c in candidates if c[0] <= earliest+PHASES),
                                            key=lambda c:c[1])
+        # 16 x 0x55 is an alternating, *public* 128-symbol clock pilot.
+        # Locate FM discriminator zero-crossings and regress their timings.
+        # A static nominal symbol grid loses more than one full bit after
+        # ~500 payload bits at a 2000-ppm transmitter clock offset.
+        # Use ONLY the pilot (not private payload bytes or a TX clock oracle).
+        self.clock_step=float(PHASES)
+        x=self.buf-self.mid
+        crossings=np.flatnonzero(x[:-1]*x[1:]<0)
+        edges=crossings+np.abs(x[crossings])/(np.abs(x[crossings])+np.abs(x[crossings+1]))
+        edges=edges[(edges>=start-10)&(edges<=start+128*PHASES+12)]
+        best_clock=None
+        n_edges=127  # between the 128 alternating preamble bits
+        for i in range(max(0,len(edges)-n_edges+1)):
+            seq=edges[i:i+n_edges]
+            # Regression excludes spurious crossings; stationary fractional
+            # filter delay only changes intercept, not clock slope.
+            delta=np.arange(n_edges,dtype=float)
+            slope,intercept=np.polyfit(delta,seq,1)
+            jitter=float(np.std(seq-(intercept+slope*delta)))
+            if (7.7<=slope<=8.3 and jitter<.35 and
+                abs(intercept-(start+4))<5):
+                key=(jitter,abs(intercept-(start+4)))
+                if best_clock is None or key<best_clock[0]:
+                    best_clock=(key,slope,intercept)
+        if best_clock is not None:
+            _,self.clock_step,first_transition=best_clock
+            # Center of first known preamble bit is half a symbol before
+            # the first transition, then `m` full symbol periods to payload.
+            start=first_transition-self.clock_step/2
+            # Alternating 0x55 alone is ambiguous by one whole symbol. The
+            # final four *public sync bytes* disambiguate which of the
+            # neighboring symbols is the true marker start. Never inspect
+            # any private payload bits for this alignment correction.
+            alignment=[]
+            for shift in (-2,-1,0,1,2):
+                candidate=start+shift*self.clock_step
+                index=np.rint(candidate+np.arange(m)*self.clock_step).astype(int)
+                if index[0]<0 or index[-1]>=len(self.buf):
+                    continue
+                vals=self.buf[index]
+                errors=int(np.count_nonzero(((vals-self.mid)*self.pol>0)!=self.marker))
+                alignment.append((errors,abs(shift),candidate))
+            if alignment:
+                errors,_,candidate=min(alignment)
+                if errors<=6:
+                    start=candidate
+            self.estimated_clock_ppm=(PHASES/self.clock_step-1)*1e6
+            self.last_acquired_clock_ppm=float(self.estimated_clock_ppm)
+            self.clock_fits+=1
         self.locked = True
         self.pending |= SYNC
         self.sync_status = 0x40 if self.pol > 0 else 0x80
-        self.buf = self.buf[start+m*PHASES:].copy()
+        end=start+m*self.clock_step
+        consumed=int(np.floor(end))
+        self.symbol_fraction=end-consumed
+        self.buf = self.buf[consumed:].copy()
 
     def payload(self):
         while len(self.buf) and self.armed:
-            # One sample per symbol; the fixed nominal clock is intentional.
-            bit = int((self.buf[0]-self.mid)*self.pol > 0)
-            if len(self.buf) < PHASES:
+            # Fractional sample grid follows the clock derived from the
+            # *public marker only*. Require full symbol lookahead before
+            # deciding; do not synthesize missing samples at the recording end.
+            position=self.symbol_fraction
+            if len(self.buf) < position+self.clock_step+1:
                 break
-            self.buf = self.buf[PHASES:]
+            i=int(position)
+            sample=(1-(position-i))*self.buf[i]+(position-i)*self.buf[i+1]
+            bit=int((sample-self.mid)*self.pol>0)
+            next_position=position+self.clock_step
+            drop=int(next_position)
+            self.buf=self.buf[drop:]
+            self.symbol_fraction=next_position-drop
             self.bits.append(bit)
             if len(self.bits) == 16:
                 data = np.packbits(self.bits).tobytes()
@@ -183,4 +248,7 @@ class FskRx:
     def status(self):
         return {"armed": self.armed, "configured": self.configured, "locked": self.locked, "fifo_words": len(self.fifo),
                 "frames": self.frames, "words": self.words, "overruns": self.overruns,
-                "underflows": self.underflows, "gaps": self.gaps, "unsupported": self.unsupported}
+                "underflows": self.underflows, "gaps": self.gaps, "unsupported": self.unsupported,
+                "estimated_clock_ppm": self.estimated_clock_ppm,
+                "last_acquired_clock_ppm": self.last_acquired_clock_ppm,
+                "clock_fits": self.clock_fits}

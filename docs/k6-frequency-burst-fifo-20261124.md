@@ -1,5 +1,7 @@
 # Frequency modem: blind-start acquisition and FD6818B FIFO receive replay
 
+Compiled multi-burst FIFO clock recovery and parity reconstruction: [`k6-native-fsk-burst-clock-parity-20261124.md`](k6-native-fsk-burst-clock-parity-20261124.md).
+
 **2026-11-24 · Offline SoapyFang/RFIC simulation only.** No physical RF TX,
 radio flash, live serial, or new production modem/KISS provider was created.
 
