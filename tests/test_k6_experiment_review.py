@@ -22,8 +22,10 @@ def test_empty_hardware_registry_no_delegate(tmp_path,monkeypatch):
  ("completed",0,"report\nVALIDATION: APPROVED","APPROVED"),
  ("completed",0,"report\nVALIDATION: REJECTED","REJECTED"),
  ("completed",0,"report\nVALIDATION: APPROVED\nextra instructions","REJECTED"),
- ("completed",1,"VALIDATION: APPROVED","REJECTED"),
- ("running",None,"","PENDING")
+ ("completed",1,"VALIDATION: APPROVED","INFRA_INTERRUPTED"),
+ ("running",None,"","PENDING"),
+ ("interrupted",None,"","INFRA_INTERRUPTED"),
+ ("timed_out",143,"","INFRA_INTERRUPTED")
 ])
 def test_reviewer_verdict_fail_closed(monkeypatch,job_state,exit_code,report,expected):
     class Proc:
@@ -39,3 +41,36 @@ def test_prompt_contains_only_local_manifest_paths():
     prompt=r.make_prompt(9,cfg,m,"b"*64)
     assert "VALIDATION: REJECTED" in prompt
     assert "GitHub issue text" not in prompt
+
+
+def test_interrupted_read_only_review_requeues_once_without_hardware(monkeypatch,tmp_path):
+    n=9
+    cfg={"repo":"tcarwash/flux_radio","queue_issue":11,"trusted_author":"tcarwash",
+         "manifests":{"9":{"path":"/local/test.json","sha256":"a"*64}}}
+    api_raw=b"api29"
+    manifest={"jobs":[{"id":"x","cwd":"/local/worktree",**{
+        s:{"argv":["/usr/bin/python3","/local/a.py"],"timeout_seconds":5}
+        for s in r.batch.STEPS}}]}
+    key=r.fingerprint(n,"a"*64,api_raw)
+    state_path=tmp_path/"review.json"
+    r.journal.state_write(state_path,{"schema":1,"jobs":{key:{
+        "state":"REVIEW_SUBMITTED","job_id":"abcd1234abcd","attempts":1
+    }}})
+    prompt_root=tmp_path/"prompts"
+    prompt_root.mkdir()
+    prompt=prompt_root/f"hardware-{key}.txt"
+    prompt.write_text(r.make_prompt(n,cfg,manifest,r.hw.digest_for(b"manifest",api_raw)))
+    monkeypatch.setattr(r.hw,"load_config",lambda *a:cfg)
+    monkeypatch.setattr(r.batch,"read_api_config",lambda *a:({"target_module_api":29},api_raw))
+    monkeypatch.setattr(r.hw,"load_registered_manifest",lambda *a:(manifest,"a"*64,b"manifest"))
+    monkeypatch.setattr(r,"result_status",lambda _: "INFRA_INTERRUPTED")
+    jobs=[]
+    monkeypatch.setattr(r,"delegate_readonly",lambda p:jobs.append(p) or "beef0000beef")
+    out=r.once(tmp_path/"fake.json",state_path,prompt_root)
+    assert out["events"][0]["action"]=="REVIEW_INFRA_REQUEUED"
+    assert out["events"][0]["attempt"]==2
+    assert jobs==[prompt]
+    after=r.journal.state_load(state_path)["jobs"][key]
+    assert after["job_id"]=="beef0000beef"
+    assert after["attempts"]==2
+    assert after["state"]=="REVIEW_SUBMITTED"

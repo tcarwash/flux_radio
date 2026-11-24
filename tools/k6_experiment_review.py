@@ -69,11 +69,24 @@ def result_status(job_id):
     j=r.get("job",{})
     if j.get("id")!=job_id: raise batch.Refused("review job ID mismatch")
     if j.get("state") in ("starting","running","queued","pending"):return "PENDING"
-    if j.get("state")!="completed" or j.get("exit_code")!=0:return "REJECTED"
+    if j.get("state") in ("interrupted","timed_out","failed","cancelled") or (j.get("state")=="completed" and j.get("exit_code")!=0):
+        return "INFRA_INTERRUPTED"
+    if j.get("state")!="completed": return "INFRA_INTERRUPTED"
     lines=[x.strip() for x in str(r.get("result","")).splitlines()]
     # No success if review is truncated, vague, or contradicts itself.
     if any(line=="VALIDATION: REJECTED" for line in lines):return "REJECTED"
     return "APPROVED" if lines and lines[-1]=="VALIDATION: APPROVED" else "REJECTED"
+
+def delegate_readonly(prompt):
+    p=subprocess.run(["muse-jobs","submit","--workspace",str(Path(__file__).resolve().parents[1]),
+                      "--prompt-file",str(prompt),"--effort","medium",
+                      "--timeout","300","--steps","18"],capture_output=True,
+                      text=True,check=True,timeout=30)
+    job_id=json.loads(p.stdout)["id"]
+    if not isinstance(job_id,str) or len(job_id)!=12 or not all(c in "0123456789abcdef" for c in job_id):
+        raise batch.Refused("delegated validation returned invalid job identity")
+    return job_id
+
 
 def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_ROOT):
     cfg=hw.load_config(hardware_config)
@@ -90,15 +103,48 @@ def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_R
             hash_=fingerprint(n,entry["sha256"],api_raw)
             record=state["jobs"].get(hash_)
             if record:
+                # An older scheduler could have mapped a crashed worker to
+                # REJECTED. Migrate only when the actual delegate receipt
+                # independently proves a terminated infrastructure failure;
+                # a substantive VALIDATION: REJECTED stays rejected.
+                if record["state"]=="REJECTED" and record.get("job_id"):
+                    try:
+                        actual=result_status(record["job_id"])
+                    except (OSError,ValueError,KeyError,subprocess.SubprocessError):
+                        actual="UNKNOWN"
+                    if actual=="INFRA_INTERRUPTED":
+                        record["state"]="REVIEW_SUBMITTED"
+                        journal.state_write(state_path,state)
                 if record["state"]=="REVIEW_SUBMITTED":
                     try: verdict=result_status(record["job_id"])
                     except (OSError,ValueError,KeyError,subprocess.SubprocessError) as exc:
                         verdict="REJECTED"
-                    if verdict!="PENDING":
-                        record["state"]=verdict
-                        record["completed_utc"]=dt.datetime.now(dt.timezone.utc).isoformat()
-                        journal.state_write(state_path,state)
-                    events.append({"issue":n,"action":"REVIEW_STATUS","verdict":verdict})
+                    if verdict=="INFRA_INTERRUPTED":
+                        # Read-only validation is safe to requeue, unlike a
+                        # physical RF attempt. Require exact local review prompt.
+                        attempts=record.get("attempts",1)
+                        if attempts>=3:
+                            record["state"]="REJECTED_INFRA"
+                            journal.state_write(state_path,state)
+                            events.append({"issue":n,"action":"REVIEW_INFRA_RETRY_EXHAUSTED"})
+                        else:
+                            m,sha,raw=hw.load_registered_manifest(cfg,n)
+                            prompt=prompt_root/f"hardware-{hash_}.txt"
+                            expected=make_prompt(n,cfg,m,hw.digest_for(raw,api_raw))
+                            if prompt.read_text()!=expected:
+                                raise batch.Refused("review prompt changed since pinned submission")
+                            record["job_id"]=delegate_readonly(prompt)
+                            record["attempts"]=attempts+1
+                            record["state"]="REVIEW_SUBMITTED"
+                            journal.state_write(state_path,state)
+                            events.append({"issue":n,"action":"REVIEW_INFRA_REQUEUED",
+                                           "attempt":record["attempts"],"job_id":record["job_id"]})
+                    else:
+                        if verdict!="PENDING":
+                            record["state"]=verdict
+                            record["completed_utc"]=dt.datetime.now(dt.timezone.utc).isoformat()
+                            journal.state_write(state_path,state)
+                        events.append({"issue":n,"action":"REVIEW_STATUS","verdict":verdict})
                 else:
                     events.append({"issue":n,"action":"REVIEW_RECORDED","verdict":record["state"]})
                 continue
@@ -118,13 +164,8 @@ def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_R
             journal.state_write(state_path,state)
             # Untrusted agent cannot execute shell, write files or reach the radio
             # through this read-only Muse job.
-            p=subprocess.run(["muse-jobs","submit","--workspace",str(Path(__file__).resolve().parents[1]),
-                              "--prompt-file",str(prompt),"--effort","medium",
-                              "--timeout","300","--steps","18"],capture_output=True,
-                              text=True,check=True,timeout=30)
-            task=json.loads(p.stdout)
-            job_id=task["id"]
-            state["jobs"][hash_]={"state":"REVIEW_SUBMITTED","job_id":job_id,
+            job_id=delegate_readonly(prompt)
+            state["jobs"][hash_]={"state":"REVIEW_SUBMITTED","job_id":job_id,"attempts":1,
                                   "at_utc":dt.datetime.now(dt.timezone.utc).isoformat()}
             journal.state_write(state_path,state)
             events.append({"issue":n,"action":"REVIEW_DELEGATED","job_id":job_id})
