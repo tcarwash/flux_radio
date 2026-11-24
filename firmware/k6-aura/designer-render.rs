@@ -73,7 +73,7 @@ pub(crate) fn theme_label(app:&mut App,w:&mut dyn core::fmt::Write){
 #[inline(never)]
 pub fn draw<D: DrawTarget<Color = BinaryColor>>(lcd: &mut D, app: &mut App) -> bool {
     let slot=slot(app.settings().theme_selection);
-    if slot >= 32 || app.is_transmitting() || app.tx_prohibited() ||
+    if slot >= 32 || app.tx_prohibited() ||
         app.no_channels_notice() || app.ani_caller_id().is_some() { return false; }
     let theme = unsafe {
         if !CHECKED || CACHE_SLOT!=slot {
