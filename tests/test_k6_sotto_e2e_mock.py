@@ -74,6 +74,7 @@ def test_actual_voice_over_virtual_rf_and_decoder(built,prefix,tmp_path):
     assert not t['pcm_lost'] and not t['lease_expired']
     assert r.status()['radio_state']=='RX'
     assert r.status()['playback_ready'] and r.rx_audio.shape==(8320,)
+    assert 0 < r.stream_peak_blocks <= 16
     assert np.max(np.abs(r.rx_audio.astype(np.int32)))>100
     assert not r.ptt and not r.running and not t['tx']['active']
     assert r.radio_state=='RX'

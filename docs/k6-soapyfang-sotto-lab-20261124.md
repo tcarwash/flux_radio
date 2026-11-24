@@ -102,6 +102,26 @@ threshold optimum. Keep conservative 4-word/1-ms polling as the
 default until hardware-derived timings and other noise/phase cases
 are validated.
 
+## Incremental receive audio and bounded playout
+
+The SoapyFang/Unicorn session now checks an additional receiver path:
+`tools/k6_sotto_rx_stream.py` drives the **same pinned native C
+fixed-point decoder** with individual 6-byte codec frames, emitting
+20-ms/160-sample speaker blocks. It holds at most **16 blocks (5,120
+PCM bytes)** in the queue at once, plus one 320-sample temporary and
+the decoder's own working memory. The first two 40-ms decode windows
+are priming; a verified END flushes exactly two delayed frames.
+The model drains between FDV1 voice packets (maximum eight codec frames
+each). It compares the complete reconstructed audio *bit-for-bit*
+with the batch-decoder reference, rejects malformed input, aborts on
+queue overflow, and discards queued audio on PTT preemption.
+
+This is a bounded host *model* and does **not** mean a 5,120-byte
+queue will fit the K6 SRAM or that speaker timing is ready. Next
+measure decoder heap/stack and size a smaller queue against actual
+packet-arrival timing and firmware ISR scheduling. It deliberately
+does not conceal underruns with fabricated audio.
+
 ## Limits and next optimization gates
 
 This is not yet a **flashable two-way on-K6 Sotto** image. API30 host
