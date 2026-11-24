@@ -10,7 +10,7 @@
   <a href="docs/manual/install.md">Getting started</a> ·
   <a href="docs/module-store.md">Module Catalog</a> ·
   <a href="docs/k6-feature-packs.md">Feature packs</a> ·
-  <a href="CONTRIBUTING.md">Contribute</a>
+  <a href="CONTRIBUTING.md">Contribute</a> ·\n  <a href="docs/k6-research-experiment-queue.md">RF research queue</a>
 </p>
 
 Flux keeps familiar dual-VFO and channel operation, then adds a modular
