@@ -343,7 +343,8 @@ def one_cycle(registry=REGISTRY,state_path=DEFAULT_STATE,prompt_root=PROMPT_ROOT
         # flood from consuming the delegation budget unattended.
         today=now()[:10]
         submitted_today=sum(1 for x in state["jobs"].values()
-                            if x.get("created","").startswith(today))
+                            if not x.get("migrated_from")
+                            and x.get("created","").startswith(today))
         for issue in issues:
             if active>=1 or new>=max_new or submitted_today+new>=max_daily:
                 break

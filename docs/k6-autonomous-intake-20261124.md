@@ -64,3 +64,11 @@ The next possible enhancement is isolated candidate-code preparation in
 an explicitly restricted write worktree, with independent automatic tests
 and a hard veto before enrolment. Such workers must not have unrestricted
 shell or device access.
+
+## Unit-file source of truth
+
+Tracked service and timer templates are in systemd/. The installed user
+units under ~/.config/systemd/user/ are updated to match these copies.
+Do not remove the independent hardware gate from the service or make
+a raw GitHub issue a shell command. On future installs, deploy the
+tracked copies and run systemctl --user daemon-reload, then enable the timer.

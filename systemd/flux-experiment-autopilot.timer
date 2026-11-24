@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic trusted Flux experiment queue processing
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=10min
+RandomizedDelaySec=20s
+Persistent=true
+Unit=flux-experiment-autopilot.service
+
+[Install]
+WantedBy=timers.target

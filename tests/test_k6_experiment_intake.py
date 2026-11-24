@@ -212,6 +212,8 @@ def test_legacy_published_assessment_migrates_without_duplicating(tmp_path):
     out=it.one_cycle(reg,state,prompts,max_new=0,fetch=gh_fake)
     assert out["events"][0]["action"]=="MIGRATED_PREVIOUS_ASSESSMENT"
     assert json.loads(state.read_text())["jobs"][it.identity(one)]["state"]=="TRIAGED"
+    # Migration is not another delegated job or another quota charge.
+    assert out["submitted_today"]==0
 
 
 
