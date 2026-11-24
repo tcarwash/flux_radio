@@ -319,3 +319,28 @@ their own technical/legal review.
 
 The first hardware manifest may remain enrolled but not execute until
 its exact, newly pinned revision receives independent APPROVED validation.
+
+### First physical one-shot evidence and corrected launch (Nov 24, 09:22 PST)
+
+Session fsk09sh-dummy-api29-20261124T171624Z was autonomously claimed,
+run once and ended BLOCKED. Session and job preflight passed, packed
+slot30 was installed/read back and later erased; the live module launch
+was explicitly rejected by firmware with INVALID (2): no confirmed
+module execution, and the SDR independent scorer found 0 valid frames.
+Job restore/verify AND session restore/verify passed. A separate read-only
+operator inspection under both locks then confirmed all 31 original
+packed slot hashes, the same VFOs, exact firmware build/API, idle
+status and empty slot30, after which a BLOCKED / RELEASE comment
+released the hold. Original physical run journal retains
+BLOCKED_NO_AUTO_RETRY forever for that manifest digest.
+
+Root cause is established from firmware/k6-aura/apply-live-serial.py:
+live_module_allowed accepts module level 3+ only with the explicit
+live RUN 0x100 higher-permission bit, even if the radio advertises
+module API29. This does NOT bypass the exact firmware/chip/source,
+frequency, user-storage or RF watchdog gates. The corrected, separately
+compiled and pinned host harness sets allow_higher_api=True;
+a mocked-launch regression test requires that flag. Module bytes
+remain frozen (SHA a14bf5a7...). The corrected session has a NEW
+manifest hash, six-hour lease, specific local standing approval and
+MUST receive fresh independent delegated validation before any RF.
