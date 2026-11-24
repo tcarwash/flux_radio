@@ -114,3 +114,34 @@ The previous FSK-14 test established K6 mic-derived audio through native RF
 with host encoding, not autonomous K6 mic encoding. The user's newer TX
 success is acknowledged but its exact fixture is not independently
 identified here. No hardware touched during this development checkpoint.
+
+### Physical FDV1 qualification (2026-11-23, local evening)
+
+On the owner's dummy-load bench, build `aba032cfc1d2b5e1` (Base + Data,
+packed library, API 25) ran the separately compiled 2,344-byte API-5
+`SOTTO RFTEST` module exactly once. Six guarded RF frames were received by
+an independent RTL-SDR blind public-sync and CRC receiver; all 384 payload
+bytes matched the frozen expectations (3,072 bits, zero errors). BEGIN,
+four voice segments and END preserved all 26 Sotto codec frames; selected
+offsets were 0/2/0/2/0/2 with zero sync errors. Firmware returned 6.
+The source fixture is public synthetic encoder output, not live speech.
+The temporary empty slot 30 was installed and verified using the legacy
+loader (the host lacks live library mutation), executed over live serial,
+and erased afterward. All 25 original packed object content hashes and
+both VFO settings matched after cleanup. No firmware flash or retry.
+
+- Frozen module SHA256 `64debca1a5d76adea2623e2cf6582bc60e32ea7e556504cafee9bc3c5a20d7be`
+- Frozen fixture/scorer manifest SHA256 `1baedd278865568c2c171f82224cd961ce833d28d0c196c439583b09500b77b4`
+- Packed test harness SHA256 `d4e5089c9b394fb6b32a41c583a4e28003805a721d87cb4aeab92ec78c84f4d1`
+- Private IQ SHA256 `8e68591ce499e8cf9b66de7c63e9c16810cce7ff2ac6608589b41f6aae098371`
+- [Bench result and release](https://github.com/tcarwash/flux_radio/issues/11#issuecomment-7122210068)
+- 76 focused regression tests passed before the RF run. The RF fixture is
+  inert without explicit compile-time bench gates.
+
+This proves the raw-module staged RF path and FDV1 framing, not the new
+resident Data-pack FSK API, real-time on-device encoding, or native RX.
+The packed host reports a 14,976-byte arena; scratch excludes the host
+stack reserve, envelope and loaded module. The earlier 15,408-byte model
+is not an observed Flux allocation. The encoder workspace optimization
+reduces measured stack high-water to 912 bytes with 9,375 bytes of code;
+we still require a proven scratch/IRQ budget before a live encoder.

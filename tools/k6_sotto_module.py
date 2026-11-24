@@ -27,18 +27,44 @@ def adapt(text):
         nonlocal text
         if text.count(old)!=1:raise ValueError("Unexpected upstream context: "+old)
         text=text.replace(old,new)
-    once("struct slim_enc {","struct slim_enc {\n  sotto_io_t *io;")
+    # Reuse the analysis FFT/lag workspace only AFTER analysis returns.
+    # A typed union keeps the path records and the nested search buffers
+    # disjoint and avoids creating a second 500B stack working set.
+    path_type="""typedef struct {
+  int16_t sa[2];
+  int16_t rec[NC];
+  int32_t err;
+} apath_t;"""
+    once(path_type,"")
+    once("struct slim_enc {",path_type+"""
+typedef struct {
+  apath_t paths[SLIM_MAXP];
+  int16_t target[20], vectors[IVF_MAXN];
+  signed char cb[20], centroids[16*IVF_CD];
+  int32_t best_dist[SLIM_MAXP], cell_dist[IVF_MAXP];
+  unsigned char cell_id[IVF_MAXP];
+} sotto_coder_work_t;
+_Static_assert(sizeof(sotto_coder_work_t)<=2*NW*sizeof(int16_t),"workspace too large");
+struct slim_enc {
+  sotto_io_t *io;""")
+    once("  int16_t w[2 * NW];",
+         "  union { int16_t w[2 * NW]; sotto_coder_work_t coder; };")
     for name,typ,expected in (("cb_search","int",4),("cb_sub","int32_t",4),
                               ("code_a","int",2),("code_b","int32_t",3)):
         pattern=rf"\b{name}\("
         hits=len(re.findall(pattern,text))
         if hits!=expected:raise ValueError(f"Unexpected upstream {name}: {hits}")
-        text=re.sub(pattern,name+"(io, ",text)
-        once(f"static {typ} {name}(io, ",f"static {typ} {name}(sotto_io_t *io, ")
-    for name in ("slim_coder_push","slim_coder_flush"):
-        pattern=rf"(int {name}\([^\n]+\) \{{)"
-        text,n=re.subn(pattern,r"\1\n  sotto_io_t *io=e->io;",text)
-        if n!=1:raise ValueError(f"Unexpected upstream {name} entry")
+        text=re.sub(pattern,name+"(e, ",text)
+        once(f"static {typ} {name}(e, ",f"static {typ} {name}(slim_enc_t *e, ")
+        if name in ("cb_search","cb_sub"):
+            pattern=rf"(static {typ} {name}\([^\n]+\) \{{)"
+            text,n=re.subn(pattern,r"\1\n  sotto_io_t *io=e->io;",text)
+            if n!=1:raise ValueError(f"Unexpected upstream {name} entry")
+    once("  apath_t p[SLIM_MAXP];","  apath_t *p=e->coder.paths;")
+    once("  int16_t t[CBB];\n  signed char buf[CBB];\n  int32_t bh[SLIM_MAXP];",
+         "  int16_t *t=e->coder.target;\n  signed char *buf=e->coder.cb;\n  int32_t *bh=e->coder.best_dist;")
+    once("    int32_t ph[IVF_MAXP];\n    unsigned char pc[IVF_MAXP];\n    signed char cbuf[IVF_BLK * IVF_CD];\n    int16_t vl[IVF_MAXN];",
+         "    int32_t *ph=e->coder.cell_dist;\n    unsigned char *pc=e->coder.cell_id;\n    signed char *cbuf=e->coder.centroids;\n    int16_t *vl=e->coder.vectors;")
     return text
 
 def build():
