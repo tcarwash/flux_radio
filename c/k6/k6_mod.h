@@ -88,6 +88,34 @@ extern "C" {
 #define K6_MODE_VOICE 0x04u
 #define K6_MODE_SOTTO_TEST 0x0100u
 #define K6_MODE_SOTTO_RFTEST 0x0101u
+/* Non-APRS packet-capable emulated provider (RAM loopback, no RF).
+   Outside the native APRS range and the Sotto voice reservations. */
+#define K6_MODE_LOOPBACK_EMU 0x0200u
+/* Level-27 mailbox wire constants (mirrored from
+   c/k6/mod/k6_packet_mailbox.h, which is authoritative for semantics;
+   guarded so a module may include both headers). */
+#ifndef K6MB_VERSION
+#define K6MB_VERSION 1u
+#endif
+#ifndef K6MB_MAX_PAYLOAD
+#define K6MB_MAX_PAYLOAD 128u
+#endif
+#ifndef K6MB_EMPTY
+#define K6MB_EMPTY 0u
+#define K6MB_STAGED 1u
+#define K6MB_CLAIMED 2u
+#define K6MB_COMPLETE 3u
+#define K6MB_FAILED 4u
+#endif
+#ifndef K6MB_TX_SENT
+#define K6MB_TX_SENT 0
+#define K6MB_TX_FAILED 1
+#define K6MB_TX_REFUSED 2
+#endif
+#ifndef K6MB_TNC_STAGED
+/* k6_main return: exactly one packet staged, foreground released. */
+#define K6MB_TNC_STAGED (-40)
+#endif
 typedef struct k6_mode_info {
   uint16_t mode_id;
   uint8_t flags;
@@ -298,21 +326,33 @@ typedef struct k6_api {
   int (*mode_info)(uint32_t index, k6_mode_info_t *out);
   /* Level 27 (opt-in K6_PACKET_MAILBOX=1 only): host-owned V1 packet
      mailbox (c/k6/mod/k6_packet_mailbox.h). mb_version must read exactly
-     K6MB_VERSION (1); the TNC refuses to stage otherwise. stage_packet
-     copies mode_id's frame (at most 128 bytes) into host storage and
-     returns 0, or negative fail-closed (busy/too long/refused). The TNC
-     then RETURNS (releasing UART/foreground); the host runs the provider
-     entry action afterwards, never nested. poll_result fills the TX slot
-     generation/state/result without consuming them. take_rx takes the
-     oldest received frame into out (at most cap bytes), invalidating it.
-     All three are NULL on images below level 27; dev-radio API29 images
-     assign different functions to tail slots, so a module must
-     feature-test api->level == 27 exactly and never call these when the
-     test fails. */
+     K6MB_VERSION (1); the TNC refuses to stage otherwise. Phase split,
+     never nested: stage_packet/poll_result/take_rx are the TNC phase
+     (called only while the TNC module runs, tnc_active==1);
+     claim_packet/complete_packet/publish_rx are the provider phase
+     (called only from the K6_ACTION(35) provider run after the TNC
+     returned, tnc_active==0). stage_packet copies mode_id's frame (at
+     most 128 bytes) into host storage and returns 0, or negative
+     fail-closed (busy/too long/refused). The TNC then RETURNS -40
+     (K6MB_TNC_STAGED, releasing UART/foreground); the host runs the
+     provider entry action afterwards, never nested. poll_result fills
+     the TX slot generation/state/result without consuming them.
+     claim_packet copies the staged payload for the exact (mode_id,
+     generation) pair into out (at most cap bytes) and moves the slot
+     STAGED->CLAIMED; complete_packet records the provider TX result
+     (K6MB_TX_*); publish_rx queues one received frame into the RX ring
+     for a later take_rx. Every callback is NULL on images below level
+     27; dev-radio API29 images assign different functions to tail
+     slots, so a module must feature-test api->level == 27 exactly and
+     never call any of these when the test fails. */
   uint32_t mb_version;
   int (*stage_packet)(uint16_t mode_id, const uint8_t *bytes, uint16_t len);
   int (*poll_result)(uint32_t *generation, uint32_t *state, int32_t *result);
   int (*take_rx)(uint8_t *out, uint16_t cap, uint16_t *mode_id, unsigned *len);
+  int (*claim_packet)(uint16_t mode_id, uint32_t generation, uint8_t *out,
+                       uint16_t cap, unsigned *len);
+  int (*complete_packet)(uint32_t generation, int32_t result);
+  int (*publish_rx)(uint16_t mode_id, const uint8_t *bytes, uint16_t len);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

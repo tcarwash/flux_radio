@@ -43,4 +43,62 @@ K6MODE_FN uint16_t k6mode_match(uint8_t flags, uint8_t level, uint8_t api_level,
   return 0;
 }
 
+/* Packet-provider identity for the level-27 mailbox dispatcher. Returns the
+   LOOPBACK-EMU mode ID (0x0200) only for a byte-exact "LOOPBACK-EMU" library
+   image whose level lies inside the running API (which must be >= 27, the
+   first level with provider-phase callbacks); anything else yields 0. No
+   substring, prefix, or case folding: "LOOPBACK", "LOOPBACK-EMU-X", and
+   padded variants all refuse. SOTTO voice entries never match here. */
+K6MODE_FN uint16_t k6mode_match_packet(uint8_t flags, uint8_t level,
+                                       uint8_t api_level, const char name[12]) {
+  static const char emu[12] = "LOOPBACK-EMU";
+  if (api_level < 27)
+    return 0;
+  if (flags != KM_F_LIB || level == 0 || level > api_level)
+    return 0;
+  if (k6mode_name_is(name, emu))
+    return (uint16_t)K6_MODE_LOOPBACK_EMU;
+  return 0;
+}
+
+/* Explicit signed capability record for a validated provider identity. The
+   host loads the image with kl_load_action(slot, ..., 35), which checks the
+   SipHash tag and the K6_ACTION registration; only afterwards does this
+   table say what the identity may carry. Returns 1 with *flags_out
+   (K6_MODE_* capability bits) and *max_out (largest TX payload), else 0 for
+   unknown identities. SOTTO TEST / RFTEST report VOICE only with zero
+   packet MTU: can_tx and the mailbox claim both refuse them, so a
+   voice-only provider can never be dispatched for packet data. */
+K6MODE_FN int k6mode_provider_caps(uint16_t id, uint8_t *flags_out,
+                                   uint16_t *max_out) {
+  if (!flags_out || !max_out)
+    return 0;
+  if (id == (uint16_t)K6_MODE_LOOPBACK_EMU) {
+    *flags_out = (uint8_t)(K6_MODE_PACKET_TX | K6_MODE_PACKET_RX);
+    *max_out = 128;
+    return 1;
+  }
+  if (id == (uint16_t)K6_MODE_SOTTO_TEST ||
+      id == (uint16_t)K6_MODE_SOTTO_RFTEST) {
+    *flags_out = (uint8_t)K6_MODE_VOICE;
+    *max_out = 0;
+    return 1;
+  }
+  return 0;
+}
+
+/* 1 when this validated identity may carry a TX payload of len bytes, else
+   0. Voice-only (no TX bit), unknown, or over-MTU providers refuse. */
+K6MODE_FN int k6mode_can_tx(uint16_t id, unsigned len) {
+  uint8_t flags = 0;
+  uint16_t maxp = 0;
+  if (!k6mode_provider_caps(id, &flags, &maxp))
+    return 0;
+  if (!(flags & (uint8_t)K6_MODE_PACKET_TX))
+    return 0;
+  if (len == 0 || len > maxp)
+    return 0;
+  return 1;
+}
+
 #endif
