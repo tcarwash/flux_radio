@@ -395,7 +395,7 @@ int k6_main(const k6_api_t *api) {
   if (!api || api->abi != 1u || api->level < K6_MODULE_LEVEL) return -3;
   if (api->fd_read(R_CHIP) != CHIP_4829) return -6;
   if (api->rx_hz() != TX32_FREQ_HZ) return -2;
-  if ((api->fd_read(R_STATE) & 0x000Au) != 0u || (api->fd_read(R_PA) & 0x00FFu) != 0u) return -2;
+  if ((api->fd_read(R_STATE) & 0x000Au) != 0u || (api->fd_read(R_PA) & 0x0080u) != 0u) return -2;
   if ((api->fd_read(R_WORK) & 0xF000u) != 0u || (api->fd_read(R_PREAMBLE) & 0x0001u) != 0u) return -8;
   if (!safe(api)) return -4;
 

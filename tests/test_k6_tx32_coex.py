@@ -36,7 +36,7 @@ def _idle_rx_regs() -> dict[int, int]:
         0x02: 0x0000,
         0x0C: 0x0000,
         0x30: 0xBFF1,   # idle RX (TX/PA off)
-        0x36: 0x0000,
+        0x36: 0x0022,   # PA_OFF_VALUE (UHF driver gain bits, PACTL bit 7 = 0)
         0x3F: 0x0000,
         0x44: 0x1234,
         0x45: 0x5678,
