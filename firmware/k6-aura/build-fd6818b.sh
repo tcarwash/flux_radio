@@ -171,6 +171,7 @@ fi
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "Packet mailbox requires K6_MODE_REGISTRY=1" >&2; exit 1; }
   python3 "$HERE/apply-packet-mailbox.py"
+  python3 "$HERE/apply-packet-dispatch.py"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }

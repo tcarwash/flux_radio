@@ -1,8 +1,11 @@
 # K6 Data-pack packet-provider mailbox — experimental API27 (not enabled by default)
 
-This is an **offline integration prototype**, not a production packet
-dispatcher. Do not enable in a normal radio build or merge into main
-until the explicit release gates below are met.
+This is an **experimental, opt-in firmware integration**, not a
+production packet dispatcher. Source integration into main does **not**
+enable this in default firmware builds. Only build images with
+K6_MODE_REGISTRY=1 and K6_PACKET_MAILBOX=1 for explicit development;
+the API27 layout is incompatible with the currently running API29
+radio until that radio is reflashed with a matching image.
 
 The host-owned V1 TX slot is 128 bytes with an inline payload, generation
 number, mode identity, CRC16/CCITT-FALSE, declared capability and expiry.
@@ -26,35 +29,42 @@ require the **exact level 27 and mailbox version 1**.
   expiry and FIFO backpressure): 14 passing tests.
 - Rust/C ABI, overlay/idempotence and opt-in gates: 7 additional passing
   tests. Combined 21/21 passing.
-- A full offline FD6818B firmware build with the optional API27 Rust
-  overlay completed successfully, binary 113,620 bytes.
+- A full clean offline FD6818B firmware build with API27 mailbox and
+  one-shot non-nested LOOPBACK-EMU dispatcher completed successfully,
+  binary **114,472 bytes** (120 KiB ceiling). The guarded dispatcher is
+  introduced by firmware/k6-aura/apply-packet-dispatch.py and runs only
+  the authenticated no-RF loopback provider with action 35. A compiler
+  success is NOT an end-to-end packet delivery qualification.
 - The LOOPBACK-EMU provider is a no-RF fixture exposing action35;
   Sotto's existing installed test modes are **VOICE-only** and cannot
   be used as packet datagram providers.
 
-## Blocking work before hardware or main
+## Out-of-band qualification still required
 
-1. **Host dispatch lifecycle:** host recognizes TNC -40 return,
-   identifies and authenticates a matching signed installed module, runs
-   action35 *after* TNC has returned, and never nests module executions.
-2. **Phase, time and capability enforcement:** currently the phase flag
-   is permanently false, so API27 stage_packet() refuses everything.
-   Before enabling, set the phase for the verified TNC only, implement a
-   real host uptime/TTL and selected-provider capability gate, and make
-   all unexpected returns/crashes consume/fail the one pending packet.
-3. **UART continuity:** the module currently relinquishes raw KISS
-   ownership when staging. The host must explicitly define and test
-   how it buffers or backpressures concurrent PC input across the
-   provider arena swap, and how it returns the completed TX/RX status
-   without generating false ACKs. Until then, it must refuse remote
-   multi-modem KISS packets, never silently drop or replay.
-4. **Signed provider registration:** LOOPBACK-EMU is only a test fixture.
-   A real modem must explicitly advertise a packet-capable, authenticated
-   entry point; installed voice-only Sotto must remain TX-refused for KISS.
-5. **Acceptance:** complete real module emulation for both ends of a
-   dispatcher turn, install/run/cleanup on a bench-owned dummy-loaded K6,
-   review failures, and prove the original firmware+packed slots are
-   restored before merging.
+1. **Real provider dispatch:** the host now allows staging only while a
+   verified level27 FLUX TNC is running, limits mode ID to 0x0200, uses
+   a 30-second TTL and host extended timer, and runs the authenticated
+   LOOPBACK-EMU action35 only *after* the TNC returns. This is
+   compiler-verified, not yet exercised end-to-end on hardware.
+2. **UART continuity:** foreground TNC returns to normal serial before
+   provider handoff, and **is not automatically resumed** afterward.
+   Host software must define backpressure, recovery of input during
+   the module swap, and an externally observable completion result.
+   Generic KISS applications must not interpret a silent handoff as
+   successful packet transmission. No automatic replay is permitted.
+3. **Other modem backends:** signed LOOPBACK-EMU is a no-RF fixture only.
+   A real packet modem must implement its own bounded authenticated
+   entry point and completion semantics. Sotto remains **voice-only**:
+   selecting it does not make it KISS packet-capable.
+4. **End-to-end acceptance:** build the exact matching API27 radio image,
+   install version-matched modules through the shared bench queue, then
+   test real TNC -> provider -> completion, recovery and restored
+   storage/serial. No such RF or provider handoff hardware tests are
+   claimed here.
+
+The main-branch source code can contain this experiment **disabled by
+default** while APRS-only TNC remains independently usable on the
+existing API29 radio. API27 KISS packet routing requires explicit opt-in.
 
 The default Data-pack FLUX TNC, with native guarded APRS-1200, is
 covered independently by the Cortex-M0 Unicorn and host KISS protocol
