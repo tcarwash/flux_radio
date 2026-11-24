@@ -24,10 +24,11 @@ import time
 import types
 from contextlib import contextmanager
 from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
-ROOT = "/storage5/dev/flux-kiss-hil-fake-device-20261124"
+ROOT = str(Path(__file__).resolve().parents[1])
 HARNESS_PATH = ROOT + "/tools/k6_kiss_hil.py"
 KISS_PATH = ROOT + "/tools/k6_kiss_tnc.py"
 
@@ -497,3 +498,9 @@ def test_default_mode_touches_no_hardware(monkeypatch, tmp_path):
     saved = json.loads(out.read_text(encoding="utf-8"))
     assert saved["freeze"]["module_level"] == 14
     assert "session_digest" in saved
+
+
+def test_fake_device_imports_harness_from_current_checkout():
+    here = Path(__file__).resolve().parents[1]
+    assert Path(HARNESS_PATH).resolve() == here / "tools/k6_kiss_hil.py"
+    assert Path(KISS_PATH).resolve() == here / "tools/k6_kiss_tnc.py"
