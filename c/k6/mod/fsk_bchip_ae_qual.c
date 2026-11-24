@@ -26,7 +26,7 @@
 #define FSK_HZ 433500000u
 #define FSK_BAUD_CODE 0xc194u
 #define FSK_LEASE_MS 1900u
-#define FSK_FRAME_TIMEOUT_MS 450u
+#define FSK_FRAME_TIMEOUT_MS 700u /* bounded two-frame probe, <1900ms TX lease */
 #define FSK_WORDS 49u
 #define R_CHIP 0x00u
 #define R_WORK 0x3fu
@@ -143,7 +143,7 @@ int k6_main(const k6_api_t *api){
 #else
     uint16_t saved[N_SAVED];
     struct ae_trace trace[2];
-    unsigned i,k;
+    unsigned i,k,attempted_frames=0;
     int ret=0,keyed=0,restore=0;
     if(api->rx_hz()!=FSK_HZ||(api->fd_read(R_STATE)&2u)||!safe(api))return -2;
     if(!free_channel(api))return -7;
@@ -158,6 +158,7 @@ int k6_main(const k6_api_t *api){
     restore=1;
     if(api->tx_pa(1)!=0){ret=-4;goto cleanup;}
     for(k=0;k<2;k++){
+        attempted_frames=k+1u;
         ret=send_one(api,k,saved[N_SAVED-1],&trace[k]);
         if(ret!=(int)FSK_WORDS)goto cleanup;
         if(k==0u)api->delay_us(10000u);
@@ -176,8 +177,13 @@ cleanup:
         }
         api->tx_off();
     }
-    if(ret==2*(int)FSK_WORDS){report(api,0,&trace[0]);report(api,1,&trace[1]);}
-    else api->say("FSK09S H aborted. RX restored.");
+    /* Publish raw threshold/IRQ/status observations only AFTER de-key and
+     * register restoration; a timed-out first frame is valuable evidence.
+     * Do not assume AE IRQ encodings or report an uninitialised second trace. */
+    if(restore && ret!=-15){
+        for(k=0;k<attempted_frames;k++)report(api,k,&trace[k]);
+    }
+    if(ret!=2*(int)FSK_WORDS)api->say("FSK09S H aborted. RX restored.");
     return ret;
 #endif
 }

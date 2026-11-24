@@ -55,13 +55,14 @@ VFO_A_HZ = 433_500_000
 VFO_B_HZ = 144_390_000
 PORT_DEFAULT = "/dev/ttyUSB0"
 
-PIN_SOURCE_INERT_SHA256 = "4472c7d95605fe01d6f41a13f1e84380c909df493d5842e93e53306a8a06bd69"
+PIN_SOURCE_INERT_SHA256 = "58d80e3929e42c19bcdbadf49ad40d185f178a02ca006d48906d5dae5256fcdd"
 PIN_SOURCE_ARMED_SHA256 = "7ebd2a4ac62314abee6781c8ca194a39607c667d1b1e0582a60fc6e5a65812cf"
 PIN_VECTOR_SHA256 = "230ba218a033e5782b42c3d191e557723b1e0656a9ac1eaa546e09090d125450"
-PIN_CODE_SHA256 = "a14bf5a7538c6510de54b85a0cc69580ae86fa06453e53efd7ca802c9f046879"
-PIN_CODE_BYTES = 1666
+PIN_CODE_SHA256 = "1ecfdd57cf773bddba3c23e5128a2e1d0b751c457b86655f79ba9b86ac7c08d0"
+PIN_CODE_BYTES = 1690
 PIN_CODE_ENTRY = 0
 PIN_CODE_LEVEL = 3
+PIN_FRAME_TIMEOUT_MS = 700
 PIN_WORDS_LE_SHA256 = "41a8c14cc0be749f1af3b31c13bd67bf6644a1aff7d5643e9d11de8da24f7b3e"
 PIN_WORD_COUNT = 64
 N_DATA_WORDS = 48
@@ -105,6 +106,11 @@ def preflight_source() -> dict:
         raise ValueError("compiled module mismatch, NO radio access")
     if entry != PIN_CODE_ENTRY or k6mod.source_level(str(SOURCE_ARMED)) != PIN_CODE_LEVEL:
         raise ValueError("module entry/ABI mismatch, NO radio access")
+    raw=SOURCE_INERT.read_text()
+    if (raw.count('#define FSK_LEASE_MS 1900u') != 1 or
+        raw.count('#define FSK_FRAME_TIMEOUT_MS 700u') != 1 or
+        raw.count('for(k=0;k<attempted_frames;k++)report(api,k,&trace[k]);') != 1):
+        raise ValueError('new bounded timeout and de-keyed telemetry contract changed')
     words = lab_words()
     return dict(source_ok=True, code_sha256=code_sha, code_bytes=len(code),
                 entry=entry, level=PIN_CODE_LEVEL, lab_words=len(words))
