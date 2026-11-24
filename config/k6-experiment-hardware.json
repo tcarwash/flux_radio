@@ -5,8 +5,8 @@
   "trusted_author": "tcarwash",
   "manifests": {
     "9": {
-      "path": "/storage5/dev/flux-batch-api-config/config/hardware-sessions/fsk09sh-700ms-diag-20261124T215100Z.json",
-      "sha256": "15f9ba1d4554ae4474626807db9ceac35dbf58e5d1a27276e9e6caaa999c7d61"
+      "path": "/storage5/dev/flux-batch-api-config/config/hardware-sessions/fsk09sh-irq-txdone-20261124T220000Z.json",
+      "sha256": "6c15a5f925973e2a298de94490add011e4df68c9f01333be19803169e88f7795"
     }
   }
 }
