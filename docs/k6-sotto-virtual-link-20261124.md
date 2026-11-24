@@ -154,3 +154,48 @@ based on the experimental live Sotto module, ready for the Sotto
 integration owner to cherry-pick after review. No radio flash or
 hardware validation. The remaining W80-like 34 us SPI case still
 overflows; do not treat the candidate as a real-time qualification.
+
+## Strict acceptance and varied PCM fixtures
+
+The offline harness supports a `--strict` mode: a telemetry sweep can finish
+with rows documenting failures, but strict execution exits nonzero if **any**
+row fails exact PCM, codec, wire decoder, TX/RX, lease, or FIFO acceptance.
+Failed trials remain available in `--json` for diagnosis. The default
+(non-strict) mode remains useful for exploratory failing parameter sweeps.
+
+To run a different fixture without rebuilding the radio or altering the
+Sotto checkout, supply uncompressed mono 8-kHz, signed 16-bit WAV, with
+800-24000 samples in 80-sample (10 ms) blocks:
+
+```sh
+~/.local/share/flux-rf-venv/bin/python tools/k6_sotto_virtual_link.py \
+  --sotto-tree /path/to/live-sotto-worktree \
+  --pcm-wav /path/to/8khz_mono_pcm16.wav \
+  --cpi 1.5 --spi-us 34 --strict --json qualification.json
+```
+
+The fixture is fed to **both** the live module's virtual microphone clock
+and the separately compiled native reference codec. The RX decoder never
+receives the reference bitstream, preserving end-to-end independence.
+Audio fixtures are not committed by this test runner. Speaker audio and
+listening quality are not modeled; exact codec agreement is a regression
+check, not a subjective voice-quality score.
+
+Each row also reports `codebook_profile`: observed 20-byte vector reads,
+unique indices, adjacent accesses, recent reuse, and a **hypothetical**
+256-byte LRU block-prefetch scenario for 1/2/4/8 vectors per fetch.
+The estimates are not implemented firmware changes or evidence of actual
+SPI savings. Compare across multiple fixtures before selecting a strategy.
+
+Initial comparison on the DCT-optimized source `a21765a7`:
+
+| Fixture | Codebook reads | Unique vectors | 256-byte 1-vector cache hits | Exact codec | Strict result |
+|---|---:|---:|---:|---|---|
+| Original 1.04-s synthetic triangular waveform | 4782 | 285 | 14 (0.29%) | Yes | Pass |
+| 1.20-s mixed-frequency fixture (silence, harmonics) | 4291 | 577 | 88 (2.05%) | Yes | Pass |
+
+The mixed-frequency fixture is **not** natural speech, so these are workload
+probes rather than representative communication benchmarks. Neither case
+supports spending scarce module/RAM budget on a generic 256-byte vector LRU.
+A lower-risk next candidate is avoiding the redundant winner-vector fetch
+between `cb_search` and `cb_sub`; quantify any code/stack growth first.

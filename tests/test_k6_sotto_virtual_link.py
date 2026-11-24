@@ -5,7 +5,7 @@ import shutil
 import pytest
 from modem import pager
 from sim.k6emu.rf.virtual_link import Channel
-from tools.k6_sotto_virtual_link import decode_session,prepare,trial,wire_decode,wire_records_session
+from tools.k6_sotto_virtual_link import accepted,decode_session,prepare,trial,wire_decode,wire_records_session
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -35,6 +35,8 @@ def test_strict_session_oracle():
     assert decode_session([control(2,113,2,1)])[1]["valid"]==0
     damaged=bytearray(frames[1]);damaged[7]^=1
     assert decode_session([frames[0],damaged,frames[2]])[1]["invalid"]==1
+    assert not decode_session([damaged,*frames])[1]["complete"]
+    assert not decode_session([*frames,damaged])[1]["complete"]
 
 @pytest.fixture(scope="module")
 def actual(tmp_path_factory):
@@ -57,6 +59,7 @@ def test_actual_wire_decoder(actual):
 @pytest.mark.parametrize("prefix",[0,2])
 def test_actual_live_module_rf(actual,prefix):
     r=trial(actual,Channel(prefix_every=prefix),cpi=1.5,spi_us=34)
+    assert accepted(r)
     assert r["module_return"]==r["codec_frames"]==26
     assert r["samples"]==8320 and not r["pcm_lost"]
     assert r["tx"]["completed"]==r["received"]==6
@@ -67,7 +70,56 @@ def test_actual_live_module_rf(actual,prefix):
 
 def test_actual_cpu_contention(actual):
     good=trial(actual,cpi=1.5,spi_us=10,adc_cycles=4800)
+    assert accepted(good)
     assert good["codec_exact"] and good["pcm_highwater"]<4
     bad=trial(actual,cpi=1.5,spi_us=34,adc_cycles=5745)
     assert bad["module_return"]<0 and bad["pcm_lost"] and bad["pcm_highwater"]==4
+    assert not accepted(bad)
     assert not bad["codec_exact"] and not bad["tx"]["active"]
+
+def test_strict_cli_signals_failed_model(tmp_path):
+    """A completed sweep is not automatically a successful modem regression."""
+    import json
+    import subprocess
+    import sys
+    tree=Path(os.environ.get("FLUX_SOTTO_TREE",ROOT))
+    if not (tree/"c/k6/mod/sotto_live_tx.c").is_file():
+        pytest.skip("API29 Sotto source unavailable")
+    out=tmp_path/"strict.json"
+    cmd=[sys.executable,str(ROOT/"tools/k6_sotto_virtual_link.py"),
+         "--sotto-tree",str(tree),"--cpi","1.5","--spi-us","34",
+         "--adc-cycles","5745","--strict","--json",str(out)]
+    done=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=90)
+    assert done.returncode==1,done.stderr
+    rows=json.loads(out.read_text())
+    assert len(rows)==1 and rows[0]["accepted"] is False
+    assert rows[0]["pcm_lost"]
+
+def test_external_audio_fixture(tmp_path):
+    """Non-default PCM uses the same input for compiled encoder and RF oracle."""
+    import json
+    import subprocess
+    import sys
+    import wave
+    import numpy as np
+    tree=Path(os.environ.get("FLUX_SOTTO_TREE",ROOT))
+    if not (tree/"c/k6/mod/sotto_live_tx.c").is_file():
+        pytest.skip("API29 Sotto source unavailable")
+    t=np.arange(9600)/8000
+    pcm=np.zeros(9600,dtype="<i2")
+    pcm[1600:4000]=(9000*np.sin(2*np.pi*185*t[1600:4000])).astype("<i2")
+    pcm[4000:]=(7000*np.sin(2*np.pi*315*t[4000:])).astype("<i2")
+    path=tmp_path/"mixed.wav"
+    with wave.open(str(path),"wb") as w:
+        w.setnchannels(1);w.setsampwidth(2);w.setframerate(8000);w.writeframes(pcm.tobytes())
+    out=tmp_path/"mixed.json"
+    cmd=[sys.executable,str(ROOT/"tools/k6_sotto_virtual_link.py"),"--sotto-tree",str(tree),
+         "--pcm-wav",str(path),"--strict","--json",str(out)]
+    result=subprocess.run(cmd,capture_output=True,text=True,timeout=90)
+    assert result.returncode==0,result.stderr
+    rows=json.loads(out.read_text())
+    assert len(rows)==1
+    row=rows[0]
+    assert row["samples"]==row["samples_expected"]==9600
+    assert row["accepted"] and row["codec_exact"] and row["wire_decoder_agrees"]
+    assert row["codebook_profile"]["reads"]>0

@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/"tests")]
@@ -47,12 +48,17 @@ for name,n in [('slim_enc_init',1),('slim_encode10',3),('slim_flush',2)]:
  getattr(c,name).argtypes=[C.c_void_p]*n
 state=C.create_string_buffer(c.slim_enc_bytes());c.slim_enc_init(state)
 pcm=(C.c_int16*80)();out=C.create_string_buffer(6);bits=bytearray()
-for block in range(104):
- for i in range(80):
-  j=(block*80+i)%40;pcm[i]=(min(j,40-j)-10)*(400+(block%8)*20)
+if len(sys.argv)>2:
+ payload=Path(sys.argv[2]).read_bytes()
+ assert len(payload)%160==0 and len(payload)>0
+ samples=struct.unpack('<%dh'%(len(payload)//2),payload)
+else:
+ samples=[(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)]
+for block in range(len(samples)//80):
+ for i in range(80):pcm[i]=samples[block*80+i]
  if c.slim_encode10(state,pcm,out):bits.extend(out.raw)
 while c.slim_flush(state,out):bits.extend(out.raw)
-assert len(bits)==156
+assert 0<len(bits)<=4000 and len(bits)%6==0
 (d/'reference.bit').write_bytes(bits)
 table=b''.join(bytes((C.c_char*n).in_dll(c,f'fx_cb{i}')) for i,n in enumerate((10240,10240,5120,5120)))
 h=bytearray(32);struct.pack_into('<4sHHI',h,0,b'K6CB',1,20,len(table))
@@ -62,9 +68,17 @@ struct.pack_into('<I',h,28,zlib.crc32(h[:28]))
 (d/'deck.bin').write_bytes(build_deck(SLIM_CELLS.read_text()))
 """
 
-def prepare(tree,d):
+def prepare(tree,d,pcm=None):
     tree=Path(tree).resolve()
-    subprocess.run([sys.executable,"-c",PREPARE,str(d)],cwd=tree,check=True)
+    args=[sys.executable,"-c",PREPARE,str(d)]
+    if pcm is not None:
+        pcm=np.asarray(pcm,dtype="<i2")
+        if len(pcm)%80 or not 800<=len(pcm)<=24000:
+            raise ValueError("PCM must be 0.1–3.0 seconds of 8kHz signed 16-bit mono, in 80-sample blocks")
+        audio_path=d/"input.pcm"
+        audio_path.write_bytes(pcm.tobytes())
+        args.append(str(audio_path))
+    subprocess.run(args,cwd=tree,check=True)
     h=(tree/"c/k6/k6_mod.h").read_text().split("typedef struct k6_api {")[1].split("} k6_api_t;")[0]
     names=re.findall(r"\(\*(\w+)\)\(",re.sub(r"/\*.*?\*/","",h,flags=re.S))
     rev=subprocess.check_output(["git","-C",str(tree),"rev-parse","HEAD"],text=True).strip()
@@ -73,7 +87,7 @@ def prepare(tree,d):
                      cflags=[*k6mod.CFLAGS,"-I"+str(tree/"c/k6")])
     return dict(wire=wire,code=(d/"module.bin").read_bytes(),entry=int((d/"entry").read_text()),
                 cb=(d/"codebook.bin").read_bytes(),deck=(d/"deck.bin").read_bytes(),
-                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty)
+                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty,pcm=pcm)
 
 REGS=(0x3f,0x59,0x58,0x70,0x72,0x5a,0x5b,0x5c,0x5d)
 VALS=(0x8000,0xf8,0xe1,0x95,0xc194,0x076b,0x3e36,0x5625,0x4100)
@@ -82,12 +96,14 @@ PCM=np.array([(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)],dt
 
 class LiveTx(Emu):
     def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2):
+        self.pcm=artifact.get("pcm")
+        if self.pcm is None:self.pcm=PCM
         self.capture=None;self.capture_start=None;self.sample=0;self.highwater=0
         self.adc_cycles=adc_cycles;self.wall_delay=False
-        self.lost=False;self.keyed=False;self.lease_end=0;self.saved=None
+        self.lost=False;self.lease_expired=False;self.keyed=False;self.lease_end=0;self.saved=None
         self.pre_release=0;self.spi_reads=0;self.spi_us=spi_us;self.tx_frames=[]
         self.cache=OrderedDict();self.cache_bytes=cache_bytes;self.cache_used=0
-        self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter()
+        self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter();self.codebook_reads=[]
         self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"]
         self.tx_backend=backend;self.deadline=0
         room=arena-len(artifact["code"])-24
@@ -118,24 +134,24 @@ class LiveTx(Emu):
         # conservatively treated as preemptible CPU work.
         if self.capture is not None and not self.wall_delay and not self.lost:
             base=self.cyc+cyc
-            target=min(len(PCM),int((base-self.capture_start)/(FCPU/8000)))
+            target=min(len(self.pcm),int((base-self.capture_start)/(FCPU/8000)))
             while True:
                 extra=max(0,target-self.sample)*self.adc_cycles
-                new=min(len(PCM),int((base+extra-self.capture_start)/(FCPU/8000)))
+                new=min(len(self.pcm),int((base+extra-self.capture_start)/(FCPU/8000)))
                 if new==target:break
                 target=new
             cyc+=extra
         super().tick(cyc,poll)
         if self.keyed and self.cyc>=self.lease_end:
-            self.cleanup();self.keyed=False;self.capture=None
+            self.lease_expired=True;self.keyed=False;self.capture=None;self.cleanup()
         if self.capture is None or self.lost:return
-        target=min(len(PCM),int((self.cyc-self.capture_start)/(FCPU/8000)))
+        target=min(len(self.pcm),int((self.cyc-self.capture_start)/(FCPU/8000)))
         while self.sample<target:
             p,c,o,l=self.mu.mem_read(self.capture+640,4)
-            if (p-c)&255>=4:
+            if o>=80 or (p-c)&255>=4:
                 self.mu.mem_write(self.capture+643,b"\x01");self.lost=True;break
             n=min(target-self.sample,80-o)
-            self.mu.mem_write(self.capture+2*((p&3)*80+o),PCM[self.sample:self.sample+n].tobytes())
+            self.mu.mem_write(self.capture+2*((p&3)*80+o),self.pcm[self.sample:self.sample+n].tobytes())
             self.sample+=n;o+=n
             if o==80:
                 p=(p+1)&255;o=0
@@ -156,6 +172,7 @@ class LiveTx(Emu):
         for r,v in [(0x59,0xf8),(0x3f,0),(2,0),*reversed(list(zip(REGS,saved)))]:
             self.tx_backend.write(r,v,self.fd_regs,self.cyc/FCPU)
             self.fd_regs[r]=v
+            super().tick(self.fd_us*96)
 
     def async_fsk(self,op,ptr,n):
         if not self.keyed:return -1
@@ -169,12 +186,14 @@ class LiveTx(Emu):
                 if not self.wr(r,v):return -1
             for w in struct.unpack("<33H",data):
                 if not self.wr(0x5f,w):return -1
-            if self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1:return -1
+            pending=self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1
+            self.tick(self.fd_us*96)
+            if pending or not self.keyed:self.cleanup();return -1
             if not self.wr(0x59,0x8f8):return -1
-            if self.tx_backend.active is None:return -1
+            if self.tx_backend.active is None:self.cleanup();return -1
             self.tx_frames.append(data)
             if self.capture is not None:self.pre_release+=1
-            if self.first_rf_ms is None:self.first_rf_ms=(self.cyc-self.capture_start)/96000
+            if self.first_rf_ms is None and self.capture_start is not None:self.first_rf_ms=(self.cyc-self.capture_start)/96000
             self.deadline=self.cyc+FCPU*.7
             return 0
         if op==1 and self.saved is not None:
@@ -198,6 +217,8 @@ class LiveTx(Emu):
                 uc.mem_write(r2,src[r1:r1+r3]);self.spi_reads+=1
                 if self.keyed:
                     self.keyed_reads+=1;self.read_sizes[r3]+=1
+                    if r0==0 and r3==20 and r1>=32 and (r1-32)%20==0:
+                        self.codebook_reads.append((r1-32)//20)
                     key=(r0,r1,r3)
                     # Hypothetical exact-range LRU at resource service, not
                     # firmware cache. Include 12B metadata per entry.
@@ -215,7 +236,7 @@ class LiveTx(Emu):
         elif name=="mic_stream":
             if r0==3:
                 ret=int(self.cyc>=FCPU*.02 and (self.capture_start is None or
-                         self.cyc<self.capture_start+len(PCM)*FCPU/8000))
+                         self.cyc<self.capture_start+len(self.pcm)*FCPU/8000))
             elif r0==0 and self.keyed and r2==644 and self.scr<=r1<=self.scr+self.scratch-r2:
                 self.capture=r1;self.capture_start=self.cyc
             elif r0==1:self.capture=None
@@ -256,7 +277,7 @@ def decode_session(frames):
         if len(candidates)!=1:bad+=1;continue
         off,p=candidates[0];good.append(p);offsets.append(off)
     complete=False;codec=b""
-    if len(good)>=3:
+    if bad==0 and len(good)>=3:
         first,last=good[0],good[-1];voice=good[1:-1]
         complete=(first[:3]==b"\xe2\x01\x01" and last[:3]==b"\xe2\x01\x02"
                   and first[4:13]==last[4:13] and any(first[4:12]) and first[13:16]==bytes(3)
@@ -284,7 +305,7 @@ def wire_decode(artifact,frames):
 def wire_records_session(records):
     """Reassemble one FDV1 epoch from independently C-validated records."""
     good=[r for r in records if r[0]]
-    if len(good)<3:return b"",False
+    if len(good)!=len(records) or len(good)<3:return b"",False
     first,last=good[0],good[-1];voice=good[1:-1]
     complete=(first[0]==2 and last[0]==3 and first[2]==last[2] and first[4:12]==last[4:12]
               and last[13]==len(voice) and last[12]==first[2]+len(voice)-1
@@ -326,14 +347,50 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 module_sha256=hashlib.sha256(artifact["code"]).hexdigest(),
                 module_bytes=len(artifact["code"]),module_return=ret,
                 stack_bytes=stack,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
-                channel=channel.__dict__,samples=e.sample,pcm_highwater=e.highwater,pcm_lost=e.lost,
+                channel=channel.__dict__,samples=e.sample,samples_expected=len(e.pcm),pcm_highwater=e.highwater,pcm_lost=e.lost,lease_expired=e.lease_expired,
                 spi_reads=e.spi_reads,keyed_reads=e.keyed_reads,read_sizes=dict(e.read_sizes),
+                codebook_profile=codebook_profile(e.codebook_reads),
                 cache_bytes=cache_bytes,cache_hits=e.cache_hits,spi_hit_us=spi_hit_us,tx_before_release=e.pre_release,first_rf_ms=e.first_rf_ms,
                 tx=tx,rx=rx.get("fsk"),received=len(frames),session=session,
                 codec_frames=len(codec)//6,codec_exact=codec==artifact["reference"],
                 wire_decoder_agrees=True,
                 logs=e.said,wall_seconds=round(time.perf_counter()-t,3))
 
+
+
+def codebook_profile(indices):
+    """Observed vector locality; an offline optimization aid, not a cache claim."""
+    if not indices:return dict(reads=0,unique=0)
+    from collections import Counter
+    seen=Counter(indices)
+    neighbor=sum(abs(a-b)==1 for a,b in zip(indices,indices[1:]))
+    recent_8=sum(v in indices[max(0,i-8):i] for i,v in enumerate(indices))
+    blocks={}
+    for b in (1,2,4,8):
+        from collections import OrderedDict
+        # Fixed 256-byte SRAM model, 12-byte metadata per entry.
+        capacity=max(1,256//(20*b+12))
+        cache=OrderedDict();hits=0
+        for v in indices:
+            k=v//b
+            if k in cache:
+                hits+=1;cache.move_to_end(k)
+            else:
+                cache[k]=None
+                if len(cache)>capacity:cache.popitem(last=False)
+        blocks[str(b)]=dict(hits=hits,transactions=len(indices)-hits,
+                             bytes_read=(len(indices)-hits)*20*b)
+    return dict(reads=len(indices),unique=len(seen),adjacent_pairs=neighbor,
+                recent_8_reuses=recent_8,frequency_top5=seen.most_common(5),
+                estimated_256b_prefetch=blocks)
+
+def accepted(r):
+    return (r["module_return"]==r["codec_frames"] and r["codec_frames"]>0
+            and r["samples"]==r["samples_expected"] and not r["pcm_lost"] and not r["lease_expired"]
+            and r["codec_exact"] and r["wire_decoder_agrees"] and r["session"]["complete"]
+            and r["tx"]["completed"]==r["received"] and not r["tx"]["active"]
+            and not any(r["tx"][k] for k in ("aborted","rejected","overflows"))
+            and r["rx"] is not None and not any(r["rx"][k] for k in ("overruns","underflows","gaps")))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
@@ -344,20 +401,35 @@ def main():
         p.add_argument("--"+n,type=values(k),default=d)
     p.add_argument("--spi-hit-us",type=float,default=2)
     p.add_argument("--json",type=Path)
+    p.add_argument("--pcm-wav",type=Path,help="optional 8kHz mono PCM16 WAV fixture (0.1-3s, multiples of 10ms)")
+    p.add_argument("--strict",action="store_true",help="exit nonzero if any trial fails acceptance")
     a=p.parse_args()
     if not (a.sotto_tree/"c/k6/mod/sotto_live_tx.c").is_file():
         p.error("select a checkout containing the live Sotto TX module with --sotto-tree")
     from itertools import product
     axes=[a.cpi,a.spi_us,a.fd_us,a.adc_cycles,a.cache_bytes,a.threshold,a.poll_us,a.cn,a.prefix_every]
     if math.prod(map(len,axes))>128:p.error("maximum 128 trials")
+    pcm=None
+    if a.pcm_wav is not None:
+        try:
+            with wave.open(str(a.pcm_wav),"rb") as w:
+                if w.getnchannels()!=1 or w.getframerate()!=8000 or w.getsampwidth()!=2 or w.getcomptype()!="NONE":
+                    p.error("WAV must be 8000 Hz mono uncompressed signed 16-bit")
+                pcm=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").copy()
+            if len(pcm)%80 or not 800<=len(pcm)<=24000:
+                p.error("WAV must have 800-24000 samples, in blocks of 80")
+        except (wave.Error,OSError) as exc:p.error(str(exc))
     rows=[]
     with tempfile.TemporaryDirectory() as d:
-        artifact=prepare(a.sotto_tree,Path(d))
+        artifact=prepare(a.sotto_tree,Path(d),pcm=pcm)
         for cpi,spi,fd,adc,cache,threshold,poll,cn,prefix in product(*axes):
             r=trial(artifact,Channel(cn_db=cn,prefix_every=prefix),cpi=cpi,spi_us=spi,
                     fd_us=fd,adc_cycles=adc,cache_bytes=cache,spi_hit_us=a.spi_hit_us,threshold=threshold,poll_us=poll)
+            r["accepted"]=accepted(r)
             rows.append(r);print(json.dumps(r),flush=True)
     if a.json:a.json.write_text(json.dumps(rows,indent=2)+"\n")
 
+
+    if a.strict and not all(r["accepted"] for r in rows):sys.exit(1)
 
 if __name__=="__main__":main()
