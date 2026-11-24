@@ -22,7 +22,8 @@ static inline int dv_live_dct_at(int j,int i) {
     };
     int m=(2*i+1)*j;
     int sign=1;
-    while(m>=80)m-=80;
+    /* Exact for the DCT domain 0 <= m <= 741 (20x20). */
+    m-=((m*205)>>14)*80;
     if(m>40)m=80-m;
     if(m>20){m=40-m;sign=-1;}
     return sign*q[m];
