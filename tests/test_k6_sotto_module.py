@@ -70,7 +70,10 @@ def expected(bits):
     for b in b"".join(packets):digest=((digest^b)*16777619)&0xffffffff
     return f"SOTTO dry FNV {digest:08x}"
 
-def emulate(artifacts,base,room=15408,corrupt=None):
+def emulate(artifacts,base,room=17000,corrupt=None,packed=False):
+    # Deliberately generous synthetic arena for the codec algorithm test.
+    # Actual host scratch subtracts its private stack reserve; separate
+    # capacity-failure tests gate the physical 11,776/14,976 byte hosts.
     u=pytest.importorskip("unicorn")
     from unicorn import arm_const as a
     code,entry,cb,deck,bits=artifacts
@@ -96,7 +99,23 @@ def emulate(artifacts,base,room=15408,corrupt=None):
     spi=bytearray(b"\xff"*0x100000)
     spi[:len(cb)]=cb
     deckaddr=0x10000+14*0x4000
-    spi[deckaddr:deckaddr+len(deck)]=deck
+    if packed:
+        from tools.k6_user_store_migrate import compact, locations
+        data=compact({3:b"other object",14:deck})[0]
+        dirs=locations(data)
+        spi[0x10000:0x90000]=data
+        deckaddr=0x10000+dirs[14][0]
+        if corrupt=="dir-one":spi[0x11008]^=1
+        if corrupt=="dir-both":
+            spi[0x10008]^=1
+            spi[0x11008]^=1
+        if corrupt=="dir-overlap":
+            # Recompute the CRC to ensure the test checks extent validation
+            # rather than just rejecting a stale checksum.
+            for off in (0x10000,0x11000):
+                spi[off+16+4*14]=spi[off+16+4*3]
+                struct.pack_into("<I",spi,off+8,zlib.crc32(spi[off+12:off+1036]))
+    else:spi[deckaddr:deckaddr+len(deck)]=deck
     if corrupt=="cb":spi[50]^=1
     if corrupt=="deck":spi[deckaddr+32]^=1
     calls=[];reads=0
@@ -155,9 +174,16 @@ def test_actual_relocated_catalog_bytes(artifacts,base):
     assert reads>450 and stack<=1536
     print(f"module={len(code)} bytes, stack={stack}, SPI reads={reads}, {log[0]}")
 
-@pytest.mark.parametrize("fault,room,rc",[("cb",15408,-10),("deck",15408,-10),
-                                         ("read",15408,-12),(None,11776,-8)])
+@pytest.mark.parametrize("fault,room,rc",[("cb",17000,-10),("deck",17000,-10),
+                                         ("read",17000,-12),(None,11776,-8),(None,14976-1040,-8)])
 def test_fail_closed(artifacts,fault,room,rc):
     r,log,reads,stack=emulate(artifacts,0x20000110,room=room,corrupt=fault)
     assert r==rc and not any("dry FNV" in s for s in log)
-    if room==11776:assert reads==0
+    if room<15000:assert reads==0
+
+@pytest.mark.parametrize("fault,rc",[(None,26),("dir-one",26),("dir-both",-10),("dir-overlap",-10),("deck",-10)])
+def test_packed_deck_discovery(artifacts,fault,rc):
+    r,log,reads,stack=emulate(artifacts,0x20000110,corrupt=fault,packed=True)
+    assert r==rc
+    if rc==26:assert log==[expected(artifacts[-1])]
+    else:assert not any("dry FNV" in s for s in log)

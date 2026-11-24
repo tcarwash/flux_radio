@@ -49,6 +49,48 @@ static int sio_check(sotto_io_t *c,uint32_t addr,unsigned n,uint32_t want) {
 static uint32_t sio_le32(const uint8_t *p){
     return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
 }
+/* KUL2 uses two CRC-protected directory copies. Select by wrap-safe
+ * generation, validating every extent; never interpret a damaged packed
+ * directory as a legacy fixed-slot bank. No 1KB directory stack buffer. */
+static int sio_dir(sotto_io_t *c,uint32_t base,uint32_t *gen,uint32_t *crc){
+    uint8_t h[16],buf[128],used[16]={0};
+    uint32_t check;
+    unsigned pos,id=0;
+    if(sio_read(c,base,h,16))return -1;
+    if(sio_le32(h)!=0x324c554bu)return 0;
+    *gen=sio_le32(h+4);*crc=sio_le32(h+8);
+    if(sio_le32(h+12)!=~*gen)return 0;
+    check=sio_crc(~0u,h+12,4);
+    for(pos=16;pos<1036u;pos+=sizeof(buf)){
+        unsigned n=1036u-pos,i;
+        if(n>sizeof(buf))n=sizeof(buf);
+        if(sio_read(c,base+pos,buf,n))return -1;
+        check=sio_crc(check,buf,n);
+        for(i=0;i<n;i+=4,++id){
+            unsigned start=buf[i],k=buf[i+1],len=(unsigned)buf[i+2]|(unsigned)buf[i+3]<<8,j;
+            if(!len){if(start||k)return 0;continue;}
+            if(k!=(len+4095u)/4096u || start+k>126u)return 0;
+            for(j=start;j<start+k;j++){
+                unsigned mask=1u<<(j&7u);
+                if(used[j>>3]&mask)return 0;
+                used[j>>3]|=(uint8_t)mask;
+            }
+        }
+    }
+    return id==255u && ~check==*crc;
+}
+static int sio_deck_at(sotto_io_t *c,uint32_t a,unsigned slot){
+    uint8_t h[32];
+    if(sio_read(c,a,h,32))return -1;
+    if(h[0]!='K'||h[1]!='6'||h[2]!='M'||h[3]!=1||
+       h[13]!=5u||h[15]!=slot||
+       (unsigned)(h[4]|h[5]<<8)!=SOTTO_DECK_SIZE||
+       h[16]!='K'||h[17]!='6'||h[18]!='S'||h[19]!='C')return 0;
+    if(sio_check(c,a+16,SOTTO_DECK_SIZE,SOTTO_DECK_CRC)==0){
+        c->deck=a+16;return 1;
+    }
+    return c->fault?-1:0;
+}
 static int sio_init(sotto_io_t *c,const k6_api_t *api){
     uint8_t h[32];
     unsigned slot;
@@ -61,18 +103,31 @@ static int sio_init(sotto_io_t *c,const k6_api_t *api){
        sio_le32(h+24)!=SOTTO_CB_CRC||
        ~sio_crc(~0u,h,28)!=sio_le32(h+28)||
        sio_check(c,SOTTO_CB_BASE+32,SOTTO_CB_SIZE,SOTTO_CB_CRC))goto bad;
-    /* Current fixed-slot library; packed KUL2 requires separate discovery API. */
-    for(slot=0;slot<32u;slot++){
-        uint32_t a=0x110000u+slot*0x4000u;
-        if(sio_read(c,a,h,32))goto bad;
-        if(h[0]!='K'||h[1]!='6'||h[2]!='M'||h[3]!=1||
-           h[13]!=5u||h[15]!=slot||
-           (unsigned)(h[4]|h[5]<<8)!=SOTTO_DECK_SIZE||
-           h[16]!='K'||h[17]!='6'||h[18]!='S'||h[19]!='C')continue;
-        if(sio_check(c,a+16,SOTTO_DECK_SIZE,SOTTO_DECK_CRC)==0){
-            c->deck=a+16;return 0;
+    {
+        uint32_t base=0x110000u,g0=0,g1=0,c0=0,c1=0,dir=0;
+        int d0,d1,packed;
+        if(sio_read(c,base,h,4))goto bad;
+        packed=sio_le32(h)==0x324c554bu;
+        if(sio_read(c,base+4096u,h,4))goto bad;
+        packed|=sio_le32(h)==0x324c554bu;
+        if(packed){
+            d0=sio_dir(c,base,&g0,&c0);d1=sio_dir(c,base+4096u,&g1,&c1);
+            if(d0<0||d1<0||(!d0&&!d1))goto bad;
+            if(d0&&d1&&(g1-g0==0x80000000u||(g0==g1&&c0!=c1)))goto bad;
+            dir=(!d0||(d1&&g1!=g0&&g1-g0<0x80000000u))?base+4096u:base;
         }
-        if(c->fault)goto bad;
+        for(slot=0;slot<32u;slot++){
+            uint32_t a=base+slot*0x4000u;
+            int r;
+            if(dir){
+                if(sio_read(c,dir+16u+4u*slot,h,4))goto bad;
+                if((unsigned)(h[2]|h[3]<<8)!=SOTTO_DECK_SIZE+24u)continue;
+                a=base+((unsigned)h[0]+2u)*4096u;
+            }
+            r=sio_deck_at(c,a,slot);
+            if(r==1)return 0;
+            if(r<0)goto bad;
+        }
     }
 bad:
     c->fault=1;return -1;

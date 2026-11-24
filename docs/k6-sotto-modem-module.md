@@ -145,3 +145,60 @@ stack reserve, envelope and loaded module. The earlier 15,408-byte model
 is not an observed Flux allocation. The encoder workspace optimization
 reduces measured stack high-water to 912 bytes with 9,375 bytes of code;
 we still require a proven scratch/IRQ budget before a live encoder.
+
+### Data host and live install integration
+
+The Data pack owns the payload-agnostic native 4800-baud transmit service:
+`fsk_configured(2, words, 33, 4800 | (21 << 16))`, with a checked arena
+buffer, FD6818B identity, full preload, IRQ qualification, bounded timeout,
+local cancellation, independent TX guard and PA-off completion. The caller
+must supply framing, acquire a bounded TX lease and release it afterward.
+The implementation must not restore TX register snapshots into RX after a
+lost lease. `sotto_data_tx.h` consumes a sealed staged session with this API;
+there is no implicit fallback, retry, or RF on installation. The previously
+physically qualified raw RF fixture remains unchanged.
+
+Development-only build command:
+
+    sh firmware/k6-aura/build-sotto-data.sh /path/to/new-pack
+
+This selects Base + Data, live serial, remote UI, packed storage and
+`K6_RAM0=stack`, without IQ. The test image is 107,100 bytes, 15,780 bytes
+below the application limit, build `638596533a67d6ec`, SHA256
+`b79d85b40435dc51f2432c605e8a2d0ae5836328a5cb4c5d1bf042dc20a23ca9`.
+It has the 11,776-byte arena and 6,616-byte main-stack reservation. API 25
+is the current upstream-compatible Flux cancellation ABI ceiling on this
+branch; live library mutation is a capability bit, not a new API number.
+The 14,976-byte `K6_RAM0=1` layout used by the IQ-enabled catalog image does
+not advertise mutation. The existing live install staging limit is 7,168
+bytes including envelope. This profile is not yet a live encoder host:
+the code itself is larger than that staging limit and the encoder needs
+more scratch than either current layout can supply with its private stack.
+
+Actual Cortex-M0 board emulation against the built firmware passed live
+module install/readback/run/replace/remove including the 7168-byte staging
+boundary. It also passed native FSK completion, absent IRQ timeout, stale
+IRQ refusal, and wrong chip refusal. Hardware RF IRQs were modeled; this
+is not a physical test of the new resident Data API.
+
+The codebook/deck discovery path now supports KUL2 as well as fixed slots.
+It validates both directory CRCs, complemented generations, sector counts,
+range and overlap before choosing the newest valid directory; the deck
+still requires exact format, length and full CRC. It recovers from one bad
+copy, rejects two bad CRCs, CRC-valid overlapping extents and a damaged
+deck. Actual relocatable encoder bytes are now 9,939 bytes, stack high-water
+936 bytes in the generous synthetic algorithm harness, bit-exact digest
+`a1471c22`. The test explicitly refuses the real arena sizes rather than
+pretending that the synthetic scratch capacity is available on the radio.
+39 focused module/stage tests passed. Remaining work: share/relocate codec
+and table code or reduce workspace and qualify IRQ stack on target, hook up
+PA11 capture and flush, extend the safe live install staging path for the
+larger module, and verify the new Data service physically. Do not publish
+this development profile as a finished Sotto voice modem.
+
+The fifth full-board integration case also passed: live-installed API-24
+Sotto module sends all six staged FDV1 packets using the common Data
+API. The actual compiled Rust host preloaded all six 33-word buffers;
+independent Python framing matched every byte including guard words.
+The emulated host returns to RX and the module is removed over live serial.
+No physical hardware access during these five Data API emulator cases.

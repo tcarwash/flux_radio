@@ -232,7 +232,11 @@ typedef struct k6_api {
   int (*aprs_position_set)(int32_t lat, int32_t lon);
   /* Level 24: raw 2FSK. op 0 configure RX, 1 receive, 2 send while keyed.
      n=1..128 FIFO words; config=baud | (gain<<16), baud 1200/2400.
-     Buffer must be in module scratch/arena. Caller supplies CRC/framing. */
+     Data-pack 4800 TX extension: op=2, n=33, gain=21 only; success
+     returns 0 with PA off, failure returns negative. Caller supplies any
+     sacrificial guard word and must tx_off after the session. No 4800 RX.
+     Older hosts refuse the extension. Buffer must be in module scratch/arena.
+     Caller supplies CRC/framing. */
   int (*fsk_configured)(uint32_t op, uint16_t *words, uint32_t n, uint32_t config);
   /* Level 25: cooperative cancellation for a live, token-bound foreground
      launch. Returns -1 when not launched with a cancellation token, 0
