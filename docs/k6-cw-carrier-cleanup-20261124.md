@@ -1,5 +1,7 @@
 # Clean CW groundwork — bounded key cancellation and PA cleanup
 
+Follow-up host `tx_on()` PA startup and stale-band driver-gain analysis: [`k6-cw-host-startup-pa-order-20261124.md`](k6-cw-host-startup-pa-order-20261124.md).
+
 **2026-11-24 · Non-Sotto CW track · offline compiled firmware and mocked API only.**
 
 This is deliberately a **small, low-regret CW safety fix**, separate from
