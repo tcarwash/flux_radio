@@ -1,6 +1,8 @@
 #!/bin/sh
 # Build-only Base + Data host for staged Sotto RF integration and live install.
 # Not the full voice encoder/decoder profile. Never touches the radio.
+# For repeated builds of this isolated generated Aura worktree, explicitly
+# choose K6_AURA_RESET_GENERATED=1 to discard old generated overlays.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

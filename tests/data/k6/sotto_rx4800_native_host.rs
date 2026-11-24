@@ -51,6 +51,7 @@ impl Fd {
         c.writes.push((r,v));
         c.regs[r as usize]=v;
         if r==0x02 && v==0 {c.latched=c.pending;c.pending=0;}
+        if r==0x59 && v&0x4000!=0 {c.fifo.clear();c.latched=0;c.pending=0;}
     }
 }
 struct Radio {fd6818: Fd}
@@ -82,7 +83,7 @@ fn reset() {
         }
         TIME=0;PTT_UP=true;KEY=false;CANCEL=false;POWER=false;GUARD_CALLS=0;
         MOD_CTX=ModCtx{app:addr_of_mut!(APP),tx:false,scratch:addr_of_mut!(RAM).cast::<u8>() as usize};
-        RX4800_ACTIVE=false;RX4800_GOT=0;
+        RX4800_ACTIVE=false;RX4800_FRAME_READY=false;RX4800_GOT=0;
     }
 }
 fn event(words:&[u16],flag:u16){
@@ -124,14 +125,18 @@ fn exact_host_callback_full_fsk_fifo_frame_no_transmit() {
     let seen=unsafe{RAM[..33].to_vec()};
     assert_eq!(seen,expected);
     unsafe{
-        assert!(!RX4800_ACTIVE);
-        assert_eq!(RX4800_GOT,0);
+        assert!(RX4800_ACTIVE);
+        assert!(RX4800_FRAME_READY);
+        assert_eq!(RX4800_GOT,33);
         let c=CHIP.as_ref().unwrap();
-        assert_eq!(c.regs[0x59],0);
-        assert_eq!(c.regs[0x3f],0);
+        assert_eq!(c.regs[0x59],0x10f8);
+        assert_eq!(c.regs[0x3f],0x3002);
         assert!(c.fifo.is_empty());
     }
+    assert_eq!(op(1,scratch(),0),-3);
     assert_eq!(op(2,std::ptr::null_mut(),0),0);
+    unsafe {assert!(!RX4800_ACTIVE);assert!(!RX4800_FRAME_READY);
+            assert_eq!(CHIP.as_ref().unwrap().regs[0x59],0);}
     quiet();
 }
 
@@ -206,8 +211,15 @@ fn native_callback_streams_real_virtual_iq_receiver_frames() {
     assert!(data.len()%66==0 && data.len()>=3*66);
     let mut recovered=Vec::with_capacity(data.len());
     reset();
-    for frame in data.chunks_exact(66) {
+    let mut fast_rearms=0;
+    for (n,frame) in data.chunks_exact(66).enumerate() {
+        let before=unsafe{CHIP.as_ref().unwrap().writes.len()};
         assert_eq!(arm(),0);
+        if n>0 {
+            let writes=unsafe{&CHIP.as_ref().unwrap().writes[before..]};
+            assert_eq!(writes, &[(0x59,0x40f8),(0x02,0),(0x59,0x10f8)]);
+            fast_rearms+=1;
+        }
         let source:Vec<u16>=frame.chunks_exact(2)
             .map(|w|u16::from_le_bytes([w[0],w[1]])).collect();
         assert_eq!(source.len(),33);
@@ -222,8 +234,10 @@ fn native_callback_streams_real_virtual_iq_receiver_frames() {
         }
         assert_eq!(unsafe{RAM[..33].to_vec()},source);
         recovered.extend_from_slice(frame);
-        unsafe{assert!(!RX4800_ACTIVE);assert_eq!(CHIP.as_ref().unwrap().underflow,0);}
+        unsafe{assert!(RX4800_ACTIVE);assert!(RX4800_FRAME_READY);
+               assert_eq!(CHIP.as_ref().unwrap().underflow,0);}
     }
+    assert_eq!(fast_rearms,data.len()/66-1);
     assert_eq!(recovered,data);
     assert_eq!(op(2,std::ptr::null_mut(),0),0);
     quiet();

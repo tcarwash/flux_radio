@@ -11,6 +11,8 @@ static mut RX4800_SAVED: [u16; 9] = [0;9];
 #[cfg(k6_fsk4800_rx)]
 static mut RX4800_ACTIVE: bool = false;
 #[cfg(k6_fsk4800_rx)]
+static mut RX4800_FRAME_READY: bool = false;
+#[cfg(k6_fsk4800_rx)]
 static mut RX4800_GOT: u8 = 0;
 #[cfg(k6_fsk4800_rx)]
 static mut RX4800_THRESHOLD: u8 = 4;
@@ -23,6 +25,7 @@ unsafe fn rx4800_stop() {
     // returns. Never restore previous RX snapshots after TX has begun.
     if !RX4800_ACTIVE {return;}
     RX4800_ACTIVE = false;
+    RX4800_FRAME_READY = false;
     RX4800_GOT = 0;
     let ctx = &*addr_of!(MOD_CTX);
     if ctx.app.is_null() || ctx.tx {return;}
@@ -69,8 +72,23 @@ unsafe extern "C" fn mod_fsk4800_rx(op:u32,words:*mut u16,cfg:u32)->i32 {
     if !rx4800_allowed() {return rx4800_fail();}
     if op==0 {
         if cfg>7 {return -1;}
-        if RX4800_ACTIVE {rx4800_stop();}
         let threshold = if cfg==0 {4} else {cfg as u8};
+        if RX4800_ACTIVE && RX4800_FRAME_READY && RX4800_THRESHOLD==threshold {
+            // One half-duplex FDV1 epoch has closely spaced bursts. Retain
+            // the original register snapshot between frames; a complete
+            // restore/reprogram (~2ms simulated) misses the short tail gap.
+            // No active TX/PA, new GPIO ownership, or timer is introduced.
+            let (app,syst) = mod_ctx();
+            let fd = &mut app.radio.fd6818;
+            fd.reg_write(syst,0x59,0x40f8); // reset demod / FIFO
+            fd.reg_write(syst,0x02,0);     // clear stale IRQ latch
+            fd.reg_write(syst,0x59,0x10f8); // RX re-arm
+            RX4800_FRAME_READY=false;
+            RX4800_GOT=0;
+            RX4800_DEADLINE=mod_tick().wrapping_add(50_000);
+            return 0;
+        }
+        if RX4800_ACTIVE {rx4800_stop();}
         let (app,syst) = mod_ctx();
         let fd = &mut app.radio.fd6818;
         // The exact receive register profile from the compiled
@@ -83,6 +101,7 @@ unsafe extern "C" fn mod_fsk4800_rx(op:u32,words:*mut u16,cfg:u32)->i32 {
         }
         RX4800_THRESHOLD=threshold;
         RX4800_GOT=0;
+        RX4800_FRAME_READY=false;
         RX4800_ACTIVE=true; // cleanup can restore snapshot on any failure
         for (r,v) in [(0x59,0x00f8),(0x02,0),(0x3f,0x3002),
                        (0x58,0x00e1),(0x72,0xc194),(0x5a,0x076b),
@@ -95,6 +114,7 @@ unsafe extern "C" fn mod_fsk4800_rx(op:u32,words:*mut u16,cfg:u32)->i32 {
         RX4800_DEADLINE=mod_tick().wrapping_add(50_000);
         return 0;
     }
+    if RX4800_FRAME_READY {return -3;} // caller must re-arm or stop
     if cfg!=0 || !RX4800_ACTIVE || words.is_null()
        || (words as usize)&1 != 0
        || (words as usize) < (*addr_of!(MOD_CTX)).scratch
@@ -124,7 +144,10 @@ unsafe extern "C" fn mod_fsk4800_rx(op:u32,words:*mut u16,cfg:u32)->i32 {
             words.add(RX4800_GOT as usize).write(fd.reg_read(syst,0x5f));
             RX4800_GOT+=1;
         }
-        rx4800_stop();
+        // Keep the RFIC receive configuration and saved snapshot until
+        // re-arm or explicit stop. This is only a *completed RX packet*;
+        // TX safety still requires rx4800_stop before any PA transition.
+        RX4800_FRAME_READY=true;
         return 33;
     }
     0
