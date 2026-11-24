@@ -33,6 +33,11 @@ or move into an installed module with safe load/unload behavior.
 
 ## Offline proof and missing real-firmware boundaries
 
+An [opt-in API31 production-host RX development slice](k6-sotto-api31-rx-development-20261124.md)
+now compiles in Base + Data and boots under Unicorn, but its native
+Rust callback is not yet exercised end-to-end; its API28–30 slots
+remain stubs, so it is not the merged two-way host.
+
 The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
 adds a bounded PCM queue and failure/preemption semantics. Its
 host-memory budget is not a verified K6 SRAM measurement.

@@ -368,6 +368,18 @@ typedef struct k6_api {
   /* Level 30: typed 644-byte microphone ISR ring (start0/stop1/peak2/PTT3).
      Requires independently guarded timer vector, cable/PTT and PA checks. */
   int (*mic_stream)(uint32_t op, void *ring, uint32_t bytes);
+  /* Level 31, opt-in experimental native 4800-baud B-chip 33-word RX.
+     28-30 may be unavailable on research builds: modules MUST check
+     each operation's return rather than assuming those services work.
+     op 0 arm (cfg=0 default 4-word threshold, or 1..7); ptr ignored.
+     op 1 non-blocking pump: 0 in progress, 33 complete (66 raw bytes
+     written to the aligned, caller-owned scratch buffer), negative on
+     refusal, cancellation, PTT, timeout or invalid arguments. cfg must 0.
+     op 2 stop and restore RFIC RX registers. No PA/TX, no ISR/heap use,
+     no 4800 support added to the legacy level-24 fsk_configured API.
+     The caller validates FDV1 CRC/epoch and controls rearming and audio.
+     Not yet physically validated on FD6818B silicon. */
+  int (*fsk4800_rx)(uint32_t op, uint16_t *words33, uint32_t cfg);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

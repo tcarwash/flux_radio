@@ -183,6 +183,7 @@ replay SigMF/NumPy IQ, or connect a receive-only SoapySDR source. See the
 | Emulator development | [Workbench](docs/k6-emulator.md) |
 | Experimental Sotto voice offline loop | [Sotto end-to-end mock](docs/k6-sotto-end-to-end-mock-20261124.md) |
 | SoapyFang Sotto voice lab | [Opt-in ARM→virtual RF→receiver browser lab](docs/k6-soapyfang-sotto-lab-20261124.md) |
+| Experimental native 4800-baud FD6818B RX | [Opt-in API31 firmware and consumer gates](docs/k6-sotto-api31-rx-development-20261124.md) |
 | Serial data experiments | [Throughput and burst protocol](docs/k6-serial-throughput.md) |
 | Development and tests | [Contributing](CONTRIBUTING.md) |
 
