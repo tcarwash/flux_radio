@@ -2,6 +2,8 @@
 
 **2026-11-24 | Host simulation only | Physical RF and flash disabled**
 
+Follow-up causal register-write CW replay and SoapyFang results: [k6-cw-register-trace-replay-20261124.md](k6-cw-register-trace-replay-20261124.md).
+
 This expands the existing [five-mode modulation workplan](k6-modulation-workplan-20261124.md) and [SoapyFang RX replay harness](k6-soapyfang-modulation-validation-20261124.md) by separating *frequency/phase* actuation from *RF envelope* actuation, enumerating feasible and conflicting path combinations, and replaying representative synthetic results through the **existing receive-only** SoapyFang `SigmfSource → RFBackend → ChipModel` filtering chain. The host reference decoders use the observed **filtered IQ**, with known reference timing and complex gain; K6 firmware does **not** decode or transmit these new modes. No hardware access is performed.
 
 ## Evidence ledger / path identifiers
