@@ -35,6 +35,20 @@ The button executes **one bounded virtual session**, shows packet/codec/
 SPI/PCM results and enables the browser's decoded-receiver WAV player
 only after strict acceptance.
 
+### Faster repeated tuning
+
+Module code, native codec reference and decoder are cached by the content
+SHA-256 of their compilation inputs. A changed encoder/ABI source forces a
+new build, even in a dirty worktree; changing only C/N, frequency offset,
+prefix fault, ADC/SPI model parameters reuses the same compiled binaries.
+The cache is never shared across server sessions and is cleared at shutdown.
+
+In one local 1.2-second fixture comparison, compilation/setup improved
+**2.107 s -> 0.002 s** and complete end-to-end execution
+**4.706 s -> 2.380 s** on the second identical trial (both passed
+exactly). These are local development-host wall times, not RF or silicon
+latency and not guaranteed across machines.
+
 The UI's normal **Board PTT** switch still controls the emulated Aura
 GPIO. The separate Sotto lab button does **not** connect to the running
 firmware's module launcher or physical radio. Its state machine models

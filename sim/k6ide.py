@@ -715,6 +715,8 @@ def main():
         create_app(board, sotto_lab=sotto_lab).run(host=args.host, port=args.port,
                                                   threaded=True, debug=False)
     finally:
+        if sotto_lab is not None:
+            sotto_lab.close()
         board.close()
 
 

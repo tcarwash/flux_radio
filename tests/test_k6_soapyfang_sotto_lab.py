@@ -77,6 +77,20 @@ def test_real_arm_virtual_rf_speaker_and_overload():
         assert (w.getframerate(),w.getnchannels(),w.getsampwidth(),w.getnframes())==(8000,1,2,9600)
         assert any(w.readframes(9600))
     assert lab.state()['audio_available']
+    assert not r['compiled_artifacts_reused']
+    assert lab.state()['cached_fixtures']==['mixed']
+    # Vary only RF parameters: no expensive ARM/native reference rebuild.
+    second=client.post('/api/sotto/run',json={
+        "fixture":"mixed","cn_db":25,"offset_hz":0,
+        "prefix_every":0,"adc_cycles":4800,"spi_us":10,
+    })
+    assert second.status_code==200,second.json
+    again=second.json['report']
+    assert again['compiled_artifacts_reused']
+    assert again['compile_setup_seconds']<1.0
+    assert again['codec_frames']==30 and again['rf_packets_received']==6
+    assert again['audio_samples']==9600 and again['tx_idle']
+    assert second.json['report']['source_revision']==r['source_revision']
 
     # Stress failure must clear the previous valid audio and return RX safely.
     fail=client.post('/api/sotto/run',json={
@@ -88,3 +102,21 @@ def test_real_arm_virtual_rf_speaker_and_overload():
     assert f['tx_idle'] and f['radio_returned_to_rx']
     assert not lab.state()['audio_available']
     assert client.get('/api/sotto/audio.wav').status_code==409
+
+def test_content_hash_invalidates_build_cache_without_git_changes(monkeypatch):
+    lab=SottoVoiceLab(ROOT)
+    original=lab._fingerprint()
+    read_bytes=Path.read_bytes
+
+    def changed_bytes(p):
+        data=read_bytes(p)
+        return data+b"\n/* dry-run source mutation */" if p.name=="sotto_live_tx.c" else data
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path,"read_bytes",changed_bytes)
+        changed=lab._fingerprint()
+    assert original!=changed
+    assert lab._fingerprint()==original
+    lab.close()
+    with pytest.raises(RuntimeError,match="closed"):
+        lab.run()

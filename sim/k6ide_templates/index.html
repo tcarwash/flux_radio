@@ -117,7 +117,7 @@ if(sottoForm)sottoForm.addEventListener('submit',async e=>{
     const result=await response.json();
     if(!result.report)throw Error(result.error||'No modem result');
     const r=result.report;
-    status.textContent=`${r.passed?'PASS':'MODEL LIMIT'} · ${r.codec_frames} exact superframes · ${r.rf_packets_received} RF packets · ${r.samples_captured}/${r.samples_in} PCM · ${r.spi_reads} SPI reads · TX idle ${r.tx_idle?'yes':'NO'} · return RX ${r.radio_returned_to_rx?'yes':'NO'}`;
+    status.textContent=`${r.passed?'PASS':'MODEL LIMIT'} · ${r.codec_frames} exact superframes · ${r.rf_packets_received} RF packets · ${r.samples_captured}/${r.samples_in} PCM · ${r.spi_reads} SPI reads · ${r.compiled_artifacts_reused?'cached build':'fresh build'} · ${r.total_wall_seconds}s · TX idle ${r.tx_idle?'yes':'NO'} · return RX ${r.radio_returned_to_rx?'yes':'NO'}`;
     if(!r.passed)throw Error('Offline model did not complete the voice session (see statistics above)');
     player.src='/api/sotto/audio.wav?'+Date.now();player.hidden=false;
     notify('Sotto virtual RX audio ready');

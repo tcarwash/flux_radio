@@ -33,6 +33,11 @@ or move into an installed module with safe load/unload behavior.
 
 ## Offline proof and missing real-firmware boundaries
 
+The [SoapyFang browser lab](k6-soapyfang-sotto-lab-20261124.md)
+exposes the full virtual voice loop and accepted receiver PCM for repeated,
+parameterized test runs, with source-aware cached compilation. It remains a
+separate module bench, not the actual firmware's driver or on-device receiver.
+
 The actual compiled Cortex-M0 Sotto TX code is emulated in Unicorn. The
 virtual air receiver runs on the emitted IQ and the *received* CRC/FDV1-
 validated compressed stream is decoded with pinned native Sotto1200 C.
