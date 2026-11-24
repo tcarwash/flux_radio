@@ -121,8 +121,13 @@ def test_status_does_not_touch_device_and_blocked_is_not_timer_failure(monkeypat
     monkeypatch.setattr(q,"review_status",lambda:
                         {"validation":{"counts":{"APPROVED":1},"journal_missing":False},
                          "postmortem":{"counts":{"COMPLETE":2},"journal_missing":False}})
+    monkeypatch.setattr(q,"intake_status",lambda:{"journal_missing":False,
+        "snapshot_missing":False,"counts":{"TRIAGED":2},"issues_seen":24,
+        "open_without_intake":22,"last_scan_utc":"2026-11-24T17:40:00Z"})
     report=q.status(now=NOW)
     assert report["health"]=="HEALTHY"
+    assert report["intake"]["open_without_intake"]==22
+    assert any("22 GitHub RF issues" in x for x in report["alerts"])
     assert "experiment #9: blocked, no automatic retry" in report["alerts"]
 
 
@@ -166,3 +171,23 @@ def test_missing_attempt_journal_reports_degraded(monkeypatch):
     x=q.status(now=NOW)
     assert x["health"]=="DEGRADED"
     assert any("journal missing" in line for line in x["alerts"])
+
+
+def test_intake_backlog_and_missing_snapshot_visible(monkeypatch,tmp_path):
+    monkeypatch.setattr(q,"STATEDIR",tmp_path)
+    assert q.intake_status()["snapshot_missing"]
+    (tmp_path/"intake.json").write_text(json.dumps({"schema":1,"jobs":{
+        "issue-30:a":{"state":"REVIEW_SUBMITTED"},
+        "issue-21:b":{"state":"TRIAGED"}}}))
+    (tmp_path/"intake-snapshot.json").write_text(json.dumps({
+        "mode":"READ_ONLY_PREPARATION_INTAKE","issues_seen":24,
+        "open_without_intake":22,"hardware_approvals_created":0,
+        "last_scan_utc":"2026-11-24T22:50:00Z", "daily_limit":6,
+        "submitted_today":2}))
+    x=q.intake_status()
+    assert x["issues_seen"]==24 and x["open_without_intake"]==22
+    assert x["counts"]=={"REVIEW_SUBMITTED":1,"TRIAGED":1}
+    with pytest.raises(ValueError, match="unexpectedly claims"):
+        (tmp_path/"intake-snapshot.json").write_text(json.dumps({
+            "mode":"READ_ONLY_PREPARATION_INTAKE","hardware_approvals_created":1}))
+        q.intake_status()

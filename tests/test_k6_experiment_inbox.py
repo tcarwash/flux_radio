@@ -137,3 +137,11 @@ def test_live_query_failure_is_unknown_not_no_matches(tmp_path,capsys):
         raise inbox.InboxError("network unavailable")
     assert inbox.main(["--query","Sotto","--registry",str(reg)],fetch=fail)==2
     assert "Do not interpret this as zero results" in capsys.readouterr().err
+
+
+def test_intake_preparation_assessment_is_not_an_rf_pass():
+    item=comment(30,"INTAKE ASSESSMENT | 0123456789abcdef | NEEDS_PINNED_HARNESS",ident=5642)
+    r=inbox.marker(item,repo=REPO,owner=OWNER,queue=11)
+    assert r["issue"]==30 and r["category"]=="INTAKE"
+    assert r["state"]=="NEEDS_PINNED_HARNESS"
+    assert r["state"]!="PASS"

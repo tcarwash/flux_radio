@@ -254,17 +254,41 @@ def bench_status(check_github=False):
     return data
 
 
+def intake_status():
+    state=read_jobs(STATEDIR / "intake.json")
+    snapshot=read_json(STATEDIR / "intake-snapshot.json")
+    counts={}
+    for record in state["jobs"].values():
+        phase=record.get("state","UNKNOWN")
+        counts[phase]=counts.get(phase,0)+1
+    if snapshot is None:
+        return {"journal_missing":state["missing"],"snapshot_missing":True,
+                "counts":counts,"issues_seen":None,"open_without_intake":None,
+                "last_scan_utc":None}
+    if not isinstance(snapshot,dict) or snapshot.get("mode")!="READ_ONLY_PREPARATION_INTAKE":
+        raise ValueError("invalid autonomous intake snapshot")
+    if snapshot.get("hardware_approvals_created")!=0:
+        raise ValueError("intake unexpectedly claims hardware approval")
+    return {"journal_missing":state["missing"],"snapshot_missing":False,
+            "counts":counts,"issues_seen":snapshot.get("issues_seen"),
+            "open_without_intake":snapshot.get("open_without_intake"),
+            "last_scan_utc":snapshot.get("last_scan_utc"),
+            "daily_limit":snapshot.get("daily_limit"),
+            "submitted_today":snapshot.get("submitted_today")}
+
+
 def status(now=None, check_github=False):
     now = now or datetime.now().astimezone()
     result = {"timestamp": now.isoformat(), "health": "UNKNOWN",
               "scheduler": scheduler_status(now),
               "bench": bench_status(check_github=check_github),
               "offline": None, "hardware": None, "reviews": None,
-              "alerts": []}
+              "intake": None, "alerts": []}
     try:
         result["offline"] = offline_status()
         result["hardware"] = hardware_status()
         result["reviews"] = review_status()
+        result["intake"] = intake_status()
     except (OSError, ValueError, KeyError) as exc:
         result["alerts"].append(f"local state unreadable: {exc}")
     if not result["scheduler"]["healthy"]:
@@ -288,6 +312,17 @@ def status(now=None, check_github=False):
         if result["reviews"]["postmortem"]["journal_missing"] and result["hardware"] and result["hardware"]["historical_attempts"]:
             result["alerts"].append("postmortem journal missing for hardware attempts")
             state_missing = True
+    intake=result.get("intake")
+    if intake:
+        if intake.get("snapshot_missing"):
+            result["alerts"].append("intake scan has not run; GitHub backlog is unknown")
+        elif intake.get("open_without_intake"):
+            result["alerts"].append(
+                f"{intake['open_without_intake']} GitHub RF issues need first intake assessment")
+        blocked=sum(intake["counts"].get(x,0) for x in (
+            "INFRA_FAILURE","UNPARSEABLE_REVIEW","SUBMISSION_STARTED"))
+        if blocked:
+            result["alerts"].append(f"{blocked} intake assessments require intervention")
     if result["offline"] and result["offline"]["pending"]:
         result["alerts"].append(f"{result['offline']['pending']} offline jobs pending")
     manifest_drift = False
@@ -310,6 +345,8 @@ def status(now=None, check_github=False):
                         and result["offline"] is not None
                         and result["hardware"] is not None
                         and result["reviews"] is not None
+                        and result["intake"] is not None
+                        and not result["intake"].get("snapshot_missing")
                         and not state_missing and not manifest_drift
                         and (not check_github or result["bench"]["github"] != "unknown")
                         else "DEGRADED")
@@ -327,6 +364,14 @@ def display(data):
     bench = data["bench"]
     print(f"  Bench       local {bench['local']}; "
           f"GitHub {bench['github']}")
+    intake=data.get("intake")
+    if intake:
+        print(f"  Intake      {intake.get('issues_seen') or 0} GitHub RF issues"
+              f" · {intake.get('open_without_intake') or 0} not yet reviewed")
+        counts=intake.get("counts",{})
+        print(f"              {counts.get('TRIAGED',0)} triaged"
+              f" · {counts.get('REVIEW_SUBMITTED',0)} preparing"
+              f" · {counts.get('PUBLISH_PENDING',0)} awaiting publication")
     offline = data["offline"]
     if offline:
         print(f"  Offline     {offline['passed']}/{offline['registered']} complete"
