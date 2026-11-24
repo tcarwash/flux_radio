@@ -321,3 +321,30 @@ def test_live_packed_system_modules_can_be_sixteen_kib(tool):
     blocked=FakeLink(slots={30:b"X"*142})
     with pytest.raises(ValueError,match="slot30"):
         tool.snapshot_state(blocked)
+
+
+
+def test_signing_mode_uses_cable_only_crc_not_siphash(tool,monkeypatch):
+    # The previous physical attempt returned -104, indicating KM_BAD_TAG.
+    # Live radio capabilities must determine the envelope type.
+    class CableOnly(FakeLink):
+        def module_capabilities(self):
+            return {"cable_only":True}
+    monkeypatch.setattr(tool,"_read_module_key",
+                        lambda: (_ for _ in ()).throw(
+                            AssertionError("key must not be read for cable-only radio")))
+    assert tool._signing_key_for_radio(CableOnly()) is None
+
+
+def test_signing_key_requires_explicit_live_keyed_capability(tool,monkeypatch):
+    class Keyed(FakeLink):
+        def module_capabilities(self):
+            return {"cable_only":False}
+    secret=b"0123456789abcdef"
+    monkeypatch.setattr(tool,"_read_module_key",lambda:secret)
+    assert tool._signing_key_for_radio(Keyed())==secret
+    with pytest.raises(ValueError,match="authentication mode"):
+        tool._signing_key_for_radio(FakeLink())
+    with pytest.raises(ValueError,match="authentication mode"):
+        tool._signing_key_for_radio(type("Ambiguous",(),{"module_capabilities":
+                                lambda self:{"cable_only":"false"}})())

@@ -305,9 +305,26 @@ def _build_probe_image(link):
     level = k6mod.source_level(src)
     if level != 2:
         raise ValueError("probe module level is %r, want 2 (RX-only)" % (level,))
-    key = _read_module_key()
+    key = _signing_key_for_radio(link)
     serial = _new_serial(link)
     return k6mod.image(code, entry, serial, key, level=level, lib=TEMP_SLOT)
+
+
+def _signing_key_for_radio(link):
+    """Select signed envelope from authenticated, live module capabilities.
+
+    A cable-only image expects CRC32 plus its complement, NOT keyed
+    SipHash. A mismatch is rejected at KM_BAD_TAG (-4, surfaced as -104
+    by live KUL2 mutation). Never guess firmware mode.
+    """
+    if not callable(getattr(link,"module_capabilities",None)):
+        raise ValueError("radio authentication mode unavailable; refuse mutation")
+    caps=link.module_capabilities()
+    if not isinstance(caps,dict) or type(caps.get("cable_only")) is not bool:
+        raise ValueError("radio authentication mode unavailable; refuse mutation")
+    if caps["cable_only"]:
+        return None
+    return _read_module_key()
 
 
 def _read_module_key():
@@ -396,7 +413,7 @@ def restore_state(link,prefix,manifest,vfo_backup):
         if TEMP_SLOT in directory:
             sys.path.insert(0,repo_root())
             from modem import k6mod
-            key=_read_module_key()
+            key=_signing_key_for_radio(link)
             serial=_new_serial(link)
             removal=k6mod.image(b"K6ERASE",0,serial,key,lib=TEMP_SLOT,remove=True)
             link.mutate_library(removal)

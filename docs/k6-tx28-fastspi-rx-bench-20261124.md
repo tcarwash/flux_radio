@@ -60,3 +60,13 @@ loader staging limit. The exact packed-directory copy/verify accepts full
 16 KiB system entries and still refuses an occupied temporary slot30. The
 first one-shot manifest was consumed after a pre-install metadata refusal;
 a corrected run requires a new immutable source, manifest, and review.
+
+
+Correction after physical return -104, 2026-11-24: the live KUL2
+firmware's kl_live_mutate maps km_live_lib_verify error -4 (KM_BAD_TAG)
+to -104. Cable-only builds require CRC32/complement envelope tags
+(k6mod.image(..., key=None)); keyed builds require authenticated
+SipHash envelope tags. The harness now checks the radio's live
+module_capabilities().cable_only before both installation and cleanup;
+unknown mode refuses mutations. This is a new candidate and needs
+independent review, frozen manifest, and a new one-shot session.
