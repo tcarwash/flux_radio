@@ -77,7 +77,7 @@ not automatically an AX.25 modem.
 
     python3 tools/k6_kiss_tnc.py modes
     python3 tools/k6_kiss_tnc.py get
-    python3 tools/k6_kiss_tnc.py set APRS-1200
+    python3 tools/k6_kiss_tnc.py set APRS-1200\n    python3 tools/k6_kiss_tnc.py stop
     python3 tools/k6_kiss_tnc.py serve --tcp-port 8001
 
 The TCP server defaults to 127.0.0.1, one KISS client, and bounded

@@ -387,3 +387,15 @@ def test_installed_mode_registry_is_safe_opt_in():
     assert "level == 26" in text
     assert "FLUXTNC_CAN_DISCOVER(api)" in text
     assert "mode_info" in text
+
+
+def test_stop_command_has_zero_arguments_and_no_tx_intent(lib):
+    op,alen=C.c_uint(),C.c_uint()
+    raw=b"FX\\x01\\x06".replace(b"\\x01",bytes([1])).replace(b"\\x06",bytes([6]))
+    assert lib.fx_parse(raw,len(raw),C.byref(op),C.byref(alen)) == 0
+    assert op.value == 6 and alen.value == 0
+    assert lib.sethw_validate(6,0) == 0
+    assert lib.sethw_validate(6,2) != 0
+    text=open(TNC).read()
+    assert "if (s->stop_requested)" in text
+    assert "break; /* never consume a queued DATA frame after STOP */" in text
