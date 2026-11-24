@@ -403,7 +403,8 @@ def test_compiled_live_coop_cancel_token(simulated_radio,monkeypatch):
     assert bytes(port.board.flash_data)==before
     assert objects(port.board.flash_data[BASE:END])=={26:env}
 
-def test_compiled_sotto_resource_module(simulated_radio,monkeypatch):
+@pytest.mark.parametrize("live_test",[False,True])
+def test_compiled_sotto_resource_module(simulated_radio,monkeypatch,live_test):
     """Real host, real packed directory, real live install, no RF."""
     image=os.environ.get("K6_SIM_LIVE_IMAGE")
     if not image:pytest.skip("set K6_SIM_LIVE_IMAGE")
@@ -413,7 +414,7 @@ def test_compiled_sotto_resource_module(simulated_radio,monkeypatch):
     from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
     from k6_user_store_migrate import compact,objects,BASE,END
     import tempfile
-    code,entry=build(host_resources=True)
+    code,entry=build(host_resources=True,live_test=live_test)
     with tempfile.TemporaryDirectory() as d:
         so=Path(d)/"tables.so"
         subprocess.run(["cc","-shared","-fPIC",str(FIXED/"fx_tables.c"),"-o",str(so)],check=True)
