@@ -54,6 +54,45 @@ numbers, not an actual complete position-independent module measurement.
 Reuse the common arena-expansion effort, not a Sotto-specific fixed address.
 The target must prove its actual arena and scratch capacity at run time.
 
+### Actual relocatable encoder qualification (2026-11-24)
+
+`tools/k6_sotto_module.py --out NEW_DIRECTORY` builds the `SOTTO TEST`
+module binary plus the deterministic public `sotto-ivf.k6sc` search-table deck.
+The module uses API 5 read-only SPI and the existing fixed-slot library format.
+It validates the pinned codebook header and complete codebook and IVF deck CRCs.
+The generated temporary encoder source adds an explicit per-instance SPI
+context to the upstream shape-search call chain; it does not modify the Sotto
+submodule or depend on reserved interrupt vectors or mutable statics. The Sotto
+pin advances to `598f1bce87c22ebada2b9d0d1fcfd89107b33a09`, the exact slim
+encoder revision used in the research branch.
+
+The final binary is 9,271 bytes, including the relocatable stack trampoline;
+its two-address link check passes. The 4,182-byte search deck is separate from
+module code. It is a data artifact, not an executable module; installation
+must eventually use the verified deck/packed-library workflow. The current
+bundle is for offline development and must not be published as a working modem.
+
+Tests execute the actual catalog-format binary at two addresses in Cortex-M0
+Unicorn with a read-only mock SPI API. The unmodified upstream native encoder
+is an independent reference for all 26 six-byte superframes from 104 synthetic
+10 ms blocks. All encoded bytes match, as does the digest of the six FDV1
+packets (`a1471c22`, FNV-1a). Fault cases reject a damaged codebook, damaged deck,
+read failure during encoding, or the current smaller arena. The emulator
+forbids all TX, radio register, and flash-write calls.
+
+The usual Flux dedicated module stack is 1,152 bytes, below the measured
+encoder peak. The qualification module therefore uses a 2,048-byte aligned
+stack within caller-provided scratch with a 32-byte guard. Both relocations
+preserve the original SP, use less than 256 bytes of host stack, retain the
+scratch guard, and show 1,184 bytes of scratch-stack use. Hardware API/IRQ
+stack overhead and interrupt behavior remain unqualified. The 15,408-byte
+arena leaves at most 6,113 bytes of scratch before alignment and any telemetry;
+with 3,152 bytes of encoder state, 560 bytes of record state, and 2,080 bytes
+of reserved stack/guard, only about 320 bytes remain. The complete microphone
+ring and RF driver do **not** yet fit in this conservative budget. Reduce
+capture size, reuse phase-exclusive memory, optimize code, or expand the arena
+before enabling real TX. The current 11,776-byte arena cannot run this module.
+
 ### Next implementation and bench order
 
 1. Bring the previously qualified slim encoder/SPI deck and microphone
