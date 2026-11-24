@@ -123,3 +123,36 @@ def test_external_audio_fixture(tmp_path):
     assert row["samples"]==row["samples_expected"]==9600
     assert row["accepted"] and row["codec_exact"] and row["wire_decoder_agrees"]
     assert row["codebook_profile"]["reads"]>0
+
+
+def test_actual_resource_contract(actual):
+    """Simulated deck reads require successful resource_open, as on-device."""
+    from sim.k6emu.rf.virtual_link import VirtualAir, VirtualTxBackend
+    from tools.k6_sotto_virtual_link import HZ, LiveTx
+    air=VirtualAir(Channel())
+    backend=VirtualTxBackend(air,240000,HZ)
+    try:
+        e=LiveTx(actual,backend)
+        a=e.A
+        regs=(a.UC_ARM_REG_R0,a.UC_ARM_REG_R1,a.UC_ARM_REG_R2,a.UC_ARM_REG_R3)
+        def invoke(name,args):
+            for reg,value in zip(regs,args):e.mu.reg_write(reg,value)
+            e.on_stub(e.mu,e.stubs+16*e.names.index(name)+1,2,None)
+            val=e.mu.reg_read(regs[0])
+            return val-(1<<32) if val>>31 else val
+        assert invoke("resource_read",(1,0,e.scr,4))==-1
+        assert invoke("resource_open",(2,0,0,0))==-1
+        assert invoke("resource_open",(14,0,0,0))==len(actual["deck"])
+        assert invoke("resource_read",(1,0,e.scr,4))==0
+        assert bytes(e.mu.mem_read(e.scr,4))==actual["deck"][:4]
+    finally:backend.close()
+
+
+def test_no_wrap_fdv1_control(actual):
+    """FDV1 deliberately forbids wrapped voice IDs, in both C and Python."""
+    p=bytearray(62)
+    p[:4]=bytes((0xe2,1,2,0));p[4:12]=b"TESTTAG!"
+    p[12:16]=bytes((254,1,8,4));p[16:20]=b"FDV1"
+    packet=seal(p)
+    assert decode_session([packet])[1]["valid"]==0
+    assert wire_decode(actual,[packet])[0][0]==0
