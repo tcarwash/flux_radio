@@ -53,3 +53,10 @@ supervisor-driven bench run with live-hardware provenance can PASS.
 Physical PASS requires exact `ops == 10000`, zero errors, fully preserved
 state, and live-hardware provenance. Mock/offline/replayed data is never a
 physical PASS regardless of counts.
+
+Live KUL2 metadata correction, 2026-11-24: system module entries in the
+original radio directory can occupy 16,384 bytes, not merely the 7,168-byte
+loader staging limit. The exact packed-directory copy/verify accepts full
+16 KiB system entries and still refuses an occupied temporary slot30. The
+first one-shot manifest was consumed after a pre-install metadata refusal;
+a corrected run requires a new immutable source, manifest, and review.

@@ -323,7 +323,7 @@ def _read_module_key():
 
 
 def _packed_inventory(link):
-    """Exact populated KUL2 directory; never read fabricated 16KiB slots."""
+    """Exact populated KUL2 directory; system slots may reach 16 KiB."""
     directory=link.library_directory()
     if not isinstance(directory,dict):
         raise ValueError("radio does not expose verified packed KUL2 directory")
@@ -331,7 +331,7 @@ def _packed_inventory(link):
         raise ValueError("temporary slot30 is occupied; no safe exact restoration")
     out={}
     for slot,(_,size) in directory.items():
-        if not isinstance(slot,int) or not 0<=slot<LIB_SLOTS or not 24<=size<=7168:
+        if not isinstance(slot,int) or not 0<=slot<LIB_SLOTS or not 24<=size<=LIB_SLOT_BYTES:
             raise ValueError("invalid live packed module metadata")
         blob=bytes(link.library_read(slot,size))
         if len(blob)!=size:

@@ -307,3 +307,17 @@ def test_parse_and_score_distinguish_10k_from_384(tool):
     parsed_384 = tool.parse_probe_reports(lines_10k, 384)
     ok, _ = tool.score_run(parsed_384, {"hardware": True, "mock": False}, True)
     assert ok is False
+
+
+def test_live_packed_system_modules_can_be_sixteen_kib(tool):
+    # Actual KUL2 firmware has original system slots 16,384 bytes and
+    # irregular user images including 10,180 and 9,152 bytes.
+    link=FakeLink(slots={0:b"A"*16384, 24:b"B"*10180, 31:b"C"*142})
+    snapshot=tool.snapshot_state(link)
+    assert snapshot["slot_count"]==3
+    assert snapshot["slots"]["0"]["bytes"]==16384
+    assert snapshot["slots"]["24"]["bytes"]==10180
+    assert snapshot["temp_slot30_empty"] is True
+    blocked=FakeLink(slots={30:b"X"*142})
+    with pytest.raises(ValueError,match="slot30"):
+        tool.snapshot_state(blocked)
