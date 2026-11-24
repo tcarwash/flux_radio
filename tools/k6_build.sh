@@ -142,7 +142,9 @@ fi
 # Keep the legacy verifier ceiling unchanged. The append-only level 25
 # callback exists only on live-enabled firmware with the SPI module API.
 # Raw-FSK-only non-live images continue to declare API level 24.
-if [ "${K6_RESOURCE_API:-0}" = 1 ]; then
+if [ "${K6_ASYNC_FSK:-0}" = 1 ]; then
+  CFLAGS="$CFLAGS -DKM_LEVEL=28"
+elif [ "${K6_RESOURCE_API:-0}" = 1 ]; then
   CFLAGS="$CFLAGS -DKM_LEVEL=27"
 elif [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then
   CFLAGS="$CFLAGS -DKM_LEVEL=25"

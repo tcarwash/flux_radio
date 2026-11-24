@@ -47,6 +47,12 @@ if [ "$K6_LIVE_SERIAL" = 1 ] && [ "${K6_RAM0:-0}" = balanced ] && [ "${K6_USER_S
   esac
 fi
 export K6_RESOURCE_API
+K6_ASYNC_FSK=${K6_ASYNC_FSK:-0}
+case "$K6_ASYNC_FSK" in 0|1) ;; *) exit 1;; esac
+if [ "$K6_ASYNC_FSK" = 1 ]; then
+  [ "$K6_RESOURCE_API" = 1 ] && [ "${K6_CONFIG_FSK:-0}" = 1 ] && [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] || { echo "Async FSK requires balanced Data host"; exit 1; }
+fi
+export K6_ASYNC_FSK
 
 case "$FEATURES" in
   *[!a-zA-Z0-9_,-]*) echo "Use a comma-separated list of Cargo features." >&2; exit 1 ;;
@@ -174,6 +180,7 @@ python3 "$HERE/apply-fm-budget-gate.py"
 if [ "${K6_FONT_SUBSET:-0}" = 1 ]; then python3 "$HERE/apply-font-subset.py"; fi
 python3 "$HERE/apply-live-serial.py"
 python3 "$HERE/apply-module-resources.py"
+python3 "$HERE/apply-async-fsk.py"
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then
   [ "${K6_LIVE_SERIAL:-0}" = 1 ] || { echo "Remote UI requires live serial" >&2; exit 1; }
   case ",$FEATURES," in
@@ -235,6 +242,7 @@ if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then
   [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ] || { echo "Config FSK requires Data and watchdog" >&2; exit 1; }
   PACK_CFG="$PACK_CFG --cfg k6_config_fsk"
 fi
+if [ "$K6_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_async_fsk"; fi
 if [ "${K6_EL_POWER:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_el_power"; fi
 if [ "${K6_LEAN_TXDOG:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_lean_txdog"; fi
 if [ "${K6_HEALTH_TELEMETRY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_health_telemetry"; fi

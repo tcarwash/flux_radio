@@ -253,6 +253,10 @@ typedef struct k6_api {
      1=opened deck payload. Neither grants flash write access. */
   int (*resource_open)(uint32_t slot);
   int (*resource_read)(uint32_t kind, uint32_t off, void *buf, uint32_t n);
+  /* Experimental API 28: existing guarded 33-word native TX, no blocking
+     wait. op 0=start, 1=poll, 2=abort. Caller owns the guarded TX lease.
+     Start returns 0; poll returns 0 busy / 1 completed / negative failure. */
+  int (*fsk_async)(uint32_t op, const uint16_t *words, uint32_t n);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u
