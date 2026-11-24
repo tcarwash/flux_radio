@@ -52,3 +52,16 @@ post-checks (31 original slot hashes, VFOs, build, idle) + evidence.
   operator inspection is required before anything else.
 - The tool never auto-restarts, never retries a commit, never flashes MCU
   firmware, and never transmits.
+
+## Review hardening
+
+The **execute path** refuses a dirty tracked worktree. Its source revision,
+complete compiled module digest, C source/header digests, and harness SHA256
+are bound to the trusted owner's real, recent issue-11 GitHub ACK, not merely
+to a local JSON document. The whole-bench lock remains held through verify.
+
+Only a **single, complete, whitelisted Flux KISS control frame** may pass the
+host write filter. An incomplete frame, appended frame, type-0 DATA command,
+or non-APRS SET is rejected before writing. Evidence records the absence of
+host-sent DATA, plus standby/transmit samples before and after the control
+session. It does **not** claim continuous independent RF monitoring.

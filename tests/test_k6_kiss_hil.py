@@ -281,3 +281,40 @@ def test_local_ack_without_github_permalink_is_not_authority(hil,tmp_path):
     file.write_text(json.dumps(payload))
     with pytest.raises(hil.HilError,match="GitHub comment"):
         hil.validate_lease_ack(str(file),digest,"tcarwash",900,time.time())
+
+@pytest.mark.parametrize("op,payload", [(1,b""),(2,b""),(3,bytes((1,0))),(5,b""),(6,b"")])
+def test_auditor_permits_one_exact_flux_control(hil,kiss,op,payload):
+    assert hil.describe_kiss_write(kiss.control(op,payload)) == "control"
+
+@pytest.mark.parametrize("raw,classification", [
+    (b"\xc0\x00hello\xc0","DATA-FORBIDDEN"),
+    (b"\xc0\x06FX\x01\x03\x00\x01\xc0","unsafe-set"), # non-APRS
+    (b"\xc0\x06FX\x01\x09\xc0","unsupported-control"),
+    (b"\xc0\x06FX\x01\x02\xc0\xc0\x00X\xc0","multi-or-malformed"),
+    (b"\xc0\x06FX\x01\x02","unframed"),
+    (b"\xc0\x06FX\x01\x02\xc0garbage","unframed"),
+    (b"\xc0\x06FX\x01\x04\xc0","unsupported-control"), # CAPS excluded
+    (b"\xc0\x06FX\x01\x05\x01\xc0","unexpected-control-payload"),
+])
+def test_auditor_rejects_all_non_whitelisted_commands(hil,raw,classification):
+    assert hil.describe_kiss_write(raw) == classification
+
+def test_hil_freeze_manifest_attests_source_and_host_script(hil):
+    manifest,code,entry = hil.freeze()
+    assert len(manifest["git_head"])==40
+    assert len(manifest["harness_sha256"])==64
+    assert manifest["git_policy"].startswith("clean-tracked-tree")
+    assert len(manifest["code_sha256"])==64 and manifest["entry"]==entry
+    assert code[:4]==b"K6NM"
+
+@pytest.mark.parametrize("args",[
+    ["--session-timeout","301"],
+    ["--session-timeout","0"],
+    ["--lease-max-age-s","901"],
+    ["--lease-max-age-s","0"],
+])
+def test_execute_clamps_unbounded_session_or_lease_windows(hil,monkeypatch,args):
+    def no_run(*a,**k):
+        raise AssertionError("rejected parameters must never access hardware")
+    monkeypatch.setattr(hil,"execute",no_run)
+    assert hil.main(["--execute","--lease-ack","x","--trusted-actor","tcarwash",*args])==2

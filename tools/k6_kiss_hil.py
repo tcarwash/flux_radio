@@ -102,7 +102,9 @@ TEMP_SLOT = 30
 EXPECTED_OCCUPIED_SLOTS = 31
 EXPECTED_VFO_A_HZ = 433_500_000
 EXPECTED_VFO_B_HZ = 144_390_000
-EXPECTED_GIT_PREFIX = "e4650a44"
+# The exact clean tracked HEAD is bound by the trusted GitHub ACK's
+# SHA256 manifest; there is deliberately no self-referential fixed commit.
+GIT_POLICY = "clean-tracked-tree + exact HEAD/source/code/harness digest"
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BENCH_LOCK = os.path.expanduser("~/.cache/flux/bench.lock")
 BENCH_HOLD_FILE = os.path.expanduser("~/.cache/flux/bench.hold")
@@ -208,7 +210,7 @@ def freeze():
         "format": 1,
         "harness": "tools/k6_kiss_hil.py",
         "git_head": head,
-        "git_expected_prefix": EXPECTED_GIT_PREFIX,
+        "git_policy": GIT_POLICY,
         "expected_build": EXPECTED_BUILD_HEX,
         "harness_sha256": _sha256_file(__file__),
         "experiment_issue": EXPERIMENT_ISSUE,
@@ -430,28 +432,35 @@ class Transcript:
 
 
 def describe_kiss_write(frame_bytes):
-    """Classify one raw KISS write for the TX-proof audit (pure function)."""
-    if not frame_bytes:
-        return "empty"
-    try:
+    """Accept only one fully framed, whitelisted Flux CONTROL request.
+
+    Full-byte inspection prevents false safety claims when a pyserial write
+    contains multiple frames or a partial KISS DATA command.
+    """
+    raw = bytes(frame_bytes)
+    if len(raw) < 7 or raw[0] != 0xC0 or raw[-1] != 0xC0:
+        return "unframed"
+    if HERE not in sys.path:
         sys.path.insert(0, HERE)
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "k6_kiss_tnc_local", os.path.join(HERE, "k6_kiss_tnc.py"))
-        kiss = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(kiss)
-        decoder = kiss.KISSDecoder()
-        frames = decoder.feed(bytes(frame_bytes))
-        if not frames:
-            return "unframed"
-        first = frames[0][0]
-        if first == KISS_DATA_CMD:
-            return "DATA-FORBIDDEN"
-        if first == KISS_HARDWARE_CMD:
-            return "control"
-        return "other-cmd-%d" % first
-    except Exception:
-        return "undecodable"
+    from k6_kiss_tnc import KISSDecoder, HARDWARE, PREFIX, LIST, GET, SET, STATUS, STOP
+    frames = KISSDecoder().feed(raw)
+    if len(frames) != 1:
+        return "multi-or-malformed"
+    frame = frames[0]
+    if frame[0] == KISS_DATA_CMD:
+        return "DATA-FORBIDDEN"
+    if frame[0] != HARDWARE or frame[1:4] != PREFIX:
+        return "non-flux-control"
+    if len(frame) < 5:
+        return "malformed-control"
+    op, body = frame[4], frame[5:]
+    if op not in (LIST, GET, SET, STATUS, STOP):
+        return "unsupported-control"
+    if op == SET and body != bytes((1, 0)):
+        return "unsafe-set"
+    if op != SET and body:
+        return "unexpected-control-payload"
+    return "control"
 
 
 def execute(args):
@@ -480,6 +489,13 @@ def execute(args):
     ack = validate_lease_ack(args.lease_ack, digest, args.trusted_actor,
                              args.lease_max_age_s, time.time())
     check_hold_file()
+    if _git_head() == "unknown":
+        raise HilError("source revision unavailable; no hardware permitted")
+    clean = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=ROOT, check=True, capture_output=True, text=True, timeout=10)
+    if clean.stdout.strip():
+        raise HilError("tracked source changes since commit; freeze cannot be attested")
     verify_real_github_lease(ack, digest)
     priv = _new_private_dir(args.private_dir)
     tr = Transcript(priv / "transcript.jsonl")
@@ -541,6 +557,8 @@ def execute(args):
     try:
         remaining()
         with bench_flock(args.bench_lock, args.lock_timeout):
+            # A lease may have been released between preflight and acquisition.
+            verify_real_github_lease(ack, digest)
             tr.note("bench-lock", path=args.bench_lock)
             try:
                 with serial_lock(args.port):
@@ -577,6 +595,7 @@ def execute(args):
                                            % TEMP_SLOT)
                         blobs = {}
                         for slot in sorted(directory):
+                            remaining()
                             data = cable.library_read(
                                 slot, directory[slot][1])
                             blobs[str(slot)] = {
@@ -673,10 +692,10 @@ def execute(args):
                             writes.append(bytes(data))
                             tx_proof["kiss_writes"] += 1
                             kind = describe_kiss_write(data)
-                            if kind == "DATA-FORBIDDEN":
-                                tx_proof["data_frames_sent"] += 1
-                                raise HilError("refused: DATA frame blocked "
-                                               "before the wire")
+                            if kind != "control":
+                                if kind == "DATA-FORBIDDEN":
+                                    tx_proof["data_frames_sent"] += 1
+                                raise HilError(f"unsafe KISS write {kind} blocked before wire")
                             return real_write(data)
 
                         port.write = audited_write
@@ -725,7 +744,7 @@ def execute(args):
                                "do not disturb their lease" % args.port
                                ) from exc
             # ---- cleanup of EXACTLY slot 30 while original bench lease is held
-            # session; bench lock already released, serial lock released) ----
+            # session; original whole-bench lock stays held through postflight) ----
             try:
                 with nullcontext():
                     with serial_lock(args.port):
@@ -761,7 +780,6 @@ def execute(args):
                                             timeout=TIMEOUTS["live_call"])
                             attest_live_idle(link, "pre-uninstall")
                         with open_serial() as port:
-                            from modem import k6mod as _k6mod
                             cable = Cable(
                                 port, log=lambda *a: tr.note("cable-log", detail=
                                                              " ".join(str(x) for x
@@ -782,10 +800,9 @@ def execute(args):
                             if TEMP_SLOT in fresh:
                                 raise HilError("slot %d still present after "
                                                "erase; HOLD" % TEMP_SLOT)
-                            if cable.library_read(
-                                    TEMP_SLOT, 0x4000) != b"\xff" * 0x4000:
-                                raise HilError("slot %d not fully erased; HOLD"
-                                               % TEMP_SLOT)
+                            # KUL2 synthesizes 0xFF reads for a missing
+                            # logical slot. Directory absence + pre/post
+                            # exact object hashes are the meaningful checks.
                             tr.note("uninstalled", slot=TEMP_SLOT,
                                     erase_serial=erase_serial)
                             cable.end()
@@ -812,6 +829,7 @@ def execute(args):
                         snap = json.loads((priv / "snapshot.json").read_text(
                             encoding="utf-8"))
                         for slot_str, meta in snap["slot_hashes"].items():
+                            remaining()
                             data = cable.library_read(int(slot_str),
                                                       meta["len"])
                             if hashlib.sha256(data).hexdigest() != meta["sha256"]:
@@ -839,11 +857,10 @@ def execute(args):
                             "standby_idle": st["standby_idle"],
                             "transmitting": st["transmitting"],
                             "tx_proof": tx_proof,
-                            "no_accidental_tx": (
-                                tx_proof["data_frames_sent"] == 0
-                                and not tx_proof["ptt_api_called"]
-                                and not tx_proof["tune_api_called"]
-                                and not any(tx_proof["transmitting_seen"])),
+                            "no_kiss_data_written": tx_proof["data_frames_sent"] == 0,
+                            "transmitting_not_observed_at_pre_post_samples":
+                                not any(tx_proof["transmitting_seen"]),
+                            "continuous_rf_monitoring_performed": False,
                         }
                         (priv / "evidence.json").write_text(
                             json.dumps(evidence, indent=2, sort_keys=True),
@@ -866,7 +883,7 @@ def execute(args):
             tr.close()
         except Exception:
             pass
-        if mutated or "HOLD" in str(exc):
+        if mutated:
             write_hold_file(str(exc), digest if "digest" in dir() else "?")
             print("HIL ABORT (bench on HOLD): %s" % exc, file=sys.stderr)
             print("Inspect the radio; see %s and %s" % (
@@ -904,7 +921,8 @@ def execute(args):
             pass
         if mutated:
             write_hold_file("unexpected failure after install attempt: "
-                            f"{type(exc).__name__}: {exc}", digest)
+                            f"{type(exc).__name__}: {exc}",
+                            digest if "digest" in locals() else "unavailable")
             print(f"HIL ABORT (bench on HOLD): {exc}", file=sys.stderr)
             return 3
         print(f"HIL ABORT (no mutation): {exc}", file=sys.stderr)
@@ -954,6 +972,12 @@ def main(argv=None):
     if args.port != DEFAULT_PORT:
         print("refusing unexpected port %r (expected %s)" % (
             args.port, DEFAULT_PORT), file=sys.stderr)
+        return 2
+    if not (0 < args.session_timeout <= TIMEOUTS["session"]):
+        print("session timeout must be in (0, 300] seconds", file=sys.stderr)
+        return 2
+    if not (0 < args.lease_max_age_s <= 900):
+        print("lease freshness must be in (0, 900] seconds", file=sys.stderr)
         return 2
     return execute(args)
 
