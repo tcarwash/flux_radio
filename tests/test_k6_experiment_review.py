@@ -74,3 +74,26 @@ def test_interrupted_read_only_review_requeues_once_without_hardware(monkeypatch
     assert after["job_id"]=="beef0000beef"
     assert after["attempts"]==2
     assert after["state"]=="REVIEW_SUBMITTED"
+
+
+
+def test_completed_prior_review_reconciles_after_transient_worker_interrupt(monkeypatch,tmp_path):
+    n=21
+    reg={"repo":"tcarwash/flux_radio","queue_issue":11,"trusted_author":"tcarwash",
+         "manifests":{"21":{"path":"/local/reviewed","sha256":"f"*64}}}
+    raw=b"api29"
+    fingerprint=r.fingerprint(n,"f"*64,raw)
+    state=tmp_path/"journal.json"
+    r.journal.state_write(state,{"schema":1,"jobs":{fingerprint:{
+        "state":"REVIEW_SUBMITTED","job_id":"bbbbbbbbbbbb",
+        "prior_job_ids":["aaaaaaaaaaaa"],"attempts":2}}})
+    monkeypatch.setattr(r.hw,"load_config",lambda *a:reg)
+    monkeypatch.setattr(r.batch,"read_api_config",lambda *a:({"target_module_api":29},raw))
+    monkeypatch.setattr(r,"result_status",
+                        lambda j:"APPROVED" if j=="aaaaaaaaaaaa" else "INFRA_INTERRUPTED")
+    monkeypatch.setattr(r,"delegate_readonly",lambda *args:pytest.fail("no duplicate worker"))
+    outcome=r.once(tmp_path/"cfg.json",state,tmp_path/"prompts")
+    assert outcome["events"][0]["action"]=="REVIEW_RECONCILED"
+    assert outcome["events"][0]["verdict"]=="APPROVED"
+    frozen=r.journal.state_load(state)["jobs"][fingerprint]
+    assert frozen["state"]=="APPROVED" and frozen["job_id"]=="aaaaaaaaaaaa"

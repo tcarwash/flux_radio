@@ -116,6 +116,31 @@ def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_R
                         record["state"]="REVIEW_SUBMITTED"
                         journal.state_write(state_path,state)
                 if record["state"]=="REVIEW_SUBMITTED":
+                    # Delegate workers may transiently report INTERRUPTED
+                    # before their final receipt becomes COMPLETED. Recover
+                    # the first finished exact-manifest review rather than
+                    # launching duplicate workers. A genuine REJECTED from
+                    # any attempt remains a veto.
+                    prior=[]
+                    for former in record.get("prior_job_ids",[]):
+                        try: former_verdict=result_status(former)
+                        except (OSError,ValueError,KeyError,subprocess.SubprocessError):
+                            former_verdict="UNKNOWN"
+                        prior.append((former,former_verdict))
+                    for candidate in ("REJECTED","APPROVED"):
+                        accepted=next((former for former,decision in prior
+                                       if decision==candidate),None)
+                        if accepted is not None:
+                            record["state"]=candidate
+                            record["job_id"]=accepted
+                            record["completed_utc"]=dt.datetime.now(
+                                dt.timezone.utc).isoformat()
+                            journal.state_write(state_path,state)
+                            events.append({"issue":n,"action":"REVIEW_RECONCILED",
+                                           "verdict":candidate,"job_id":accepted})
+                            break
+                    if record["state"]!="REVIEW_SUBMITTED":
+                        continue
                     try: verdict=result_status(record["job_id"])
                     except (OSError,ValueError,KeyError,subprocess.SubprocessError) as exc:
                         verdict="REJECTED"
@@ -133,6 +158,7 @@ def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_R
                             expected=make_prompt(n,cfg,m,hw.digest_for(raw,api_raw))
                             if prompt.read_text()!=expected:
                                 raise batch.Refused("review prompt changed since pinned submission")
+                            record.setdefault("prior_job_ids",[]).append(record["job_id"])
                             record["job_id"]=delegate_readonly(prompt)
                             record["attempts"]=attempts+1
                             record["state"]="REVIEW_SUBMITTED"
