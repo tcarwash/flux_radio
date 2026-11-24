@@ -171,11 +171,11 @@ def test_actual_relocated_catalog_bytes(artifacts,base):
     assert entry==16 and k6mod.module_name(code)=="SOTTO TEST"
     r,log,reads,stack=emulate(artifacts,base)
     assert r==26 and log==[expected(bits)]
-    assert reads>450 and stack<=1536
+    assert reads>450 and stack<=768
     print(f"module={len(code)} bytes, stack={stack}, SPI reads={reads}, {log[0]}")
 
 @pytest.mark.parametrize("fault,room,rc",[("cb",17000,-10),("deck",17000,-10),
-                                         ("read",17000,-12),(None,11776,-8),(None,14976-1040,-8)])
+                                         ("read",17000,-12),(None,11776,-8),(None,14400-1040,-8),(None,14976-1040,-8)])
 def test_fail_closed(artifacts,fault,room,rc):
     r,log,reads,stack=emulate(artifacts,0x20000110,room=room,corrupt=fault)
     assert r==rc and not any("dry FNV" in s for s in log)

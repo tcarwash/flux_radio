@@ -58,6 +58,8 @@ def test_storage_profile_defaults_are_explicit():
     for packs in (['base'],['data'],['ota'],['sotto']):
         gates=storage_environment(resolve(SPEC,packs))
         assert gates['K6_USER_STORE']==gates['K6_MEMORY_BANK']=='1'
+        assert gates['K6_RAM0']=='balanced'
+        assert gates['K6_LIVE_SERIAL']==gates['K6_REMOTE_UI']=='1'
         assert gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='0' # unqualified experimental overlay
 
 def test_iq_base_capability():
@@ -66,3 +68,5 @@ def test_iq_base_capability():
     with pytest.raises(ValueError):storage_environment(resolve(SPEC,['data','ota']),iq=True)
     gates=storage_environment(resolve(SPEC,['data']),iq=True)
     assert gates['K6_MEMORY_BANK']==gates['K6_SERIAL_IQ']==gates['K6_IQ_PAGE']=='1'
+    assert gates['K6_RAM0']=='1'
+    assert gates['K6_LIVE_SERIAL']=='1'

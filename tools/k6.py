@@ -33,7 +33,7 @@ def command(argv):
     for cmd_parser in (plan, build):
         cmd_parser.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
         cmd_parser.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
-    build.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='serial IQ (default on for compatible Base profiles)')
+    build.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='opt-in serial IQ (large-arena profile; no live install)')
     build.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     starter = sub.add_parser('starter-install', help='guided first install with SPI backup and format confirmation')
     starter.add_argument('pack', type=lambda value: Path(value).expanduser().resolve())

@@ -97,7 +97,7 @@ def test_theme_used_by_build_job(tmp_path):
     job_id = next(iter(jobs._jobs))
     assert jobs.get(job_id)['theme'] == 'minimal'
     assert jobs.get(job_id)['tx_profile'] == 'ce'
-    assert calls[0][-5:] == ['--tx-profile', 'ce', '--theme', 'minimal', '--iq']
+    assert calls[0][-5:] == ['--tx-profile', 'ce', '--theme', 'minimal', '--no-iq']
 
 def test_build_compiler_log_is_collapsed(tmp_path):
     app = k6_store.create_app()

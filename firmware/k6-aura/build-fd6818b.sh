@@ -17,9 +17,13 @@ PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import va
 PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import validate_tx_profile; validate_tx_profile(sys.argv[1])' "$K6_TX_PROFILE"
 K6_OTA_SERVICE=${K6_OTA_SERVICE:-0}
 K6_SOTTO_SERVICE=${K6_SOTTO_SERVICE:-0}
-# Screenshots and logical UI keys are part of the standard live serial
-# interface; an explicit K6_REMOTE_UI=0 still disables them for tiny builds.
-K6_REMOTE_UI=${K6_REMOTE_UI:-${K6_LIVE_SERIAL:-0}}
+# Live serial is standard Flux host functionality, including catalog builds.
+# Explicit K6_LIVE_SERIAL=0 retains the legacy-only diagnostic build.
+K6_LIVE_SERIAL=${K6_LIVE_SERIAL:-1}
+case "$K6_LIVE_SERIAL" in 0|1) ;; *) echo "invalid K6_LIVE_SERIAL" >&2; exit 1 ;; esac
+# Screenshots and logical UI keys default on with live serial.
+K6_REMOTE_UI=${K6_REMOTE_UI:-$K6_LIVE_SERIAL}
+export K6_LIVE_SERIAL K6_REMOTE_UI
 # Remote PTT is baseline live-serial CAT, not an optional addon. A crashed
 # foreground loop must not hold RF indefinitely: require the independent
 # TIM14 transmitter watchdog for every live-serial firmware build.
@@ -215,6 +219,7 @@ case "${K6_RAM0:-0}" in
   1) PACK_CFG="$PACK_CFG --cfg k6_ram0" ;;
   small) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_small" ;;
   stack) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_stack" ;;
+  balanced) PACK_CFG="$PACK_CFG --cfg k6_ram0 --cfg k6_ram0_stack --cfg k6_ram0_balanced" ;;
   *) echo "invalid K6_RAM0" >&2; exit 1 ;;
 esac
 if [ "${K6_CONFIG_FSK:-0}" = 1 ]; then

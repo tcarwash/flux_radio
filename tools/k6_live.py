@@ -26,7 +26,7 @@ WATERMARK = 0x6f
 RAM_STATUS = 0x75
 BAUDS = (115200, 192000, 500000)
 CHIP_BYTES = 0x200000
-FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt", "screenshot", "virtual_keys")
+FEATURES = ("status", "read", "tune", "run", "mode", "vfo", "health", "bulk_read", "info", "v2", "ram_run", "ram_status", "fast_upload", "lib_mutate", "module_caps", "lib_large", "bulk_stream", "coop_cancel", "ptt", "screenshot", "virtual_keys", "lib_10k")
 MODES = ("FM", "AM", "USB", "CW", "CWF")
 ERRORS = {1: "Radio busy; return to standby, release PTT or disable the conflicting mode.",
           2: "Unsupported command, address or frequency.", 3: "SPI read failed."}
@@ -244,12 +244,12 @@ class LiveLink(CpsLink):
         return dict(caps,authenticated=True)
 
     def library_limit(self,features=None):
-        from k6_live_v2 import LIB_MAX,RAM_MAX
+        from k6_live_v2 import LIB_MAX,LIB_LEGACY_MAX,RAM_MAX
         if features is None:
             features=self.capabilities()["features"]
         if "lib_mutate" not in features:
             raise InstallError("Firmware lacks live library mutations")
-        return min(self.info()["arena"]-4096,LIB_MAX if "lib_large" in features else RAM_MAX)
+        return min(self.info()["arena"]-4096,LIB_MAX if "lib_10k" in features else LIB_LEGACY_MAX if "lib_large" in features else RAM_MAX)
 
     def set_mode(self, mode, wide=False):
         if mode not in MODES or not isinstance(wide, bool):
@@ -427,7 +427,7 @@ class LiveLink(CpsLink):
         from k6_live_v2 import LIB_MAX
         image=bytes(image)
         if not 25<=len(image)<=LIB_MAX or image[:4]!=b"K6M\x01":
-            raise ValueError("Expected K6M envelope up to 7168 bytes")
+            raise ValueError("Expected K6M envelope up to 10240 bytes")
         code,entry,serial,level,flags,tlm,slot=struct.unpack_from("<HHIBBBB",image,4)
         if (code+24!=len(image) or entry>=code or entry&1 or not serial
             or not level or tlm or flags not in (1,9) or slot not in (*range(9),*range(16,32))

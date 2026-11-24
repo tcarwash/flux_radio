@@ -38,7 +38,7 @@ __attribute__((used,noinline))
 static int sotto_dry_run(const k6_api_t *a,uint8_t *scratch){
     uint32_t blocks,i,j,h=2166136261u;
     uint8_t six[6];
-    int16_t x[80];
+    int16_t *x;
     sotto_stage_t *s;
     slim_enc_t *e;
     sotto_io_t io;
@@ -47,6 +47,8 @@ static int sotto_dry_run(const k6_api_t *a,uint8_t *scratch){
     e=(slim_enc_t*)(void*)(scratch+sizeof(*s));
     if(sio_init(&io,a)){a->say("SOTTO tables invalid");return -10;}
     slim_enc_init(e);e->io=&io;
+    /* The encoder consumes these samples before using w as FFT/search workspace. */
+    x=e->w;
     if(sotto_stage_begin(s,112,0x534f5454u,0x4f544553u))return -11;
     for(blocks=0;blocks<ST_BLOCKS;blocks++){
         /* Integer, repeatable 200Hz triangle with changing amplitude. */

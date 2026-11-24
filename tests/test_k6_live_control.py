@@ -496,7 +496,13 @@ def test_live_library_limit_is_advertised_and_ram_limit_unchanged():
     link=L(Port())
     assert link.library_limit(["lib_mutate"])==4096
     assert link.library_limit(["lib_mutate","lib_large"])==7168
-    assert RAM_MAX==4096 and LIB_MAX==7168
+    assert RAM_MAX==4096 and LIB_MAX==10240
+    class Balanced(L):
+        def info(self):return {"protocol":5,"arena":14400}
+    b=Balanced(Port())
+    assert b.library_limit(["lib_mutate","lib_large"])==7168
+    assert b.library_limit(["lib_mutate","lib_large","lib_10k"])==10240
+    assert link.library_limit(["lib_mutate","lib_10k"])==7680
     with pytest.raises(InstallError):
         link.library_limit([])
 

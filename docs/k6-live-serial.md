@@ -9,9 +9,11 @@ remain unchanged.
 
 ## Build and use
 
-The feature is opt-in during hardware validation:
+Live serial is enabled by default in Flux FD6818B firmware, including Catalog packs:
 
-    K6_LIVE_SERIAL=1 sh firmware/k6-aura/build-fd6818b.sh
+    sh firmware/k6-aura/build-fd6818b.sh
+
+The independent TX watchdog is required. Explicit `K6_LIVE_SERIAL=0` selects a legacy-only diagnostic image; `K6_REMOTE_UI=0` disables only remote screen and keypad controls.
 
 Flash the resulting firmware with the normal installer when the radio is
 available; do not interrupt another bench job. In normal VFO standby, use:

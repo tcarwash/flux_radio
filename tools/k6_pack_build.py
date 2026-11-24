@@ -102,7 +102,7 @@ def main():
     p.add_argument('--allow-unverified-firmware', action='store_true',
                    help='explicitly allow staging a prebuilt image without verifying capabilities')
     p.add_argument('--theme', type=validate_theme, default=DEFAULT_THEME, metavar="THEME")
-    p.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='serial IQ (default on for compatible Base profiles)')
+    p.add_argument('--iq', action=argparse.BooleanOptionalAction, default=None, help='opt-in serial IQ (large-arena profile; no live install)')
     p.add_argument('--theme-name', default='', help='optional display name carried by the theme package')
     p.add_argument('--tx-profile', type=validate_tx_profile, choices=TX_PROFILES, default=DEFAULT_TX_PROFILE)
     args = p.parse_args()
@@ -111,7 +111,7 @@ def main():
         policy = json.loads(POLICY.read_text())
         validate(spec, policy)
         plan = resolve(spec, args.packs, args.theme, args.tx_profile)
-        if args.iq is None: args.iq = not args.skip_firmware_build and iq_supported(plan)
+        if args.iq is None: args.iq = False
         if args.skip_firmware_build:
             if args.iq:p.error('IQ requires a fresh build')
             if args.theme != DEFAULT_THEME:

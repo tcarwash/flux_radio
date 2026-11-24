@@ -120,7 +120,8 @@ def test_optin_overlay_and_old_protocol_unchanged():
     assert "MODULE_PAGE_BUFFER_STORAGE" in src
     assert "page*140+12+half*64" in src
     assert "K6_REMOTE_UI" in builder
-    assert 'K6_REMOTE_UI=${K6_REMOTE_UI:-${K6_LIVE_SERIAL:-0}}' in builder
+    assert 'K6_LIVE_SERIAL=${K6_LIVE_SERIAL:-1}' in builder
+    assert 'K6_REMOTE_UI=${K6_REMOTE_UI:-$K6_LIVE_SERIAL}' in builder
     assert "apply-remote-ui.py" in builder
     assert "self.keypad.queue_virtual_key" in app_overlay
     assert "self.radio.ptt_asserted()" in app_overlay

@@ -5,8 +5,7 @@
 The **mainline source** includes non-rebooting live status and CAT, negotiated
 SPI backups, verified packed-library install/remove, foreground module runs,
 API-25 opt-in cooperative cancellation, and a loopback-only Hamlib NET rigctl
-bridge. Firmware builds must explicitly enable `K6_LIVE_SERIAL=1` to expose
-the live protocol. The Python/Catalog clients never silently fall back to the
+bridge. Standard FD6818B firmware builds, including Catalog packs, enable the live protocol by default. Explicit `K6_LIVE_SERIAL=0` selects the legacy-only diagnostic profile. The Python/Catalog clients never silently fall back to the
 rebooting loader; explicit legacy mode remains available for recovery and
 firmware flashing.
 

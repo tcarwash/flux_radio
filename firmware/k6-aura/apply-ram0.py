@@ -34,4 +34,11 @@ for path,anchor in [('src/main.rs','static mut APP_SLOT:'),('src/hal/arena.rs','
 # Diagnostic full relocation with the original arena, reserving the gain as stack.
 p=root/'src/hal/arena.rs';s=p.read_text()
 s=s.replace('any(not(k6_ram0),k6_ram0_small)', 'any(not(k6_ram0),k6_ram0_small,k6_ram0_stack)').replace('k6_ram0,not(k6_ram0_small)))]', 'k6_ram0,not(k6_ram0_small),not(k6_ram0_stack)))]')
+# Balanced keeps the expanded-stack live loader gate but gives 2624 bytes
+# back to the arena. Replace only the existing stack-layout declaration.
+old='#[cfg(all(not(small_arena),any(not(k6_ram0),k6_ram0_small,k6_ram0_stack)))]\npub const ARENA_BYTES: usize = 11776;'
+new='#[cfg(all(not(small_arena),not(k6_ram0_balanced),any(not(k6_ram0),k6_ram0_small,k6_ram0_stack)))]\npub const ARENA_BYTES: usize = 11776;\n#[cfg(all(not(small_arena),k6_ram0_balanced))]\npub const ARENA_BYTES: usize = 14400;'
+if new not in s:
+ if s.count(old)!=1:raise SystemExit("unexpected arena declaration")
+ s=s.replace(old,new,1)
 p.write_text(s)

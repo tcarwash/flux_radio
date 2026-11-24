@@ -88,7 +88,7 @@ const RAM_FAST_BEGIN:u8=0x77;
 const RAM_READY:u8=0x78;
 #[cfg(feature="spilib")]
 const MODULE_CAPS:u8=0x7c;
-const LIB_STAGE_MAX:usize=7168;
+const LIB_STAGE_MAX:usize=if cfg!(k6_ram0_balanced) {10240} else {7168};
 // V2 cooperative launch and request. Neither command keys the radio.
 #[cfg(feature="spilib")]
 const RUN_COOP:u8=0x7e;
@@ -812,7 +812,8 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 | if cfg!(k6_serial_transport) {65536} else {0}
                 | if cfg!(feature="spilib") {131072} else {0}
                 | if cfg!(all(k6_live_serial,k6_lean_txdog)) {262144} else {0}
-                | if cfg!(k6_remote_ui) {524288 | 1048576} else {0};
+                | if cfg!(k6_remote_ui) {524288 | 1048576} else {0}
+                | if cfg!(all(feature="spilib",k6_ram0_balanced,k6_user_store)) {2097152} else {0};
             let mut d=[0u8;10];
             d[1..5].copy_from_slice(b"FLCP");
             d[5]=1;

@@ -202,3 +202,58 @@ API. The actual compiled Rust host preloaded all six 33-word buffers;
 independent Python framing matched every byte including guard words.
 The emulated host returns to RX and the module is removed over live serial.
 No physical hardware access during these five Data API emulator cases.
+
+
+### Balanced live-install host and reduced encoder stack (2026-11-23)
+
+Integration branch `integration/sotto-memory` combines the native Data service
+with the recovered catalog defaults and the installed-theme PTT fix. Normal
+catalog builds use packed KUL2, live serial/install, remote LCD/keypad/PTT
+and balanced RAM0. Serial IQ remains opt-in and retains its separate profile.
+
+The measured build is 107,084 bytes (15,796 bytes below 120 KiB). RAM0 uses
+3,560 bytes of its 3,840-byte allowance, the arena is 14,400 bytes and the
+main stack reservation is 3,992 bytes. Live library mutation now advertises
+a separate `lib_10k` capability (bit 21), increasing the staged envelope to
+10,240 bytes while retaining a minimum 4,096-byte borrowed arena stack.
+Clients still enforce 7,168 bytes on older lib_large firmware, and standalone
+RAM uploads remain at 4,096 bytes. The compiled-board emulator passed the
+full 10,240-byte replacement/readback/removal test, including bad tags and
+protected slots. Observed main stack peak was 2,568 bytes (1,424 remaining);
+borrowed arena runtime peak was 3,256 bytes, dedicated module peak 408 bytes.
+These samples are not a worst-case interrupt or physical timing proof.
+
+The encoder now stages input PCM and flush silence in the phase-exclusive
+analysis workspace rather than reserving additional 80-sample stack arrays.
+Actual relocatable Thumb code is 9,943 bytes, envelope 9,967 bytes. The
+synthetic algorithm harness measured stack high-water of 648 bytes, down
+from 936, with the same 26 codec frames, 6,261 SPI reads and FDV1 digest
+a1471c22. Both relocation addresses and corrupt-table paths passed.
+Retain the 2,048-byte scratch stack until full-host calls and interrupts
+are measured. No claim that the complete microphone/voice module fits yet.
+
+Remaining gaps:
+
+* The normal lean host's fl_read callback refuses addresses below 0x190000.
+  Sotto's codebook at 0x100000 and KUL2 deck at 0x110000 therefore cannot
+  be read using that existing callback. Design a generic, typed,
+  read-only resource lookup/read API with bounds and integrity validation,
+  so modules need not duplicate the packed-directory parser. Do not
+  extend write permissions or open arbitrary protected flash regions.
+* At this size the balanced arena exposes only approximately 3,392 bytes
+  of scratch after the envelope/alignment and 1,040-byte LCD callback
+  reserve. The encoder state and staged recording alone need about 3,712
+  bytes. Investigate an explicitly opted-in main-stack loan with a dynamic
+  safety check, avoiding the second private module stack and redundant
+  LCD callback reservation; preserve legacy module semantics. Also
+  account for a real capture ring and additional driver code.
+* A typed data-deck installation path and pinned codebook provisioning
+  must be qualified separately. The 10 KiB live mutation capability is
+  for ordinary executable modules, not arbitrary deck/codebook writes.
+* Notification experiments are documented in
+  research/flashlight-notifications.md. IRQ integration is still pending.
+  The confirmed four-second, 20%-peak PB7 pattern uses no module arena or
+  persistent SPI state in the intended core driver. The existing watchdog
+  remap disables flash prefetch; a permanent SRAM mapping for the LED
+  would slow the RF path, so do not enable it by default or allow it
+  during timing-sensitive activity. No firmware flash performed.

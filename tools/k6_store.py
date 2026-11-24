@@ -699,7 +699,7 @@ def create_app(store: ModuleStore | None = None):
             plan = resolve(spec, selected or ['base'], theme, tx_profile)
             from k6_flash_estimate import estimate
             from k6_pack_policy import storage_environment, iq_supported
-            if iq is None: iq=iq_supported(plan)
+            if iq is None: iq=False
             plan['iq']=iq
             result = {'ok': True, 'plan': plan, 'gates': {**gate_environment(plan, policy),**storage_environment(plan,iq=iq)}, 'estimate': estimate(plan)}
         except (ValueError, KeyError) as exc:

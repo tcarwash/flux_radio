@@ -51,8 +51,8 @@ def iq_supported(plan):
 
 
 def storage_environment(plan, *, iq=False):
-    """All new catalog builds use KUL2. External channel code is a separate gate."""
-    env={'K6_USER_STORE':'1','K6_MEMORY_BANK':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0','K6_SETTINGS_PAGE':'0','K6_IQ_PAGE':'0','K6_SERIAL_IQ':'0','K6_SERIAL_LAB':'0','K6_SERIAL_TRANSPORT':'1'}
+    """KUL2 + returning live-install stack is standard; IQ needs its old page arena."""
+    env={'K6_USER_STORE':'1','K6_MEMORY_BANK':'1','K6_SYSTEM_INSTALL':'0','K6_CHANNEL_PAGE':'0','K6_SETTINGS_PAGE':'0','K6_IQ_PAGE':'0','K6_SERIAL_IQ':'0','K6_SERIAL_LAB':'0','K6_SERIAL_TRANSPORT':'1','K6_LIVE_SERIAL':'1','K6_REMOTE_UI':'1','K6_RAM0':'balanced'}
     if iq:
         if not iq_supported(plan):raise ValueError('Experimental IQ requires Base and excludes OTA/Sotto')
         env.update(K6_SYSTEM_INSTALL='1',K6_CHANNEL_PAGE='1',K6_SETTINGS_PAGE='1',K6_IQ_PAGE='1',K6_SERIAL_IQ='1',K6_RAM0='1',K6_SERIAL_TRANSPORT='1',K6_EL_POWER='1',K6_HEALTH_TELEMETRY='1')
