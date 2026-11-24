@@ -107,8 +107,9 @@ GitHub pushes, or commits from workers. Each worker owns exactly two new files:
 | SSB IQ lab | `747047330186` | `sim/modulation/ssb_iq.py`; `tests/test_modlab_ssb_iq.py` | USB/LSB sign and suppression, DC/scale/crest bounds |
 | OFDM lab | `b9e16198cf3e` | `sim/modulation/ofdm_lab.py`; `tests/test_modlab_ofdm_lab.py` | Small-FFT CP roundtrip, PAPR, CFO and clipping penalty |
 
-The Muse queue has a 3-worker concurrency cap, so SSB and OFDM start queued;
-the first three are scheduled concurrently. This decomposition refines
+The Muse queue has a 3-worker concurrency cap. Three workers ran first,
+then the SSB and OFDM assignments ran when slots became available; all five
+finished, and their results were independently reviewed and corrected. This decomposition refines
 Antigravity's W1–W5 architecture proposal into five **file-independent** mode
 prototypes before imposing a shared `WaveformSpec` contract. The coordinator
 must review each output, run pytest and independent numerical checks, and
@@ -122,9 +123,47 @@ make the initial algorithms correct.
 - This plan itself makes no production modulation claim or hardware change.
 - Antigravity job `60dd8d1bc865` completed read-only with a mode-specific
   evidence review; local report is accessible through `agy-jobs result`.
-- The Muse jobs are isolated investigations/implementation; completion of a
-  worker is **not** acceptance. No automatic merge to main. Preserve negative
-  test results and research evidence.
+- Muse worker completion alone is **not** acceptance. The coordinator
+  reviewed syntax, assertions and numerical behavior, corrected errors, and
+  cherry-picked only passing host-only code. Preserve negative evidence.
 - Stage 2 emulator bridge and exact STM32/FD6818B/Aura ABI constraints must
   be resolved after the individual waveforms pass. Existing Sotto/KISS
   integration is independent and must remain untouched.
+
+## Completed first wave — verified offline, 2026-11-24
+
+The five independent worker outputs are now integrated on this workplan's
+review branch, after independent corrections and per-mode tests:
+
+| Mode | Independent pytest result | Source |
+| --- | ---: | --- |
+| CW envelope | 9 passed | `sim/modulation/cw_envelope.py` |
+| AM waveform | 11 passed | `sim/modulation/am_waveform.py` |
+| QPSK modem | 8 passed | `sim/modulation/qpsk_lab.py` |
+| SSB USB/LSB IQ | 10 passed | `sim/modulation/ssb_iq.py` |
+| OFDM/QPSK baseband | 19 passed | `sim/modulation/ofdm_lab.py` |
+| **Total waveform tests** | **57 passed** | `tests/test_modlab_*.py` |
+
+The integrated regression selection (modulation tests plus KISS fake HIL,
+mode registry, packet dispatch/mailbox, virtual RF and mock qualification
+unit tests) passed **122/122**. These are software tests with mocked or
+independent input; they do **not** certify the K6 can physically radiate AM,
+SSB, RRC QPSK or OFDM. No physical RF/bench lock was used.
+
+Reproduce waveform tests in an environment with NumPy and pytest:
+
+```sh
+python -m pytest -q tests/test_modlab_*.py
+```
+
+Implementation review corrected a CW complex-FFT input issue and enforced
+zero on both sides of raised-cosine keying, clarified QPSK finite-length RRC
+ISI / differential decoding assumptions, and fixed OFDM sample/bit count and
+cyclic-prefix test indexing. Each correction was exercised by the tests.
+
+**Next integration step, not completed by this phase:** specify one
+simulator-only `WaveformSpec`/measurements adapter; feed simulated K6 register
+TX state changes to an isolated waveform observer (`sim/k6emu/tx_trace.py`)
+without exposing unsafe radio controls. Then add a simulation-only panel to
+the emulator. Actual hardware CW/APC measurements remain a separate bench
+work item, and the unproven RF TX paths stay disabled.
