@@ -1,5 +1,7 @@
 # Flux K6-B modulation expansion: parallel implementation plan
 
+SoapyFang receiver replay test results: [`k6-soapyfang-modulation-validation-20261124.md`](k6-soapyfang-modulation-validation-20261124.md).
+
 **2026-11-24 · proposal + active offline research; NOT a hardware TX capability announcement.**
 
 This adds an actionable work plan to the broader `docs/k6-rf-expansion-plan.md`
