@@ -33,6 +33,7 @@ GET = 0x02
 SET = 0x03
 CAPS = 0x04
 STATUS = 0x05
+STOP = 0x06
 OK = 0
 MODE_PACKET_TX = 0x01
 MODE_PACKET_RX = 0x02
@@ -110,7 +111,7 @@ def kiss_frame(command, payload=b""):
 
 
 def control(op, payload=b""):
-    if not 1 <= op <= 5:
+    if not 1 <= op <= 6:
         raise ProtocolError("unsupported Flux control operation")
     return kiss_frame(HARDWARE, PREFIX + bytes([op]) + payload)
 
@@ -205,6 +206,14 @@ def set_mode(s, mode):
     return mode
 
 
+def stop_module(s):
+    """Ask the radio to close KISS and restore ordinary serial ownership."""
+    replies = request(s, STOP, timeout=3)
+    if replies[0]["payload"]:
+        raise ProtocolError("unexpected STOP acknowledgment payload")
+    return True
+
+
 def serve(s, *, host="127.0.0.1", tcp_port=8001, stop_after=None):
     """Bounded one-client KISS TCP to cable bridge. No queue, no redial, no broadcast."""
     if not 0 < tcp_port < 65536:
@@ -286,6 +295,7 @@ def cli(argv=None):
     p = sub.add_parser("modes", help="list modes truly advertised by the radio")
     p.add_argument("--json", action="store_true")
     sub.add_parser("get", help="show current selected mode")
+    sub.add_parser("stop", help="orderly exit from FLUX TNC, restoring live serial")
     p = sub.add_parser("set", help="select a mode ID or exact name (does NOT transmit)")
     p.add_argument("mode")
     p = sub.add_parser("serve", help="bridge serial KISS to one KISS TCP client")
@@ -314,6 +324,10 @@ def cli(argv=None):
             if args.command == "get":
                 print(get_mode(s))
                 return 0
+            if args.command == "stop":
+                stop_module(s)
+                print("FLUX TNC stopped; normal serial access restored")
+                return 0
             if args.command == "set":
                 try:
                     wanted = int(args.mode, 0)
@@ -326,7 +340,16 @@ def cli(argv=None):
                 print(f"Selected mode {wanted}")
                 return 0
             if args.command == "serve":
-                serve(s, host=args.listen, tcp_port=args.tcp_port)
+                try:
+                    serve(s, host=args.listen, tcp_port=args.tcp_port)
+                finally:
+                    # A bridge exit must not leave the port in raw KISS mode.
+                    try:
+                        stop_module(s)
+                    except (OSError, ProtocolError, TimeoutError) as exc:
+                        print(f"FLUX TNC STOP not acknowledged: {exc}; "
+                              "inspect radio before starting live serial",
+                              file=sys.stderr)
                 return 0
     except (RuntimeError, ProtocolError, OSError, TimeoutError) as exc:
         print(f"Flux KISS: {exc}", file=sys.stderr)

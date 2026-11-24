@@ -106,3 +106,4 @@ mode selection never transmits.
 Cross-language host/TNC conformance tests are in
 tests/test_k6_kiss_abi_roundtrip.py and ordinary host controls are in
 tests/test_k6_kiss_tnc.py.
+\nThe CLI also provides a remote STOP control which ACKs then exits the\nforeground TNC and restores ordinary serial ownership. The KISS TCP bridge\nissues this control on normal shutdown; it never keys RF. A lost host session\nmay require a new STOP command or physical EXIT key to restore the UART.\n

@@ -146,3 +146,21 @@ def test_wrong_extension_reply_is_ignored_until_requested_response():
 def test_cli_nonlocal_listener_requires_explicit_opt_in():
     with pytest.raises(SystemExit):
         k.cli(["serve","--listen","0.0.0.0"])
+
+
+def test_stop_module_sends_acknowledged_vendor_control():
+    s = FakeSerial([encoded_control(k.STOP)])
+    assert k.stop_module(s) is True
+    assert decode_one(s.writes[0]) == bytes([k.HARDWARE]) + k.PREFIX + bytes([k.STOP])
+
+
+def test_stop_module_refuses_any_payload_or_wrong_ack():
+    s = FakeSerial([encoded_control(k.STOP, payload=b"corrupt")])
+    with pytest.raises(k.ProtocolError, match="unexpected STOP"):
+        k.stop_module(s)
+
+
+def test_stop_module_does_not_issue_any_data_frame():
+    s = FakeSerial([encoded_control(k.STOP)])
+    k.stop_module(s)
+    assert all(decode_one(frame)[0] != 0 for frame in s.writes)

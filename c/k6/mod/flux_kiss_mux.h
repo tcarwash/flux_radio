@@ -30,7 +30,8 @@ enum {
   FLUXK_OP_GET = 2,    /* no args; body is the selected mode id u16le (0 = none) */
   FLUXK_OP_SET = 3,    /* args: mode id u16le; body echoes the selected id */
   FLUXK_OP_CAPS = 4,   /* no args; body max_rx u16le, max_tx u16le */
-  FLUXK_OP_STATUS = 5  /* no args; body tx_success u16le, tx_fail u16le */
+  FLUXK_OP_STATUS = 5, /* no args; body tx_success u16le, tx_fail u16le */
+  FLUXK_OP_STOP = 6    /* no args; orderly module exit, no TX */
 };
 enum {
   FLUXK_OK = 0,
@@ -146,7 +147,7 @@ FLUXK_FN unsigned fluxk_fx_parse(const uint8_t *p, unsigned n,
     return FLUXK_ERR_MALFORMED;
   if (p[0] != (uint8_t)'F' || p[1] != (uint8_t)'X' || p[2] != FLUXK_VER)
     return FLUXK_ERR_MALFORMED;
-  if (p[3] < FLUXK_OP_LIST || p[3] > FLUXK_OP_STATUS)
+  if (p[3] < FLUXK_OP_LIST || p[3] > FLUXK_OP_STOP)
     return FLUXK_ERR_UNKNOWN;
   *op = p[3];
   *alen = n - 4;
@@ -156,7 +157,7 @@ FLUXK_FN unsigned fluxk_fx_parse(const uint8_t *p, unsigned n,
 FLUXK_FN unsigned fluxk_sethw_validate(unsigned op, unsigned alen) {
   if (op == FLUXK_OP_SET)
     return alen == 2 ? FLUXK_OK : FLUXK_ERR_MALFORMED;
-  if (op >= FLUXK_OP_LIST && op <= FLUXK_OP_STATUS)
+  if (op >= FLUXK_OP_LIST && op <= FLUXK_OP_STOP)
     return alen == 0 ? FLUXK_OK : FLUXK_ERR_MALFORMED;
   return FLUXK_ERR_UNKNOWN;
 }

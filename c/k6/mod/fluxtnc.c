@@ -36,6 +36,7 @@ typedef struct {
   uint16_t cur_mode;              /* 0 = none selected */
   uint8_t kiss_on;
   uint8_t keyed;
+  uint8_t stop_requested; /* host stop acknowledged before leaving raw UART */
 } fluxtnc_t;
 
 static void fluxtnc_zero(fluxtnc_t *s) {
@@ -154,7 +155,9 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
       fluxtnc_send(api, s, op, FLUXK_OK, e, blen);
       return;
     }
-    if (op == FLUXK_OP_GET) {
+    if (op == FLUXK_OP_STOP) {
+      s->stop_requested = 1; /* no RF, orderly exit in main loop */
+    } else if (op == FLUXK_OP_GET) {
       blen = fluxk_put_u16le(body, s->cur_mode);
     } else if (op == FLUXK_OP_SET) {
       uint16_t id =
@@ -290,11 +293,19 @@ int k6_main(const k6_api_t *api) {
           unsigned port = (type >> 4) & 15u, cmd = type & 15u;
           if (port == 0 && cmd == FLUXK_CMD_DATA)
             fluxtnc_data(api, s, s->pay, n, afsk_ok);
-          else if (port == 0 && cmd == FLUXK_CMD_SETHW)
+          else if (port == 0 && cmd == FLUXK_CMD_SETHW) {
             fluxtnc_sethw(api, s, s->pay, n, afsk_ok);
+            if (s->stop_requested)
+              break; /* never consume a queued DATA frame after STOP */
+          }
           /* Other ports/commands: ignored, never key. */
         }
       }
+    }
+    if (s->stop_requested) {
+      /* Let the bounded KISS UART ACK drain before restoring CPS mode. */
+      api->delay_us(50000);
+      break;
     }
     api->delay_us(5000);
   }
