@@ -1,5 +1,7 @@
 # K6 CW register-write replay → SoapyFang (offline)
 
+Conducted TX envelope sweep protocol and conditional bounded CW pre-emphasis: [`k6-cw-tx-response-sweep-20261124.md`](k6-cw-tx-response-sweep-20261124.md).
+
 The frequency-modem follow-on is documented in [`k6-frequency-modem-soapyfang-20261124.md`](k6-frequency-modem-soapyfang-20261124.md).
 
 **2026-11-24. Research-only, no physical TX or installable CW firmware change.**
