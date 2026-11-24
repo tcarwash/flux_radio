@@ -137,3 +137,11 @@ def test_live_query_failure_is_unknown_not_no_matches(tmp_path,capsys):
         raise inbox.InboxError("network unavailable")
     assert inbox.main(["--query","Sotto","--registry",str(reg)],fetch=fail)==2
     assert "Do not interpret this as zero results" in capsys.readouterr().err
+
+
+def test_canonical_checkout_without_local_runner_registry(tmp_path):
+    path=tmp_path/"absent.json"
+    with pytest.raises(inbox.InboxError,match="explicit queue registry"):
+        inbox.read_config(path)
+    if not inbox.REGISTRY.exists():
+        assert inbox.read_config()==(REPO,OWNER,11)

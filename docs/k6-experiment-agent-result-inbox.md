@@ -12,6 +12,10 @@ python3 tools/k6_experiment_inbox.py --query "Sotto half-duplex FSK TX" --days 1
 python3 tools/k6_experiment_inbox.py --query "frequency phase step" --issue 37 --json
 ```
 
+The inbox defaults to the canonical Flux repo, trusted author and queue #11
+when a normal firmware checkout has no local runner registry. A different
+repository requires an explicit existing trusted registry.
+
 The result inbox searches the repository-wide GitHub comments endpoint,
 including comments from experiments not in the current local execution
 allowlist. It recognizes only explicit *trusted-author result markers*
@@ -43,4 +47,3 @@ The inbox is **not** a notification delivery service or a mutable queue
 consumer: it does not claim the bench, change issues, flash, transmit,
 register manifests or mutate the autonomous scheduler. This policy applies
 on each **workflow-related prompt**, not on unrelated user chats.
-

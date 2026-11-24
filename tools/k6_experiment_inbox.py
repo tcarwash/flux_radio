@@ -23,6 +23,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "config/k6-experiment-queue.json"
+DEFAULT_FLUX = ("tcarwash/flux_radio", "tcarwash", 11)
 ISSUE_URL = re.compile(r"^https://api\.github\.com/repos/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/([1-9]\d*)$")
 QUEUE_RESULT = re.compile(
     r"^(PASS / RELEASE|BLOCKED / HOLD) \| Flux autonomous bench \| issue #([1-9]\d*)\b"
@@ -49,7 +50,16 @@ def tokens(text):
 
 
 def read_config(path=REGISTRY):
-    raw = json.loads(Path(path).read_text())
+    try:
+        raw = json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        # Normal firmware checkouts do not ship the trusted hardware runner's
+        # local allowlist. Fall back ONLY for the canonical default Flux path.
+        # Explicit alternative --registry paths must exist, not silently
+        # reuse the default trusted repository.
+        if Path(path).resolve() == REGISTRY.resolve():
+            return DEFAULT_FLUX
+        raise InboxError("explicit queue registry is missing")
     repo, owner, queue = raw["repo"], raw["trusted_author"], raw["queue_issue"]
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise InboxError("invalid GitHub repository in trusted local config")
