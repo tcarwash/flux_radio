@@ -325,7 +325,7 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False):
     if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
@@ -369,6 +369,14 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
     if capture_codec:
         # Only requested captures expose binary voice frames; default is JSON-safe.
         summary["received_codec_bytes"]=codec
+    if capture_rf_frames:
+        # Offline-only opt-in raw IQ receiver result. No expected TX bytes
+        # substituted for recovered frames.
+        summary["received_physical_frames"]=frames
+    if capture_air:
+        # Simulation-only access to the exact RF bursts from real ARM TX,
+        # rather than regenerating a signal from expected packet bytes.
+        summary["virtual_air"]=air
     return summary
 
 

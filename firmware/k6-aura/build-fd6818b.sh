@@ -64,6 +64,22 @@ fi
   echo "checkout at $WORK is not pinned to $REV; preserve it and choose another AURA_FD6818B_REV" >&2
   exit 1
 }
+# API31 research overlays are append-only and not all legacy patch scripts
+# can be reapplied incrementally to an already generated level-31 host.
+# Rebuild from the PINNED upstream source only on explicit request; never
+# reset a user's normal source repo or any tree on the default path.
+case "${K6_AURA_RESET_GENERATED:-0}" in
+  0) ;;
+  1)
+    [ -z "$(git -C "$WORK" symbolic-ref -q --short HEAD || true)" ] || {
+      echo "K6_AURA_RESET_GENERATED refused: generated Aura checkout is on a branch" >&2
+      exit 1
+    }
+    git -C "$WORK" reset --hard "$REV" >/dev/null
+    git -C "$WORK" clean -fd >/dev/null
+    ;;
+  *) echo "K6_AURA_RESET_GENERATED must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ ! -f "$WORK/src/app/pager.rs" ]; then
   git -C "$WORK" apply "$HERE/aura-pager.patch"
   git -C "$WORK" apply "$HERE/aura-pager-fd6818b.patch"
@@ -164,6 +180,19 @@ python3 "$HERE/apply-live-serial.py"
 K6_MODE_REGISTRY=${K6_MODE_REGISTRY:-0}
 K6_MODE_RFTEST=${K6_MODE_RFTEST:-0}
 K6_PACKET_MAILBOX=${K6_PACKET_MAILBOX:-0}
+K6_FSK4800_RX=${K6_FSK4800_RX:-0}
+case "$K6_FSK4800_RX" in
+  0|1) ;;
+  *) echo "K6_FSK4800_RX must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_FSK4800_RX" = 1 ]; then
+  [ "$K6_MODE_REGISTRY" = 1 ] && [ "$K6_PACKET_MAILBOX" = 1 ] &&
+  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_CONFIG_FSK:-0}" = 1 ] &&
+  [ "${K6_LEAN_TXDOG:-0}" = 1 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || {
+    echo "Experimental FSK4800 RX needs Data, watchdog, API26/27; no resident Sotto" >&2
+    exit 1
+  }
+fi
 export K6_MODE_REGISTRY
 if [ "$K6_MODE_REGISTRY" = 1 ]; then
   python3 "$HERE/apply-mode-registry.py"
@@ -172,6 +201,9 @@ if [ "$K6_PACKET_MAILBOX" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "Packet mailbox requires K6_MODE_REGISTRY=1" >&2; exit 1; }
   python3 "$HERE/apply-packet-mailbox.py"
   python3 "$HERE/apply-packet-dispatch.py"
+fi
+if [ "$K6_FSK4800_RX" = 1 ]; then
+  python3 "$HERE/apply-sotto-rx4800.py"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
@@ -204,6 +236,7 @@ cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
 if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"; fi
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbox"; fi
+if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi

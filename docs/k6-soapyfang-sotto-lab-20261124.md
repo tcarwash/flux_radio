@@ -102,6 +102,41 @@ threshold optimum. Keep conservative 4-word/1-ms polling as the
 default until hardware-derived timings and other noise/phase cases
 are validated.
 
+## Incremental receive audio and bounded playout
+
+The SoapyFang/Unicorn voice test uses the exact pinned native C
+Sotto-1200 fixed-point decoder, taking six encoded bytes per 40-ms
+superframe and emitting 160-sample/20-ms speaker blocks. The codec
+requires two initial 40-ms frames of priming and two flush frames
+only after verified FDV1 END. The receiver rejects malformed input,
+ring overflow, and stale PCM on PTT/cancel. The host test compares
+every produced PCM sample **bit-for-bit** to the original independent
+batch decoder; it never substitutes ideal received source data for
+IQ-derived packet bytes.
+
+The first bounded implementation decoded each entire eight-frame
+packet immediately into a **16-block PCM ring (5,120 bytes)** and
+drained it before the next packet. The new **paced** receiver,
+`SottoRxPaced`, queues only encoded six-byte frames at packet arrival,
+then calls the native decoder on speaker demand. Its resource caps are:
+
+| Receiver ring | First design | Paced design |
+| --- | ---: | ---: |
+| 20-ms PCM queued | 16 blocks / 5,120 B | 4 blocks / 1,280 B |
+| 40-ms encoded frames queued | 0 | 16 frames / 96 B |
+| Total explicit queued data | 5,120 B | 1,376 B |
+
+This is a **3,744-byte reduction (73.1%) in modeled queue storage**.
+The separate 320-sample/640-byte decoder temporary, native decoder
+working state, Python data-structure overhead and platform scheduling
+are not included in these figures. Up to 144 eight-frame segments
+(1,152 codec frames) can be drained with bounded memory. A missing END
+never causes a fabricated flush. **The host still drains speaker
+calls as a test harness, not with the K6's 20-ms timer.** Physical
+speaker underruns, decode WCET, required prebuffer delay, and combined
+radio SRAM fit are therefore unproven. No silence or concealment is
+silently invented as proof of uninterrupted playback.
+
 ## Limits and next optimization gates
 
 This is not yet a **flashable two-way on-K6 Sotto** image. API30 host

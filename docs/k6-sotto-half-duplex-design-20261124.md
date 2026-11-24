@@ -33,6 +33,17 @@ or move into an installed module with safe load/unload behavior.
 
 ## Offline proof and missing real-firmware boundaries
 
+An [opt-in API31 production-host RX development slice](k6-sotto-api31-rx-development-20261124.md)
+now compiles and boots under Unicorn. The linked ARM API31 callback has
+now also received all six Sotto frames from SoapyFang virtual IQ using
+a fast 0.4ms modeled FIFO rearm, with PTT/timeout and register cleanup.
+The normal installed-module dispatcher is still not tested. API28–30
+remain stubs, so this is not the merged two-way host.
+
+The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
+adds a bounded PCM queue and failure/preemption semantics. Its
+host-memory budget is not a verified K6 SRAM measurement.
+
 The [SoapyFang browser lab](k6-soapyfang-sotto-lab-20261124.md)
 exposes the full virtual voice loop and accepted receiver PCM for repeated,
 parameterized test runs, with source-aware cached compilation. It remains a
