@@ -316,6 +316,11 @@ def _install_fakes(monkeypatch, hil, device):
 def _run_execute(monkeypatch, tmp_path, device, **kw):
     hil = load_harness()
     serial_lock_calls = _install_fakes(monkeypatch, hil, device)
+    # Simulated transport settles instantly; record each production
+    # post-Cable.end delay without sleeping, still drive real logic.
+    settled = []
+    monkeypatch.setattr(hil, "settle_after_cable_end",
+                        lambda: settled.append("cable-end"))
     hold_path = tmp_path / "bench.hold"
     monkeypatch.setattr(hil, "BENCH_HOLD_FILE", str(hold_path))
 
@@ -543,3 +548,11 @@ def test_missing_legacy_info_without_format2_capabilities_refuses(monkeypatch, t
     assert rc == 2 and device.blobs == original
     assert "send_image" not in device.cable_calls
     assert not hold_path.exists()
+
+
+def test_bounded_cable_end_settle_only_waits_three_seconds(monkeypatch):
+    hil=load_harness()
+    delays=[]
+    monkeypatch.setattr(hil.time,"sleep",lambda seconds:delays.append(seconds))
+    hil.settle_after_cable_end()
+    assert delays == [3.0]

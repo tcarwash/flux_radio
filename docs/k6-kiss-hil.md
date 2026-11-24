@@ -65,3 +65,15 @@ host write filter. An incomplete frame, appended frame, type-0 DATA command,
 or non-APRS SET is rejected before writing. Evidence records the absence of
 host-sent DATA, plus standby/transmit samples before and after the control
 session. It does **not** claim continuous independent RF monitoring.
+
+## Cable END to live-standby transition
+
+The legacy cable END restarts the MCU. An earlier no-RF HIL session
+stopped before install when the immediate 2-second live INFO request
+received no response, after all 31 packed entries were snapshotted.
+The harness now uses the established 3-second bounded boot-settle
+interval after each cable END and **before** the next read-only live
+identity/idle check. This does not repeat a RUN, STOP, KISS DATA,
+radio mutation, or transmit request. If live remains unavailable,
+the session aborts before mutation (or enters HOLD if a temporary
+module was already installed), with no blind retry.

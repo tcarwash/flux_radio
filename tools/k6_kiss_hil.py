@@ -235,6 +235,17 @@ def freeze():
     return manifest, bytes(code), entry
 
 
+def settle_after_cable_end():
+    """Allow the legacy END-induced MCU reboot to return to VFO standby.
+
+    This is a fixed bounded boot-settle delay, not a retry of an unknown
+    module RUN, STOP, SPI mutation, RF request or KISS command.  The
+    existing no-RF K6 bench tool (k6_sotto_rf_bench_packed.py) uses the
+    same three-second post-Cable.end transition.
+    """
+    time.sleep(3.0)
+
+
 def session_digest(manifest):
     canonical = json.dumps(manifest, sort_keys=True,
                            separators=(",", ":")).encode("utf-8")
@@ -636,6 +647,8 @@ def execute(args):
                         tr.note("snapshot", slots=len(blobs))
                         watermark = cable.serial_watermark()
                         cable.end()
+                    settle_after_cable_end()
+                    remaining()
                     # ---- Phase 0b: live idle attestation ----
                     with open_serial() as port:
                         link = LiveLink(port, timeout=TIMEOUTS["live_call"])
@@ -683,6 +696,7 @@ def execute(args):
                                            "no retry")
                         tr.note("readback-exact", sha=envelope_sha)
                         cable.end()
+                    settle_after_cable_end()
                     remaining()
                     # ---- Phase 2: live RUN + KISS CONTROL only, then STOP ----
                     import importlib.util
@@ -797,6 +811,8 @@ def execute(args):
                             # Control path must already have returned to live
                             # (verified in Phase 2); re-verify read-only first.
                             cable.end()
+                        settle_after_cable_end()
+                        remaining()
                         with open_serial() as port:
                             link = LiveLink(port,
                                             timeout=TIMEOUTS["live_call"])
@@ -829,6 +845,8 @@ def execute(args):
                             tr.note("uninstalled", slot=TEMP_SLOT,
                                     erase_serial=erase_serial)
                             cable.end()
+                        settle_after_cable_end()
+                        remaining()
             except HilError:
                 raise
             # ---- post-session read-only verification (full 31 original hashes) ----
@@ -860,6 +878,8 @@ def execute(args):
                                                "pre-install snapshot" % slot_str)
                         tr.note("post-slots-verified", count=len(directory))
                         cable.end()
+                    settle_after_cable_end()
+                    remaining()
                     with open_serial() as port:
                         link = LiveLink(port, timeout=TIMEOUTS["live_call"])
                         st = attest_live_idle(link, "post-run")
