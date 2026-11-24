@@ -159,6 +159,15 @@ if [ "${K6_PACKET_MAILBOX:-0}" = 1 ]; then
   [ "${K6_MODE_REGISTRY:-0}" = 1 ] || { echo "K6_PACKET_MAILBOX requires K6_MODE_REGISTRY=1" >&2; exit 1; }
   CFLAGS="$CFLAGS -DK6_PACKET_MAILBOX=1"
 fi
+# API31 Rust host and C km_packet/kl_install must agree about the maximum
+# *installable module level*. Ordinary API27 and earlier builds are unchanged.
+if [ "${K6_FSK4800_RX:-0}" = 1 ]; then
+  [ "${K6_MODE_REGISTRY:-0}" = 1 ] && [ "${K6_PACKET_MAILBOX:-0}" = 1 ] || {
+    echo "API31 module loader requires mode registry + packet mailbox" >&2
+    exit 1
+  }
+  CFLAGS="$CFLAGS -DKM_LEVEL=31"
+fi
 KM=
 KM_MODE=
 if [ "${K6_OTA_SERVICE:-1}" = 0 ]; then

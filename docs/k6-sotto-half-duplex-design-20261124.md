@@ -37,8 +37,11 @@ An [opt-in API31 production-host RX development slice](k6-sotto-api31-rx-develop
 now compiles and boots under Unicorn. The linked ARM API31 callback has
 now also received all six Sotto frames from SoapyFang virtual IQ using
 a fast 0.4ms modeled FIFO rearm, with PTT/timeout and register cleanup.
-The normal installed-module dispatcher is still not tested. API28–30
-remain stubs, so this is not the merged two-way host.
+The actual run_module -> km_run_on_stack -> km_run path now also
+runs a CRC32 cable-verified level-31 receiver module to completion,
+recovering all six IQ packets. Production SipHash/SPI install, full
+UART/CPS and VFO mode activation are still untested. API28–30 remain
+stubs, so this is not the merged two-way host.
 
 The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
 adds a bounded PCM queue and failure/preemption semantics. Its

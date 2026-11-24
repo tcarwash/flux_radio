@@ -90,6 +90,16 @@ def test_build_requires_api27_and_data_with_watchdog():
     assert 'git -C "$WORK" clean -fd' in shell
     assert 'mod_tx_pa(' not in rx and 'pa_enable(' not in rx
     assert 'async_fsk' not in rx
+    # The Rust advertised API31 MUST match the C loader's envelope ceiling.
+    # Older KISS/API27 builds retain their own ceiling.
+    builder=(ROOT/'tools/k6_build.py').read_text()
+    assert "flags.append('-DKM_LEVEL=31')" in builder
+    assert "if env.get('K6_FSK4800_RX', '0') == '1'" in builder
+    assert 'K6_FSK4800_RX="$K6_FSK4800_RX"' in shell
+    legacy=(ROOT/'tools/k6_build.sh').read_text()
+    assert 'if [ "${K6_FSK4800_RX:-0}" = 1 ]; then' in legacy
+    assert 'CFLAGS="$CFLAGS -DKM_LEVEL=31"' in legacy
+    assert 'K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX"' in shell
     assert 'RX4800_DEADLINE' in rx
     assert 'RX4800_FRAME_READY' in rx
     assert 'fd.reg_write(syst,0x59,0x40f8)' in rx
@@ -103,3 +113,17 @@ def test_existing_api24_rejects_4800_rx():
     s=(ROOT/'firmware/k6-aura/apply-configurable-fsk.py').read_text()
     assert 'if fast { if op != 2 || n != 33 || gain != 21 {return -1;} }' in s
     assert 'No 4800 RX' in HEADER.read_text()
+
+
+def test_older_c_module_loader_ceiling_unchanged():
+    """Confirm the new loader opt-in never elevates an ordinary API27 host."""
+    def level(*flags):
+        p=subprocess.run(['cc','-E','-dM','-x','c',*flags,'-'],
+                         input='#include "c/k6/k6_mod.h"\n',
+                         cwd=ROOT,capture_output=True,text=True,timeout=20)
+        assert p.returncode==0,p.stderr
+        return next(line.split()[-1] for line in p.stdout.splitlines()
+                    if line.startswith('#define KM_LEVEL '))
+    assert level()=='23'
+    assert level('-DK6_MODE_REGISTRY=1','-DK6_PACKET_MAILBOX=1')=='27'
+    assert level('-DK6_MODE_REGISTRY=1','-DK6_PACKET_MAILBOX=1','-DKM_LEVEL=31')=='31'

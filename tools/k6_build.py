@@ -62,6 +62,14 @@ def _build(out, extra, env, c):
     if env.get('K6_PKT_YIELD', '1') != '0':
         flags.append('-DSP_PKT_YIELD')
     flags.extend(['-DSP_DEC_POOL', *extra])
+    # C header check() enforces KM_LEVEL when installing a module. Without
+    # this opt-in, Rust advertises API31 while its linked C loader silently
+    # rejects every level-31 envelope as KM_BAD_HDR on the final packet.
+    # Keep the level 23/27 ordinary hosts untouched.
+    if env.get('K6_FSK4800_RX', '0') == '1':
+        if env.get('K6_MODE_REGISTRY') != '1' or env.get('K6_PACKET_MAILBOX') != '1':
+            raise ValueError('API31 C module loader requires API26/27 host opt-ins')
+        flags.append('-DKM_LEVEL=31')
     helper = out / ('cb_image.exe' if os.name == 'nt' else 'cb_image')
     run(hostcc, '-O2', '-std=c99', '-I' + str(c),
         c / 'k6/cb_image.c', c / 'k6/sp_cb.c',

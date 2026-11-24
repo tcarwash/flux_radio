@@ -230,6 +230,7 @@ if [ "$K6_SOTTO_SERVICE" = 1 ]; then
   K6_VOICE=1
 fi
 K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PKT_YIELD=0 K6_VOICE="$K6_VOICE" K6_CB=spi \
+  K6_MODE_REGISTRY="$K6_MODE_REGISTRY" K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX" K6_FSK4800_RX="$K6_FSK4800_RX" \
   K6_OUT="$OUT/c-build" sh "$ROOT/tools/k6_build.sh"
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"

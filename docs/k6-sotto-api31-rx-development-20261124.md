@@ -54,9 +54,9 @@ It generated a **110,740-byte** ARM firmware image, with **12,140 bytes**
 remaining under the 122,880-byte application budget. The experimental
 image was booted for **192,000 emulated instructions** with **no Unicorn
 firmware fault**. Those measurements are build-specific and do not include
-the resident Sotto decoder and audio output service. The RX callback was
-compiled into the image but has **not yet been directly exercised through
-the complete Rust-host radio module dispatcher**.
+the resident Sotto decoder and audio output service. That early build preceded
+later direct ARM callback and complete normal module-dispatch tests,
+described below; its reported flash size is historical, not the newest image.
 
 The separate actual ARM diagnostic consumer
 `tests/data/k6/sotto_rx31_call_emu.c` compiled to **1,440 bytes**.
@@ -86,8 +86,9 @@ model. It exercises exact 33-word draining, snapshot restoration,
 low-active PTT, timeout, key/cancel/power off, malformed pointers,
 other-RF-owner preservation, and the complete six-packet dataset
 independently recovered from SoapyFang virtual IQ. The Rust callback
-**has executed natively and as a direct callback within the compiled ARM firmware**, but not through a normally launched module: real peripheral timing,
-Cortex-M0 stack and full-board dispatcher remain open gates.
+**has executed natively, directly inside the compiled ARM firmware,
+and through the full compiled module runner**. Physical peripheral timing
+and end-to-end UART or on-device Sotto speaker processing remain open gates.
 
 ## Linked ARM firmware RX qualification and fast rearm
 
@@ -144,12 +145,66 @@ transmitter's timeline with the receiver's boot clock and supplies
 its simulated chip ID and VFO frequency. Actual installed VFO binding,
 interrupt scheduling, audio PWM and MIC/FSK TX services remain open.
 
+## Real cable-loader and normal module runner (2026-11-24)
+
+The next executable qualification uncovered a subtle release blocker:
+the Rust host advertised API31 and executed the linked API31 function,
+but the separately built C module verifier still enforced the older
+API27 ceiling (KM_LEVEL) and **rejected the otherwise valid level-31
+module envelope as KM_BAD_HDR on upload chunk 26/26**. The C
+library is built by tools/k6_build.sh, distinct from tools/k6_build.py.
+Both C builder paths now raise the module-verifier ceiling to
+KM_LEVEL=31 **only** when K6_FSK4800_RX=1, with mode-registry
+and mailbox prerequisites. The parent Aura build now passes these
+opt-in flags to the actual C library build. Ordinary firmware and
+API27 packet transports keep their existing ceiling and ABI.
+
+After the fix, the same **110,852-byte RX-only firmware** accepted a
+real K6M **1,464-byte CRC32-tagged envelope** containing the actual
+**1,440-byte compiled Cortex-M0 FDV1 consumer**. A new gate,
+tools/k6_sotto_rx4800_dispatch_gate.py, calls the firmware's real
+km_cable_packet() for **all 26 whitened, CRC-checked 64-byte module
+chunks**, first confirming that a corrupted packet CRC is rejected.
+The accepted envelope is byte-for-byte compared with RAM. It then
+invokes the real Rust host run_module, which **initializes MOD_CTX
+itself**, switches stacks through the actual C km_run_on_stack and
+runs the module's real C k6_main via km_run. The test observes
+**exactly one** normal module dispatch and **return code 6** from the
+real module. The callback received **6/6 SoapyFang IQ packets,
+198/198 FIFO words, zero FIFO underflow or overrun**, with no call
+to the radio's enter_tx. After return, the host clears its module
+context and restores its radio state. This is no longer a direct API31
+debug invocation or an emulated stand-in for a Rust callback.
+
+This is a **cable-only CRC32** development build. The CPU test
+injects the packets into the **compiled C ingress function**, rather
+than driving a complete UART/CPS cable session, installing in the SPI
+library, or qualifying the **production keyed SipHash** authorization
+path. The parser-only module validates BEGIN/VOICE/END but does **not**
+decode speaker PCM on the KD32F328. Those distinctions remain
+important when assessing whether a binary is flashable and *usable*.
+
+For reproducibility (no real radio involved):
+
+    K6_AURA_RESET_GENERATED=1 K6_FSK4800_RX=1 K6_MODE_REGISTRY=1 K6_PACKET_MAILBOX=1 sh firmware/k6-aura/build-sotto-data.sh /tmp/flux-rx31-offline-host
+    ~/.local/share/flux-rf-venv/bin/python tools/k6_sotto_rx4800_dispatch_gate.py --elf firmware/k6-aura/build/aura-fd6818b-port/target/thumbv6m-none-eabi/release/aura --image firmware/k6-aura/out-fd6818b/flux-fd6818b-pack.bin --sotto-tree . --json /tmp/flux-rx31-dispatch-report.json
+
+The K6_AURA_RESET_GENERATED flag explicitly resets only the disposable
+pinned generated Aura checkout; do not use it on a non-disposable
+worktree. The matching opt-in regression test is
+tests/test_k6_sotto_rx4800_dispatch_gate.py, using the same
+K6_SIM_SOTTO_RX31_IMAGE and K6_SIM_SOTTO_RX31_ELF paths as
+the direct callback test. The two tests have **different scopes**,
+and both remain useful for identifying failures at different layers.
+No hardware, local serial port, SDR transmitter or shared bench lock
+is used.
+
 ## Boundaries remaining for flashable half-duplex voice
 
-1. Execute the now ARM-exercised API31 callback through the normal
-   installed-module km_run dispatcher. Its direct ABI call passes
-   full-board virtual RF; module installation and real VFO handoff
-   are not yet validated.
+1. Complete the UART/CPS and keyed install/SPI library path. The
+   **actual run_module and km_run_on_stack execution is now tested**
+   after CRC32 cable ingress, but on-device keyed SPI installation and
+   normal selectable VFO binding remain open.
 2. Join the API28 resource, API29 finite FSK async TX and API30 mic
    callbacks into a **single append-only host**, then bind installed
    Sotto to `RX → PTT TX → RX`. Never expose stubbed callbacks to
