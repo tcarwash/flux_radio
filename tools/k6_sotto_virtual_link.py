@@ -317,7 +317,7 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False):
     if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
@@ -346,7 +346,7 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
     c_codec,c_complete=wire_records_session(records)
     if c_codec!=codec or c_complete!=session["complete"] or sum(bool(r[0]) for r in records)!=session["valid"] or sum(r[0]!=0 and r[1]==2 for r in records)!=session["offset_2"]:
         raise RuntimeError("C wire decoder and independent Python oracle disagree")
-    return dict(revision=artifact["revision"],source_dirty=artifact["dirty"],
+    summary=dict(revision=artifact["revision"],source_dirty=artifact["dirty"],
                 module_sha256=hashlib.sha256(artifact["code"]).hexdigest(),
                 module_bytes=len(artifact["code"]),module_return=ret,
                 stack_bytes=stack,cpi=cpi,spi_us=spi_us,spi_byte_us=spi_byte_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
@@ -358,6 +358,10 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 codec_frames=len(codec)//6,codec_exact=codec==artifact["reference"],
                 wire_decoder_agrees=True,
                 logs=e.said,wall_seconds=round(time.perf_counter()-t,3))
+    if capture_codec:
+        # Only requested captures expose binary voice frames; default is JSON-safe.
+        summary["received_codec_bytes"]=codec
+    return summary
 
 
 
