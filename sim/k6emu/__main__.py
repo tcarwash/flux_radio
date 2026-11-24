@@ -442,6 +442,8 @@ class K6Board:
                 for bit in self.fd_bits[8:24]:
                     value = (value << 1) | bit
                 addr &= 0x7F
+                if self.rf_backend is not None:
+                    self.rf_backend.write(addr, value, self.fd_regs, self.cycles / 96_000_000)
                 self.fd_regs[addr] = value
                 self.fd_writes.append((addr, value))
             self.fd_active = False

@@ -28,6 +28,7 @@ import time
 import numpy as np
 
 from .dsp import FirDecim, highpass, lowpass
+from .fsk import FskRx
 
 AUDIO_HZ = 48_000               # discriminator rate (approximately: the input rate over an integer)
 PCM_HZ = 8_000                  # speaker chunks (approximately)
@@ -61,6 +62,7 @@ class ChipModel:
         self.d2 = max(1, round(self.fa / PCM_HZ))
         self.pcm_rate = self.fa / self.d2
         self._reset_audio()
+        self.fsk = FskRx(self.fa)
         self.pcm = collections.deque(maxlen=200)    # (seq, int16 chunk, noise squelch open)
         self.pcm_seq = 0
         self.noise_hz = 1e4                      # HF discriminator rms, Hz (smoothed)
@@ -101,6 +103,7 @@ class ChipModel:
             if hz == self.tuned_hz:
                 return
             self.tuned_hz = hz
+            self.fsk.discontinuity()
             self._reset_audio()
             self.noise_hz = 1e4
             self.glitch = 0.0
@@ -124,6 +127,8 @@ class ChipModel:
                 self.t += (n - keep) / self.rate
                 n = keep
                 self._reset_window()
+                self._reset_audio()
+                self.fsk.discontinuity()
             while n > 0:
                 k = min(n, 1 << 16)
                 self._ingest(self.src.read(k))
@@ -199,6 +204,7 @@ class ChipModel:
         self.prev = y[-1:]
         d = np.angle(z[1:] * np.conj(z[:-1])).astype(np.float32)
         hz = d * (self.fa / (2 * np.pi))
+        self.fsk.feed(hz)
         hf = self.hf.process(hz)
         k = min(1.0, len(d) / (0.01 * self.fa))          # about a 10 ms time constant
         self.noise_hz += k * (float(np.sqrt(np.mean(hf ** 2))) - self.noise_hz)

@@ -222,6 +222,31 @@ class NpySource(SigmfSource):
         return f"NPY {os.path.basename(self.path)} ({self.length / self.rate:.1f} s, {'loop' if self.loop else 'once'})"
 
 
+class NpyU8Source(NpySource):
+    """Archived RTL-SDR interleaved unsigned bytes, with explicit RF metadata."""
+    def __init__(self, path, rate, center_hz, loop=False, dbm_offset=None):
+        self.raw = np.load(path, mmap_mode="r", allow_pickle=False)
+        if not isinstance(self.raw, np.memmap) or self.raw.ndim != 1 or self.raw.dtype != np.uint8 or not len(self.raw) or len(self.raw)%2:
+            if hasattr(self.raw, "close"):
+                self.raw.close()
+            raise ValueError("NPY-U8 requires a nonempty 1-D interleaved uint8 IQ array")
+        self.stride = 2
+        self.length = len(self.raw)//2
+        self.rate = float(rate)
+        self.center_hz = float(center_hz)
+        self.dbm_offset = REF_DBM if dbm_offset is None else float(dbm_offset)
+        self.loop = loop
+        self.pos = 0
+        self.path = os.fspath(path)
+
+    def _slice(self, start, count):
+        raw = self.raw[2*start:2*(start+count)].astype(np.float32)
+        return ((raw[::2]-127.5)+1j*(raw[1::2]-127.5))/128
+
+    def describe(self):
+        return "U8 " + super().describe()
+
+
 class SoapySource(IqSource):
     """a SoapySDR receiver. RX only: no transmit stream is ever set up. Its LO sits a quarter of
     the rate above the frequency asked for, so the LO leak and the DC spike stay off the channel
@@ -306,10 +331,12 @@ def open_source(spec, *, rate=None, center_hz=None, gain=None, dbm_offset=None, 
         raise ValueError("RF center must be positive and finite")
     if dbm_offset is not None and not math.isfinite(dbm_offset):
         raise ValueError("RF dBm offset must be finite")
-    if spec.startswith("npy:"):
+    if spec.startswith(("npy:", "npy-u8:")):
         if rate is None or center_hz is None or gain is not None:
             raise ValueError("NPY requires --rf-rate and --rf-center; gain does not apply")
-        return NpySource(spec[4:], rate, center_hz, loop=loop, dbm_offset=dbm_offset)
+        kind, path = spec.split(":", 1)
+        cls = NpyU8Source if kind == "npy-u8" else NpySource
+        return cls(path, rate, center_hz, loop=loop, dbm_offset=dbm_offset)
     if spec == "synthetic":
         if gain is not None or dbm_offset is not None or loop:
             raise ValueError("synthetic RF has fixed calibration; gain, offset and loop do not apply")
@@ -323,4 +350,4 @@ def open_source(spec, *, rate=None, center_hz=None, gain=None, dbm_offset=None, 
             raise ValueError("--rf-loop applies only to recording replay")
         return SoapySource(spec[6:], rate=rate or 2_400_000, center_hz=center_hz or 440_850_000,
                            gain=gain, dbm_offset=dbm_offset)
-    raise ValueError("RF source must be synthetic, sigmf:PATH, npy:PATH or soapy:ARGS")
+    raise ValueError("RF source must be synthetic, sigmf:PATH, npy:PATH, npy-u8:PATH or soapy:ARGS")

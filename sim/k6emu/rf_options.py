@@ -1,7 +1,7 @@
 """CLI options shared by the headless and browser emulator."""
 
 def add_rf_args(parser):
-    parser.add_argument("--rf-source", help="opt-in RX-only IQ: synthetic, sigmf:PATH, npy:PATH or soapy:ARGS")
+    parser.add_argument("--rf-source", help="opt-in RX-only IQ: synthetic, sigmf:PATH, npy:PATH, npy-u8:PATH or soapy:ARGS")
     parser.add_argument("--rf-rate", type=float, help="synthetic/SDR/NPY IQ sample rate in Hz")
     parser.add_argument("--rf-center", type=float, help="initial IQ center Hz (required for NPY)")
     parser.add_argument("--rf-gain", type=float, help="SDR RX gain in dB")

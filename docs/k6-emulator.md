@@ -77,7 +77,9 @@ and errors, plus a user-initiated snapshot of the last five seconds of model FM 
 The snapshot is not the firmware's actual speaker output. Replay EOF is shown;
 `--rf-loop` explicitly repeats a recording. SigMF supports single-frequency
 `cf32_le`, `ci16_le`, and `ci8`; NPY requires a one-dimensional complex array and
-explicit sample rate and center frequency. Both file formats are memory-mapped.
+explicit sample rate and center frequency. The `npy-u8:PATH` source additionally supports our archived interleaved unsigned
+8-bit RTL-SDR I/Q arrays with explicit rate and effective center. All replay formats
+are memory-mapped.
 Sample rates must be 48 kS/s–20 MS/s. The example NPY rate/center are illustrative;
 use the actual capture metadata. Keep off-air recordings and calibration files out of Git.
 
@@ -97,8 +99,9 @@ noise, squelch and FM audio are behavioral estimates, not silicon measurements.
 it does not certify the model. Recorded/synthetic sources advance with virtual
 time; live SDR uses wall time and approximate pacing. Retuning and very long
 virtual delays can skip samples; no cycle-accurate RF timing is promised.
-Native FSK FIFO demodulation, GP0/PA11 integration, modem decoding, and TX
-waveform generation are **not** part of this first port. Existing synthetic
+Native direct 4800-baud FSK FIFO reception is supported as described below.
+GP0/PA11 integration, other modem PHYs, and TX waveform generation are **not**
+modeled by this backend. Existing synthetic
 DMA/IF injection is separate and unchanged. Real SDR use requires a subsequent
 device-specific check; CI uses generated IQ and a mocked Soapy RX device.
 
@@ -106,6 +109,49 @@ Run the offline regression suite with
 `python -m pytest -q tests/test_k6_rf_backend.py`. The upstream model/DSP
 are attributed in source; the Flux adapter, NPY/SigMF replay, register latch,
 workbench UI and tests are maintained here.
+
+### Native FSK replay and module testing
+
+The optional RF backend now feeds the native direct 4800-baud 2FSK receive
+model from the channel discriminator **before** the speaker low-pass filter.
+It acquires the 16-byte 0x55 preamble and programmable four-byte sync from
+IQ, chooses symbol phase and discriminator polarity, and delivers little-endian
+16-bit words at the nominal bit clock. The model never uses expected payload
+bytes, CRC, or known frame times to acquire or repair a frame.
+
+Supported register configuration: REG58=00e1, REG72=c194, REG5C=5625 (hardware
+CRC disabled), REG59=00f8 base (no scrambling or inversion), even byte count
+in REG5D, and REG5E low bits 1–7 as the RX threshold. REG59 RX clear/enable
+arms one frame; REG02/0C model interrupt acknowledgement/pending with REG3F
+masking; REG0B reports modeled sync polarity; REG5F pops one word per bus
+transaction. The modeled eight-word FIFO drops new words on overflow, returns
+zero on underflow, and raises threshold-crossing, sync, and frame-done events.
+A receiver must drain and rearm. This is an explicit behavioral contract,
+not a claim that real silicon uses these exact overflow, latch, polarity or
+timing semantics. Unsupported configurations are reported rather than decoded.
+The clock is fixed nominal 4800 baud, not an adaptive clock-recovery loop;
+long virtual gaps and retunes discard partial frames. The workbench exposes
+frame, FIFO, overflow and unsupported-configuration diagnostics.
+
+The existing Cortex-M0 module harness (`tests/k6_live_emu.py`) accepts an
+optional virtual `rf_backend` and `rf_hz` for `fd_read`, `fd_write`, `tune` and
+`rx_hz`. The default GP0/DMA fixture path remains unchanged. An emulator-only
+C polling module exercises the real module API and stores raw received frames
+in scratch; run it with:
+
+```sh
+python tools/k6_fsk_emulator_replay.py --source npy-u8:PATH/capture.npy \
+  --rate 1024000 --center 433780500 --tune 433500000 --duration 2.5
+```
+
+The example center includes the known receiver frequency correction for our
+November 23 bench archives; use actual capture metadata for other files.
+The tool prints frame counts, independent software L64 CRC checks, hashes,
+first words, stack use and FIFO diagnostics. It does not open a physical
+device. It requires the existing Cortex-M0 module build tools (clang, lld,
+llvm-objcopy, llvm-nm). See [archived replay evidence](k6-fsk-emulator-replay-20261124.md).
+The model does not implement native TX, hardware CRC, FFSK, 1200/2400-baud
+direct FSK, DMA/GP0 or a complete production Sotto receiver.
 
 ## Test a library module
 
