@@ -3,5 +3,15 @@
   "enabled": true,
   "trusted_operator": "AG7SU",
   "environment": "dummy_load",
-  "approved": {}
+  "approved": {
+    "9": {
+      "manifest_sha256": "86ab5f41c56a3525955ad245b2a2a29931af91acd7ee574e38826bab14c78fb8",
+      "expected_build": "339e08a2b77c7679",
+      "exact_api": 29,
+      "expires_utc": "2026-11-24T23:16:24.936562+00:00",
+      "one_shot": true,
+      "dummy_load_confirmed": true,
+      "no_cwid_for_dummy_load": true
+    }
+  }
 }

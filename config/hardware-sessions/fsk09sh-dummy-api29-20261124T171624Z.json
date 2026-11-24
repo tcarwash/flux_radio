@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "session_id": "fsk09sh-dummy-api29-20261124T171624Z",
+  "port": "/dev/ttyUSB0",
+  "queue_issue_url": "https://github.com/tcarwash/flux_radio/issues/11",
+  "lease_expires_utc": "2026-11-24T23:16:24.936562+00:00",
+  "session_pins": [
+    {
+      "path": "/storage5/dev/flux-batch-api-config/tools/k6_experiment_bench_probe.py",
+      "sha256": "87bc7a97ab54cfca1cbc512ef30755fa9a456526b7330c211213ee78f1116956"
+    },
+    {
+      "path": "/storage5/dev/flux-batch-api-config/tools/k6_install.py",
+      "sha256": "93a4bd80c5889515b0bf2280641fb84df510f51eeb3921709b2cccfa9fd2c6cf"
+    },
+    {
+      "path": "/storage5/dev/flux-batch-api-config/tools/k6_live.py",
+      "sha256": "0a07d105258c3a942d097ba9c9f4c31a658ee50fbf6d9fed1215282316693d0a"
+    },
+    {
+      "path": "/storage5/dev/flux-batch-api-config/tools/k6_port_lock.py",
+      "sha256": "c9818e742d3972396e3f2e8bb9fcf29a944db54ca08c72436cf028750899d30d"
+    },
+    {
+      "path": "/storage5/dev/flux-batch-api-config/tools/k6_user_store_migrate.py",
+      "sha256": "579d521d01588801240f77144b66dc1b80321f642c670801abddf802af481193"
+    }
+  ],
+  "session_preflight": {
+    "argv": [
+      "/usr/bin/python3",
+      "/storage5/dev/flux-batch-api-config/tools/k6_experiment_bench_probe.py",
+      "--expected-build",
+      "339e08a2b77c7679",
+      "--exact-api",
+      "29",
+      "--include-slots",
+      "--output",
+      "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/session-before.json"
+    ],
+    "timeout_seconds": 70
+  },
+  "session_restore": {
+    "argv": [
+      "/usr/bin/python3",
+      "/storage5/dev/flux-batch-api-config/tools/k6_experiment_bench_probe.py",
+      "--expected-build",
+      "339e08a2b77c7679",
+      "--exact-api",
+      "29",
+      "--include-slots",
+      "--baseline",
+      "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/session-before.json"
+    ],
+    "timeout_seconds": 70
+  },
+  "session_verify": {
+    "argv": [
+      "/usr/bin/python3",
+      "/storage5/dev/flux-batch-api-config/tools/k6_experiment_bench_probe.py",
+      "--expected-build",
+      "339e08a2b77c7679",
+      "--exact-api",
+      "29",
+      "--include-slots",
+      "--baseline",
+      "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/session-before.json"
+    ],
+    "timeout_seconds": 70
+  },
+  "jobs": [
+    {
+      "id": "fsk09sh-dummy-one-shot",
+      "issue_url": "https://github.com/tcarwash/flux_radio/issues/9",
+      "minimum_module_api": 3,
+      "cwd": "/storage5/dev/flux-fsk09s-h-packed-api29",
+      "pins": [
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk09s_packed_bench.py",
+          "sha256": "fd352485c5b89b229ad390ce06889d21dd0a8e42185c4c06fda80d2730617ac5"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/c/k6/mod/fsk_bchip_ae_qual.c",
+          "sha256": "4472c7d95605fe01d6f41a13f1e84380c909df493d5842e93e53306a8a06bd69"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/c/k6/mod/fsk_bchip_ae_qual_armed.c",
+          "sha256": "7ebd2a4ac62314abee6781c8ca194a39607c667d1b1e0582a60fc6e5a65812cf"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/c/k6/mod/fsk_lab_vector.h",
+          "sha256": "230ba218a033e5782b42c3d191e557723b1e0656a9ac1eaa546e09090d125450"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/c/k6/k6_mod.h",
+          "sha256": "1933452032350281c157d34c9f7621de51960ecc45652917b0cb32a9799d9cae"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/modem/k6mod.py",
+          "sha256": "f286be3e8f6ab0ca540dd53065320b97c64fa97b11b17169cb18679bfea5a5bd"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/modem/pager.py",
+          "sha256": "6f70c8c4752a011a1ef86373af5d9993e2171ec1ddb4dbdb2f32204990200bba"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/modem/fsk.py",
+          "sha256": "63cf74b1ef2fb42a5d16289a80a7266131d282cfa12f9d3abe75b5ab3d18fa04"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/c/k6/mod/module.ld",
+          "sha256": "868d01ace2a2f9a520cd799a17a4ae8c9ec12670e4f0f2a318fc8915444e355d"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_port_lock.py",
+          "sha256": "c9818e742d3972396e3f2e8bb9fcf29a944db54ca08c72436cf028750899d30d"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_install.py",
+          "sha256": "93a4bd80c5889515b0bf2280641fb84df510f51eeb3921709b2cccfa9fd2c6cf"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_live.py",
+          "sha256": "59954b567d4a44d386aa8999dd367361e361a2a5fb386e7b2bc2c262ebe2ac68"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_user_store_migrate.py",
+          "sha256": "579d521d01588801240f77144b66dc1b80321f642c670801abddf802af481193"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk_rf_record.py",
+          "sha256": "2a57017ba742b736e45aaad2a08dbfda44d43d4f857cead3573f173676614399"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk_sotto_sync_rx.py",
+          "sha256": "89e5e49e2641378013a405ab22e5ac09a28a8182acc9bc137a5d417ad67e63f7"
+        },
+        {
+          "path": "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk_iq_edges.py",
+          "sha256": "eaaebcd7a3735df4195a0e7070be65cc13f95d970838434a1025992d51bf2ed1"
+        },
+        {
+          "path": "/usr/bin/clang",
+          "sha256": "412bbe8c60571a1eb06f48fde89635033621caeb01a9b4ee76d46711bae8e932"
+        },
+        {
+          "path": "/usr/bin/ld.lld",
+          "sha256": "6a65863a9eba1af6b6e8969f8e96a5ad4df0e8b705f98491a28b1790ce35718c"
+        },
+        {
+          "path": "/usr/bin/llvm-objcopy",
+          "sha256": "0de5f7adbb648ed88aa04f2d91bd05c08306b99a27741540cc0473cbac0a0b40"
+        },
+        {
+          "path": "/usr/bin/llvm-nm",
+          "sha256": "b7b34e58c3c5c37bd9abe58d8bb9269f6bbe0a2ec6a16f8827315e90b9229ebd"
+        }
+      ],
+      "preflight": {
+        "argv": [
+          "/usr/bin/python3",
+          "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk09s_packed_bench.py",
+          "--preflight-only"
+        ],
+        "timeout_seconds": 50
+      },
+      "run": {
+        "argv": [
+          "/usr/bin/python3",
+          "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk09s_packed_bench.py",
+          "--prefix",
+          "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/fsk09sh-one",
+          "--dummy-load-confirmed",
+          "--operator-lease-confirmed",
+          "--queue-lease-acknowledged"
+        ],
+        "timeout_seconds": 120
+      },
+      "restore": {
+        "argv": [
+          "/usr/bin/python3",
+          "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk09s_packed_bench.py",
+          "--verify-only",
+          "--prefix",
+          "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/fsk09sh-one"
+        ],
+        "timeout_seconds": 70
+      },
+      "verify": {
+        "argv": [
+          "/usr/bin/python3",
+          "/storage5/dev/flux-fsk09s-h-packed-api29/tools/k6_fsk09s_packed_bench.py",
+          "--verify-only",
+          "--prefix",
+          "/home/tyler/flux-bench/batches/fsk09sh-dummy-api29-20261124T171624Z/fsk09sh-one"
+        ],
+        "timeout_seconds": 70
+      }
+    }
+  ]
+}

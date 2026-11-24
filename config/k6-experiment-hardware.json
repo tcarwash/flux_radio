@@ -3,5 +3,10 @@
   "repo": "tcarwash/flux_radio",
   "queue_issue": 11,
   "trusted_author": "tcarwash",
-  "manifests": {}
+  "manifests": {
+    "9": {
+      "path": "/storage5/dev/flux-batch-api-config/config/hardware-sessions/fsk09sh-dummy-api29-20261124T171624Z.json",
+      "sha256": "86ab5f41c56a3525955ad245b2a2a29931af91acd7ee574e38826bab14c78fb8"
+    }
+  }
 }
