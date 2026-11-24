@@ -304,8 +304,8 @@ def test_registry_lists_only_native_aprs1200(lib):
     assert not fl.value & 0x02
     assert not fl.value & 0x04  # voice Sotto is never packet data
     assert maxp.value == 75
-    assert nl.value == 8
-    assert name.raw[:8] == b"APRS1200"
+    assert nl.value == 9
+    assert name.raw[:9] == b"APRS-1200"
     assert lib.backend(1, C.byref(mid), C.byref(fl), C.byref(maxp),
                        C.byref(nl), name) == 0
 
@@ -364,3 +364,16 @@ def test_flux_tnc_builds_position_independent():
     assert k6mod.module_name(code) == "FLUX TNC"
     img = k6mod.image(code, entry, 4242, bytes(range(16)), level=14)
     assert len(k6mod.packets(img, 7, 128)) <= 26
+
+
+def test_shared_kiss_boundary_between_frames(lib):
+    # A single FEND can terminate one frame and start the next.
+    # Do not require a second FEND and lose frames from standard KISS hosts.
+    lib.rx_reset()
+    encoded1 = kiss_frame(0, b"A" * 18)
+    encoded2 = kiss_frame(0, b"B" * 18)
+    events = feed(lib, encoded1 + encoded2[1:])
+    ok = [event for event in events if event[0] == FRAME]
+    assert len(ok) == 2
+    assert ok[0][2] == b"A" * 18
+    assert ok[1][2] == b"B" * 18

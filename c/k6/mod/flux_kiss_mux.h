@@ -67,8 +67,8 @@ typedef struct {
 } fluxk_backend_t;
 
 static const fluxk_backend_t fluxk_backends[] = {
-  { FLUXK_MODE_APRS1200, FLUXK_FLAG_TX, FLUXK_MAX_PAYLOAD, 8,
-    { 'A', 'P', 'R', 'S', '1', '2', '0', '0', 0, 0, 0, 0 } }
+  { FLUXK_MODE_APRS1200, FLUXK_FLAG_TX, FLUXK_MAX_PAYLOAD, 9,
+    { 'A', 'P', 'R', 'S', '-', '1', '2', '0', '0', 0, 0, 0 } }
 };
 
 FLUXK_FN unsigned fluxk_n_backends(void) {
@@ -218,6 +218,7 @@ FLUXK_FN int fluxk_rx_feed(fluxk_rx_t *r, uint8_t b, unsigned *type,
     if (r->esc || r->overflow) {       /* cut escape / oversized: drop */
       int dropped = (int)r->esc | (int)r->overflow;
       fluxk_rx_reset(r);
+      r->in = 1; /* FEND is both end and start of the next KISS frame. */
       return dropped ? FLUXK_KISS_DROPPED : FLUXK_KISS_NEED;
     }
     if (!r->in || r->len <= 1) {        /* delimiter / empty / type-only */
@@ -232,6 +233,7 @@ FLUXK_FN int fluxk_rx_feed(fluxk_rx_t *r, uint8_t b, unsigned *type,
       unsigned i, m = (unsigned)r->len - 1;
       if (m > FLUXK_MAX_PAYLOAD) {
         fluxk_rx_reset(r);
+        r->in = 1;
         return FLUXK_KISS_DROPPED;
       }
       *type = r->buf[0];
@@ -239,6 +241,7 @@ FLUXK_FN int fluxk_rx_feed(fluxk_rx_t *r, uint8_t b, unsigned *type,
         pay[i] = r->buf[1 + i];
       *n = m;
       fluxk_rx_reset(r);
+      r->in = 1; /* Shared KISS delimiter may start the next frame. */
       return FLUXK_KISS_FRAME;
     }
   }

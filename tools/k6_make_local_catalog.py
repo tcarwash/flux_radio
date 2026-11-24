@@ -18,7 +18,7 @@ import k6_install
 def make_repo(name, source, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    aliases = {"aprsapp": "aprs", "aprsbeacon": "aprs-beacon", "aprsgpssync": "aprs-gps-sync", "aprskissrx": "aprs-kiss-rx", "gw_flux": "gw"}
+    aliases = {"aprsapp": "aprs", "aprsbeacon": "aprs-beacon", "aprsgpssync": "aprs-gps-sync", "aprskissrx": "aprs-kiss-rx", "fluxtnc": "flux-tnc", "gw_flux": "gw"}
     dest = output / aliases.get(name,name)
     if dest.exists():
         raise FileExistsError(f"{dest} already exists; not overwriting it")
@@ -58,6 +58,13 @@ def make_repo(name, source, output):
                 "ported yet. The host renders the compact original-style Explore list UI. "
                 "Requires module API level 21.\n\n"
             )
+        elif name == "fluxtnc":
+            readme = ("# Flux KISS TNC\n\nOptional Data-pack port-zero KISS client"
+                      " with APRS-1200 TX and mode list/get/set controls."
+                      " Launch manually from Catalog; cable UART is exclusively owned"
+                      " while active. Other installed modem modules must separately"
+                      " implement the packet-provider contract; Sotto voice is not"
+                      " automatically packet TX capable. Bench validation pending.\n\n")
         elif name in aliases:
             readme = {
                 "aprsapp": "# APRS\n\nNative software Bell 202 receive and packet browser. No optional feature set.\n",
@@ -96,7 +103,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     # Keep the local starter catalog aligned with the current FD6818B Flux host.
     # Other upstream modules can be added when they are ported and validated there.
-    names = ["surf", "vfo", "gw_flux", "cardlink", "explore_scan", "aprsapp", "aprsbeacon", "aprsgpssync", "aprskissrx", "rflimits", "rffskrx", "rffsktx", "rfbaseb"]
+    names = ["surf", "vfo", "gw_flux", "cardlink", "explore_scan", "aprsapp", "aprsbeacon", "aprsgpssync", "aprskissrx", "fluxtnc", "rflimits", "rffskrx", "rffsktx", "rfbaseb"]
     failed = []
     for name in names:
         source = ROOT / "c/k6/mod" / (name + ".c")
