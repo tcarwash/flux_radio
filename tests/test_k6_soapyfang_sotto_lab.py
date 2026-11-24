@@ -75,7 +75,8 @@ def test_real_arm_virtual_rf_speaker_and_overload():
     assert r['rx_fifo_status']['words']==6*33
     assert r['rx_fifo_status']['overruns']==r['rx_fifo_status']['underflows']==0
     assert r['rx_threshold']==4 and r['rx_poll_us']==1000
-    assert 0 < r['stream_rx_peak_blocks'] <= r['stream_rx_capacity_blocks'] == 16
+    assert 0 < r['stream_rx_peak_blocks'] <= r['stream_rx_capacity_blocks'] == 4
+    assert 0 < r['stream_rx_peak_encoded_frames'] <= r['stream_rx_capacity_encoded_frames'] == 16
     assert r['keyed_spi_reads']>0 and r['spi_read_bytes']>r['keyed_spi_read_bytes']
     assert 'SoapyFang RFBackend/VirtualAir IQ' in r['radio_path']
     out=client.get('/api/sotto/audio.wav')

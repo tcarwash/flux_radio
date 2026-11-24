@@ -69,24 +69,41 @@ a simulated API failure, PTT exit, and a level-30 host. This tests
 the newly compiled Rust callback or physical radio.
 
 The incremental decoder `tools/k6_sotto_rx_stream.py` uses the pinned
-native C decoder in 40-ms codec frames, emits 20-ms speaker blocks,
-bounds queue occupancy to 16 blocks (5,120 bytes), and drains between
-up-to-eight-frame packets. Its recovered PCM is bit-exact to batch
-decoding, and PTT/queue overflow drops old audio. The ring and decoder
-memory still need **on-K6 SRAM/stack qualification**.
+native C decoder in 40-ms codec frames and emits 20-ms speaker blocks.
+The newer **paced** path holds a maximum of **4 PCM blocks (1,280 B)**
+and **16 compressed frames (96 B)** rather than 16 PCM blocks (5,120 B),
+a 3,744-byte reduction in explicit queued storage. Long sessions,
+corrupt packets, PTT cancellation and exact PCM identity are tested.
+This excludes 640 bytes of temporary codec output, native decoder
+state and data-structure overhead; host demand-driven decoding is
+**not** yet qualified for the K6's 20-ms speaker deadline.
+
+A new **native Rust callback test harness**
+(`tests/data/k6/sotto_rx4800_native_host.rs`) compiles the *unchanged*
+production `sotto-fsk4800-rx.rs.inc`, not a rewrite of its logic, using
+Rust's own test runner with a deterministic FD6818B FIFO/register
+model. It exercises exact 33-word draining, snapshot restoration,
+low-active PTT, timeout, key/cancel/power off, malformed pointers,
+other-RF-owner preservation, and the complete six-packet dataset
+independently recovered from SoapyFang virtual IQ. The Rust callback
+**has been directly executed in a native host process**, but **not
+inside the compiled ARM firmware**: real peripheral timing,
+Cortex-M0 stack and full-board dispatcher remain open gates.
 
 ## Boundaries remaining for flashable half-duplex voice
 
-1. Execute and instrument the newly compiled **Rust API31 callback**
-   with the real firmware image under Unicorn and SoapyFang's FSK FIFO,
-   checking register writes/reads, PTT cleanup and long idle sessions.
+1. Execute and instrument the **compiled ARM firmware's Rust API31
+   callback through its real dispatcher** under Unicorn and SoapyFang's
+   FSK FIFO. The exact callback code has native-Rust test coverage,
+   but that is not a full MCU instruction/peripheral execution.
 2. Join the API28 resource, API29 finite FSK async TX and API30 mic
    callbacks into a **single append-only host**, then bind installed
    Sotto to `RX → PTT TX → RX`. Never expose stubbed callbacks to
    the live TX module as if supported.
 3. Move the native fixed-point RX decode and 20-ms speaker PCM service
    into radio firmware or a loadable module, measure total SRAM and flash,
-   and shrink the ring if needed. The experimental Base + Data headroom
+   qualify the paced ring and prebuffer against real 20-ms deadlines.
+   The experimental Base + Data headroom
    does **not** establish the combined image fits.
 4. Only after firmware and emulator gates pass, use Flux issue #30 for
    a new dummy-load qualification under the shared #11 bench lease.

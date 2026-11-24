@@ -137,3 +137,90 @@ def test_frame_limit_preempts_any_additional_codec_input(built):
         assert rx.speaker_next() is None
     finally:
         rx.close()
+
+
+def test_paced_decoder_is_bit_exact_with_four_pcm_blocks(built):
+    from tools.k6_sotto_rx_stream import SottoRxPaced
+    artifact,lib=built
+    bits=artifact['reference']
+    paced=SottoRxPaced(lib,capacity_frames=16)
+    audio=[]
+    try:
+        for off in range(0,len(bits),48):
+            paced.enqueue_packet(bits[off:off+48])
+            audio.extend(collect(paced))
+            assert paced.queued_pcm_blocks<=4
+            assert paced.queued_encoded_frames<=16
+        paced.end()
+        audio.extend(collect(paced))
+        assert paced.state=='finished'
+        assert paced.peak_pcm_blocks==4
+        assert paced.peak_encoded_frames<=8
+        assert paced.queued_pcm_blocks==paced.queued_encoded_frames==0
+        assert paced.decoder.played_blocks==paced.decoder.output_blocks
+        assert paced.decoder.output_blocks==2*len(bits)//6
+        np.testing.assert_array_equal(np.concatenate(audio),decode_pcm(lib,bits))
+    finally:paced.close()
+
+
+def test_paced_receiver_backpressure_and_ptt_abort(built):
+    from tools.k6_sotto_rx_stream import SottoRxPaced
+    _,lib=built
+    packet=bytes(range(48))
+    r=SottoRxPaced(lib,capacity_frames=8)
+    r.enqueue_packet(packet)
+    assert r.queued_encoded_frames==8 and r.queued_pcm_blocks==0
+    with pytest.raises(BufferError,match='ring overrun'):
+        r.enqueue_packet(packet)
+    assert r.state=='aborted' and r.queued_encoded_frames==r.queued_pcm_blocks==0
+    assert r.speaker_next() is None and r.decoder.ctx is None
+    with pytest.raises(RuntimeError,match='closed'):
+        r.enqueue_packet(packet)
+    r=SottoRxPaced(lib)
+    r.enqueue_packet(packet)
+    assert r.speaker_next() is not None
+    r.abort()
+    assert r.speaker_next() is None and r.queued_encoded_frames==0
+    assert r.decoder.ctx is None
+
+
+def test_paced_rx_invalid_or_missing_end_is_fail_closed(built):
+    from tools.k6_sotto_rx_stream import SottoRxPaced
+    _,lib=built
+    r=SottoRxPaced(lib)
+    with pytest.raises(ValueError,match='validated'):
+        r.enqueue_packet(b'123')
+    assert r.state=='aborted' and r.decoder.ctx is None
+    r=SottoRxPaced(lib)
+    r.enqueue_packet(b'123456')
+    with pytest.raises(ValueError,match='priming'):
+        r.end()
+    assert r.state=='aborted' and r.decoder.ctx is None
+    r=SottoRxPaced(lib)
+    r.enqueue_packet(bytes(range(48)))
+    assert r.speaker_next() is not None
+    # No authenticated END means no decoder flush or invented completion.
+    assert r.state=='rx'
+    assert len(collect(r))>=1
+    assert r.speaker_next() is None
+    r.abort()
+    assert r.decoder.ctx is None
+
+
+def test_paced_max_length_session_without_large_pcm_ring(built):
+    from tools.k6_sotto_rx_stream import SottoRxPaced
+    _,lib=built
+    r=SottoRxPaced(lib,capacity_frames=8)
+    cnt=0
+    try:
+        for _ in range(144):
+            r.enqueue_packet(b'12345678'*6)
+            cnt+=len(collect(r))
+            assert r.peak_pcm_blocks<=4
+            assert r.peak_encoded_frames<=8
+        r.end()
+        cnt+=len(collect(r))
+        assert cnt==2304 and r.state=='finished'
+        assert r.peak_pcm_blocks==4
+        assert r.queued_pcm_blocks==r.queued_encoded_frames==0
+    finally:r.close()
