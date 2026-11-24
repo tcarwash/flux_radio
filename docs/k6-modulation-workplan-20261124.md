@@ -1,5 +1,7 @@
 # Flux K6-B modulation expansion: parallel implementation plan
 
+Transmit-source/envelope combination matrix: [`k6-tx-path-combination-lab-20261124.md`](k6-tx-path-combination-lab-20261124.md).
+
 SoapyFang receiver replay test results: [`k6-soapyfang-modulation-validation-20261124.md`](k6-soapyfang-modulation-validation-20261124.md).
 
 **2026-11-24 · proposal + active offline research; NOT a hardware TX capability announcement.**

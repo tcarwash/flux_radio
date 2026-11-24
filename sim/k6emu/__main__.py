@@ -163,7 +163,8 @@ class K6Board:
                  keys: tuple[str, ...] = (), key_events: tuple[tuple[float, str, bool], ...] = (),
                  gpio_events: tuple[tuple[float, str, int, int], ...] = (),
                  adc_inputs: dict[int, int] | None = None, cpi: float = 1.5,
-                 collect_mmio: bool = True, rf_backend=None):
+                 collect_mmio: bool = True, rf_backend=None,
+                 capture_tx_events: bool = False):
         unicorn, arm = _unicorn()
         self.ucmod, self.arm = unicorn, arm
         self.trace_mmio = trace_mmio
@@ -215,6 +216,9 @@ class K6Board:
         self.fd_read_index = 0
         self.fd_read_bit = 0
         self.fd_writes: list[tuple[int, int]] = []
+        # Optional simulator-only 3-wire write timestamp trace; never a TX command.
+        self.capture_tx_events = capture_tx_events
+        self.fd_write_events: list[tuple[float, int, int]] = []
         self.rx_dma = None  # opt-in; no fabricated RF reception by default
         self.adc_inputs = {0: 2048, 1: 2048}
         if adc_inputs:
@@ -446,6 +450,8 @@ class K6Board:
                     self.rf_backend.write(addr, value, self.fd_regs, self.cycles / 96_000_000)
                 self.fd_regs[addr] = value
                 self.fd_writes.append((addr, value))
+                if self.capture_tx_events:
+                    self.fd_write_events.append((self.cycles, addr, value))
             self.fd_active = False
             return
         sck_rise = not ((old >> 5) & 1) and ((new >> 5) & 1)

@@ -134,19 +134,23 @@ def _measure(mode, reference, rx, truth):
     return result
 
 
-def run_mode(mode, *, snr_db=60.0, tx_model='ideal', temp_dir=None):
+def run_mode(mode, *, snr_db=60.0, tx_model='ideal', temp_dir=None, transmitted_iq=None):
     """Replay IQ via a real SigMFSource/SoapyFang RFBackend and inspect after FIR.
 
     Passing tests demonstrate modeled IQ conditioning and reference demod;
     only FM/FSK has a chip-native decoded audio/packet path in this model.
     """
     if mode not in MODES:raise ValueError(mode)
-    if tx_model not in ('ideal','phase_only'):
-        raise ValueError('tx_model must be ideal or phase_only')
+    if tx_model not in ('ideal','phase_only','offline_path_model'):
+        raise ValueError('tx_model must be ideal, phase_only or offline_path_model')
+    if tx_model=='offline_path_model' and transmitted_iq is None:
+        raise ValueError('offline_path_model requires explicit IQ')
+    if transmitted_iq is not None and tx_model!='offline_path_model':
+        raise ValueError('Externally simulated IQ must be labeled offline_path_model')
     if not math.isfinite(snr_db) or not 0<=snr_db<=120:raise ValueError('snr_db must be finite 0..120')
     if temp_dir is None:
         with tempfile.TemporaryDirectory(prefix='soapyfang-modlab-') as d:
-            return run_mode(mode,snr_db=snr_db,tx_model=tx_model,temp_dir=d)
+            return run_mode(mode,snr_db=snr_db,tx_model=tx_model,temp_dir=d,transmitted_iq=transmitted_iq)
     source,truth=fixture(mode)
     transmitted=source
     if tx_model=='phase_only':
@@ -154,6 +158,10 @@ def run_mode(mode, *, snr_db=60.0, tx_model='ideal', temp_dir=None):
         # No claim the K6 can synthesize this continuous arbitrary phase.
         a=np.abs(source)
         transmitted=np.divide(source,a,out=np.zeros_like(source),where=a>1e-8)
+    if transmitted_iq is not None:
+        transmitted=np.asarray(transmitted_iq,dtype=np.complex128)
+        if transmitted.shape != source.shape or not np.all(np.isfinite(transmitted)):
+            raise ValueError('injected model IQ must be finite and match fixture length')
     power=float(np.mean(np.abs(transmitted)**2))
     rng=np.random.default_rng(100 + MODES.index(mode))
     std=math.sqrt(power*10**(-snr_db/10)/2)
