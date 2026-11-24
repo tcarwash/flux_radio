@@ -21,6 +21,7 @@ Type=oneshot
 WorkingDirectory={ROOT}
 ExecStart={sys.executable} {ROOT}/tools/k6_experiment_autopilot.py --once --publish
 ExecStart={sys.executable} {ROOT}/tools/k6_experiment_review.py --once
+ExecStart={sys.executable} {ROOT}/tools/k6_experiment_postmortem.py --once
 ExecStart={sys.executable} {ROOT}/tools/k6_experiment_hardware_autopilot.py --once
 TimeoutStartSec=650
 NoNewPrivileges=yes
@@ -60,11 +61,15 @@ def main(argv=None):
         d.mkdir(parents=True,exist_ok=True)
         for path,content in ((service,SERVICE),(timer,TIMER)):
             if path.exists() and path.read_text()!=content:
-                old_review=content.replace(
+                # Only migrate units exactly emitted by a prior version of
+                # this installer. Never overwrite a user's customized unit.
+                old_postmortem=content.replace(
+                    f"ExecStart={sys.executable} {ROOT}/tools/k6_experiment_postmortem.py --once\n", "")
+                old_review=old_postmortem.replace(
                     f"ExecStart={sys.executable} {ROOT}/tools/k6_experiment_hardware_autopilot.py --once\n", "")
                 old_offline=old_review.replace(
                     f"ExecStart={sys.executable} {ROOT}/tools/k6_experiment_review.py --once\n", "")
-                if path.read_text() not in (old_review,old_offline):
+                if path.read_text() not in (old_postmortem,old_review,old_offline):
                     p.error(f"refuse overwrite of modified existing unit: {path}")
             path.write_text(content)
         for args in (["daemon-reload"],["enable","--now",f"{UNIT}.timer"]):

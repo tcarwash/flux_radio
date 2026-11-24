@@ -344,3 +344,72 @@ a mocked-launch regression test requires that flag. Module bytes
 remain frozen (SHA a14bf5a7...). The corrected session has a NEW
 manifest hash, six-hour lease, specific local standing approval and
 MUST receive fresh independent delegated validation before any RF.
+
+## Physical #9 one-shot evidence (2026-11-24, dummy-load-only)
+
+The first hardware manifest 86ab5f41... made one bounded physical attempt
+on build 339e08a2b77c7679 API29. Its firmware RUN request returned INVALID
+because the harness did not set the level-3 module's required live serial
+higher-API 0x100 bit. No module execution was confirmed and zero RF frames
+were decoded. Slot30 was removed, full original 31 packed-slot hash/VFO
+restoration verified; the session's exact manifest remains permanently
+BLOCKED_NO_AUTO_RETRY. The separately pinned correction is commit f57c7695.
+
+The *new*, independently reviewed manifest 25680214... passed session
+preflight, installed/read back a 1666-byte level3 module in free slot30,
+and successfully invoked it with the corrected live RUN bit. The real
+module returned **-14**, its internal FSK_FRAME_TIMEOUT_MS (450ms), reporting
+"FSK09S H aborted. RX restored." The SDR independent public-sync detector
+recovered **one** exact 48-word payload at 4800baud with correlation
+0.994103 and zero sync bit errors, but not the required two frames or
+validated AE IRQ timing. This is a physical RF experimental result, NOT
+a successful B-chip FIFO refill or 2-frame qualifier.
+
+The harness removed slot30 and verified original packed hashes and VFOs.
+An external remote command's 90-second deadline interrupted the full
+batch's remaining read-only verification stages. This was treated as
+a BLOCKED/NO_AUTO_RETRY exception, NOT as a pass. Under a NEW independent
+read-only inspection with both bench and canonical serial locks, all 31
+original slot hashes were confirmed **byte-for-byte identical** against the
+saved session-before.json, slot30 free, VFO A433.500/B144.390 MHz unchanged,
+radio idle, not transmitting, original build/API unchanged. An explicit
+BLOCKED / RELEASE was posted to GitHub coordination issue #11 only after
+that evidence. Session #9 results and next OFFLINE investigations are posted
+to experiment issue #9.
+
+Note: A remote interactive session timeout is *not* a license to retry an
+RF operation. When a parent process is interrupted, preserve the journal
+in BLOCKED_NO_AUTO_RETRY, inspect hardware read-only and release only after
+positive restoration evidence. For unattended timer operation the
+systemd service timeout is 650 seconds, rather than the short interactive
+remote shell command deadline. Firmware behavior, not runner software, is
+the remaining #9 experimental blocker.
+
+### Automatic exception/postmortem reviews
+
+The periodic systemd user service now has FOUR steps:
+
+1. Reviewed, SHA-pinned OFFLINE experiment executor (once-per-registration)
+2. Independent read-only hardware manifest validation (Muse)
+3. Independent read-only hardware postmortems for completed/blocked sessions
+4. Guarded hardware executor, one exact locally-approved attempt per manifest
+
+The postmortem stage (tools/k6_experiment_postmortem.py --once) reads only
+the exact SHA-verified copy of each trusted local manifest and fixed-metric
+evidence inside ~/flux-bench/batches; it excludes arbitrary radio log text
+and cannot invoke radio/SDR, transmit or flash. It delegates read-only
+engineering analysis through the locally installed Muse queue and retains
+an owner-private durable journal in
+~/.local/state/flux-experiment-autopilot/postmortem.json.
+Interrupted *read-only* reviewers may be retried at most three times after
+verifying the same original prompt; hardware attempts are NEVER retried.
+Two independent read-only postmortems for #9 are complete:
+Muse jobs 5f125d9839df (first exact-frame/timeout run) and ceb3d3e82215
+(first live RUN INVALID run). Both can be inspected via muse-jobs result ID.
+These reviews produce next OFFLINE/EMULATOR proposals, not hardware leases.
+
+The complete four-stage unit was exercised under systemd --user with
+Result=success, ExecMainStatus=0 while both registered hardware attempts
+were marked BLOCKED_NO_AUTO_RETRY; no repeat TX occurred. The timer
+remains enabled to process additional locally approved experiments and
+review results in order.
