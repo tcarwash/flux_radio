@@ -23,6 +23,10 @@
 #define TX28_BENCH_ENABLE 0
 #endif
 
+#ifndef TX28_FULL_BENCH
+#define TX28_FULL_BENCH 0
+#endif
+
 #define RCC_APB2ENR 0x40021018u
 #define TIM14_CNT   0x40002024u
 #define TIM17       0x40014800u
@@ -51,11 +55,22 @@
 
 #if TX28_BENCH_ENABLE
 
+#if TX28_FULL_BENCH
+/* FULL_BENCH variant: exactly 10000 verified RX-only write/readbacks in one
+ * invocation (5 ladders x 250 reps x 8 patterns). Keeps the 5 slowest (safest)
+ * NOP ladder values; default bench build below is untouched (384). */
+#define N_LADDERS 5u
+#define N_PATTERNS 8u
+#define REPS_PER_LADDER 250u /* 250 * 8 = 2000 writes+verifies per ladder */
+
+static const uint8_t NOPS[N_LADDERS] = { 32u, 16u, 8u, 4u, 2u };
+#else
 #define N_LADDERS 6u
 #define N_PATTERNS 8u
 #define REPS_PER_LADDER 8u /* 8 * 8 = 64 writes+verifies per ladder */
 
 static const uint8_t NOPS[N_LADDERS] = { 32u, 16u, 8u, 4u, 2u, 1u };
+#endif
 static const uint16_t PATTERNS[N_PATTERNS] = {
     0xA55Au, 0x5AA5u, 0x0F0Fu, 0xF0F0u,
     0xFFFFu, 0x0000u, 0x1234u, 0xCAFEu
@@ -250,7 +265,17 @@ int k6_main(const k6_api_t *api) {
 
         {
             char line[60], *p = line;
-            uint32_t avg_cyc = wr_cyc_sum >> 6; /* divide by 64 */
+            /* Average over the actual per-ladder write count. No overflow:
+             * worst case ~2000 writes x ~2k cyc each is ~4M, far below 2^32. */
+#if TX28_FULL_BENCH
+            /* 2000 samples; avoid __aeabi_uidiv (unavailable to modules).
+             * Scale a divide-by-2048 estimate by 1+1/64+1/128, within
+             * 0.1% of the actual 2048/2000 correction. Timing is advisory. */
+            uint32_t base_cyc = wr_cyc_sum >> 11;
+            uint32_t avg_cyc = base_cyc + (base_cyc >> 6) + (base_cyc >> 7);
+#else
+            uint32_t avg_cyc = wr_cyc_sum >> 6;
+#endif
             uint32_t avg_us_x10 = (avg_cyc * 6827u) >> 16; /* avg_cyc / 9.6 */
             uint32_t stock_us = (stock_cyc * 683u) >> 16;
             p = put_s(p, "tx28 nop=");
