@@ -535,23 +535,47 @@ def execute(args):
         return st
 
     def attest_cable(cable, where):
+        """INFO may omit legacy build identity; format-2 CAPS must prove it."""
         info = cable.info()
         if info.get("protocol") != 5:
             raise HilError("%s: expected packed KUL2 protocol 5, got %r"
                            % (where, info.get("protocol")))
-        build = info.get("build_id")
-        build_hex = bytes(build).hex() if build else ""
-        if build_hex != EXPECTED_BUILD_HEX:
-            raise HilError("%s: build %r is not known %s"
-                           % (where, build_hex, EXPECTED_BUILD_HEX))
+        legacy = info.get("build_id")
+        legacy_hex = bytes(legacy).hex() if legacy else None
+        if legacy_hex is not None and legacy_hex != EXPECTED_BUILD_HEX:
+            raise HilError("%s: INFO build %s differs from expected %s"
+                           % (where, legacy_hex, EXPECTED_BUILD_HEX))
         caps = cable.capabilities()
-        if caps.get("module_api_max") != EXPECTED_API_MAX:
-            raise HilError("%s: module API max is %r, expected %d"
-                           % (where, caps.get("module_api_max"),
-                              EXPECTED_API_MAX))
+        if caps.get("format") != 2:
+            raise HilError("%s: firmware lacks exact format-2 CAPS identity"
+                           % where)
         if caps.get("build_id") != EXPECTED_BUILD_HEX:
-            raise HilError("%s: capability build %r mismatch"
-                           % (where, caps.get("build_id")))
+            raise HilError("%s: CAPS build %r mismatch" %
+                           (where, caps.get("build_id")))
+        if caps.get("module_api_max") != EXPECTED_API_MAX:
+            raise HilError("%s: module API max is %r, expected %d" %
+                           (where, caps.get("module_api_max"),
+                            EXPECTED_API_MAX))
+        return info, caps
+
+    def attest_live_identity(link, where):
+        """Never infer build from optional legacy INFO; require live K6CP."""
+        info = link.info()
+        if info.get("protocol") != 5:
+            raise HilError("%s: unexpected live protocol %r" %
+                           (where, info.get("protocol")))
+        legacy = info.get("build_id")
+        legacy_hex = bytes(legacy).hex() if legacy else None
+        if legacy_hex is not None and legacy_hex != EXPECTED_BUILD_HEX:
+            raise HilError("%s: live INFO build %s mismatch" %
+                           (where, legacy_hex))
+        caps = link.module_capabilities()
+        if caps.get("format") != 2 or caps.get("build_id") != EXPECTED_BUILD_HEX:
+            raise HilError("%s: live K6CP identity missing or mismatched" % where)
+        if caps.get("module_api_max") != EXPECTED_API_MAX:
+            raise HilError("%s: live API max %r differs from %d" %
+                           (where, caps.get("module_api_max"),
+                            EXPECTED_API_MAX))
         return info, caps
 
     try:
@@ -574,7 +598,7 @@ def execute(args):
                                 wait=TIMEOUTS["handshake"]):
                             raise HilError("no cable session (radio not in "
                                            "EXPLORE/arena?); abort, no retry")
-                        info, _caps = attest_cable(cable, "pre-install")
+                        info, checked_caps = attest_cable(cable, "pre-install")
                         directory = cable.library_directory()
                         tr.note("directory",
                                 slots=sorted(directory),
@@ -602,7 +626,7 @@ def execute(args):
                                 "len": len(data),
                                 "sha256": hashlib.sha256(data).hexdigest(),
                             }
-                        snap = {"build": info["build_id"].hex(),
+                        snap = {"build": checked_caps["build_id"],
                                 "directory": {str(k): list(v)
                                               for k, v in directory.items()},
                                 "slot_hashes": blobs}
@@ -615,10 +639,7 @@ def execute(args):
                     # ---- Phase 0b: live idle attestation ----
                     with open_serial() as port:
                         link = LiveLink(port, timeout=TIMEOUTS["live_call"])
-                        live_info = link.info()
-                        if bytes(live_info.get("build_id") or b"").hex() != \
-                                EXPECTED_BUILD_HEX:
-                            raise HilError("live build mismatch")
+                        attest_live_identity(link, "pre-install")
                         attest_live_idle(link, "pre-install")
                         tr.note("live-idle")
                     remaining()
@@ -675,6 +696,7 @@ def execute(args):
                                        "allowlist is stale")
                     with open_serial() as port:
                         link = LiveLink(port, timeout=TIMEOUTS["live_call"])
+                        attest_live_identity(link, "pre-run")
                         attest_live_idle(link, "pre-run")
                         try:
                             link.request(RUN, TEMP_SLOT | 0x100)
@@ -778,6 +800,7 @@ def execute(args):
                         with open_serial() as port:
                             link = LiveLink(port,
                                             timeout=TIMEOUTS["live_call"])
+                            attest_live_identity(link, "pre-uninstall")
                             attest_live_idle(link, "pre-uninstall")
                         with open_serial() as port:
                             cable = Cable(
@@ -840,10 +863,7 @@ def execute(args):
                     with open_serial() as port:
                         link = LiveLink(port, timeout=TIMEOUTS["live_call"])
                         st = attest_live_idle(link, "post-run")
-                        info = link.info()
-                        if bytes(info.get("build_id") or b"").hex() != \
-                                EXPECTED_BUILD_HEX:
-                            raise HilError("post-run build mismatch")
+                        attest_live_identity(link, "post-run")
                         evidence = {
                             "session_digest": digest,
                             "actor": ack["actor"],

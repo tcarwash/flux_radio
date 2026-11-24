@@ -65,9 +65,13 @@ def _slot_blob(slot, n=256):
 class FakeDevice:
     """Stand-in for the radio: KUL2 library slots + live state + KISS mode."""
 
-    def __init__(self, hil, preoccupy_slot30=False, wrong_build=False):
+    def __init__(self, hil, preoccupy_slot30=False, wrong_build=False,
+                 legacy_blank=False, caps_wrong=False, caps_missing=False):
         self.hil = hil
         self.build_hex = ("00" * 8) if wrong_build else hil.EXPECTED_BUILD_HEX
+        self.legacy_blank = legacy_blank
+        self.caps_wrong = caps_wrong
+        self.caps_missing = caps_missing
         self.blobs = {s: _slot_blob(s) for s in range(32) if s != 30}
         if preoccupy_slot30:
             self.blobs[30] = _slot_blob(30)
@@ -183,11 +187,13 @@ class FakeCable:
     def info(self):
         self.device.cable_calls.append("info")
         return {"protocol": 5, "slots": 32, "arena": 0,
-                "build_id": bytes.fromhex(self.device.build_hex)}
+                "build_id": None if self.device.legacy_blank else bytes.fromhex(self.device.build_hex)}
 
     def capabilities(self):
         self.device.cable_calls.append("caps")
-        return {"module_api_max": 29, "build_id": self.device.build_hex}
+        return {"format": 1 if self.device.caps_missing else 2,
+                "module_api_max": 29,
+                "build_id": ("00" * 8) if self.device.caps_wrong else self.device.build_hex}
 
     def library_directory(self):
         return {s: (self.device.addrs[s], len(self.device.blobs[s]))
@@ -232,7 +238,13 @@ class FakeLiveLink:
 
     def info(self):
         return {"protocol": 5, "slots": 32, "arena": 0,
-                "build_id": bytes.fromhex(self.device.build_hex)}
+                "build_id": None if self.device.legacy_blank else bytes.fromhex(self.device.build_hex)}
+
+    def module_capabilities(self):
+        if self.device.caps_missing:
+            raise FakeInstallError("no module CAPS feature")
+        return {"format": 2, "module_api_max": 29,
+                "build_id": ("00" * 8) if self.device.caps_wrong else self.device.build_hex}
 
     def status(self):
         return {"transmitting": False, "standby_idle": True,
@@ -504,3 +516,30 @@ def test_fake_device_imports_harness_from_current_checkout():
     here = Path(__file__).resolve().parents[1]
     assert Path(HARNESS_PATH).resolve() == here / "tools/k6_kiss_hil.py"
     assert Path(KISS_PATH).resolve() == here / "tools/k6_kiss_tnc.py"
+
+def test_missing_legacy_info_build_uses_exact_capability_record(monkeypatch, tmp_path):
+    hil = load_harness()
+    device = FakeDevice(hil, legacy_blank=True)
+    hil, rc, _, _, _, hold_path = _run_execute(monkeypatch, tmp_path, device)
+    assert rc == 0
+    assert not hold_path.exists()
+    assert 30 not in device.blobs
+    assert device.live_cmds
+
+def test_missing_legacy_info_with_incorrect_capability_refuses_without_install(monkeypatch, tmp_path):
+    hil = load_harness()
+    device = FakeDevice(hil, legacy_blank=True, caps_wrong=True)
+    original = device.snapshot_blobs()
+    hil, rc, _, _, _, hold_path = _run_execute(monkeypatch, tmp_path, device)
+    assert rc == 2 and device.blobs == original
+    assert not device.remove_calls and not hold_path.exists()
+    assert "send_image" not in device.cable_calls
+
+def test_missing_legacy_info_without_format2_capabilities_refuses(monkeypatch, tmp_path):
+    hil = load_harness()
+    device = FakeDevice(hil, legacy_blank=True, caps_missing=True)
+    original = device.snapshot_blobs()
+    hil, rc, _, _, _, hold_path = _run_execute(monkeypatch, tmp_path, device)
+    assert rc == 2 and device.blobs == original
+    assert "send_image" not in device.cable_calls
+    assert not hold_path.exists()
