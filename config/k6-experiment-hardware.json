@@ -5,8 +5,8 @@
   "trusted_author": "tcarwash",
   "manifests": {
     "9": {
-      "path": "/storage5/dev/flux-batch-api-config/config/hardware-sessions/fsk09sh-dummy-l3-override-20261124T172529Z.json",
-      "sha256": "25680214b50cf317ae5b8f392dbd82ffe55f829055fb7976f76eaa4a18b7c97c"
+      "path": "/storage5/dev/flux-batch-api-config/config/hardware-sessions/fsk09sh-700ms-diag-20261124T215100Z.json",
+      "sha256": "15f9ba1d4554ae4474626807db9ceac35dbf58e5d1a27276e9e6caaa999c7d61"
     }
   }
 }
