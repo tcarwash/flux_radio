@@ -82,6 +82,36 @@ FLUXK_FN const fluxk_backend_t *fluxk_backend_find(uint16_t id) {
   return 0;
 }
 
+/* Explicit installed-provider descriptor validation. Read-only API26 may
+   enumerate voice modules; these records are never packet TX/RX backends.
+   Compare the complete NUL-padded identity so a bogus/old payload entry
+   can never inherit a native packet transmit capability. */
+FLUXK_FN int fluxk_provider_valid(uint16_t id, uint8_t flags,
+                                   uint16_t mtu, uint8_t n,
+                                   const char name[12]) {
+  static const char test[12] = "SOTTO TEST";
+  static const char rftest[12] = "SOTTO RFTEST";
+  const char *want;
+  unsigned expected, i;
+  if (!name || flags != FLUXK_FLAG_VOICE || mtu != 0)
+    return 0;
+  if (id == 0x0100u) {
+    want = test;
+    expected = 10u;
+  } else if (id == 0x0101u) {
+    want = rftest;
+    expected = 12u;
+  } else {
+    return 0;
+  }
+  if (n != expected)
+    return 0;
+  for (i = 0; i < 12; i++)
+    if ((uint8_t)name[i] != (uint8_t)want[i])
+      return 0;
+  return 1;
+}
+
 /* ---- Small pure helpers ---- */
 FLUXK_FN int fluxk_hz_ok(uint32_t hz) {
   return ((hz >= 144000000u && hz <= 148000000u) ||

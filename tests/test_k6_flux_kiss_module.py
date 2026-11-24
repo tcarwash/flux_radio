@@ -377,3 +377,13 @@ def test_shared_kiss_boundary_between_frames(lib):
     assert len(ok) == 2
     assert ok[0][2] == b"A" * 18
     assert ok[1][2] == b"B" * 18
+
+
+def test_installed_mode_registry_is_safe_opt_in():
+    # Older K6 builds reuse the API26+ tail differently; a default TNC
+    # must never call that pointer merely because a radio reports API29.
+    text = open(TNC).read()
+    assert "FLUXTNC_ENABLE_HOST_MODE_REGISTRY" in text
+    assert "level == 26" in text
+    assert "FLUXTNC_CAN_DISCOVER(api)" in text
+    assert "mode_info" in text

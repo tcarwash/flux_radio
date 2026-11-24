@@ -29,7 +29,7 @@ def insert(anchor, addition):
 
 # 1. API table field: after cancel_poll on live firmware, else after the
 # newest always-present field available.
-field = "        pub mode_info: unsafe extern \"C\" fn(u32, *mut K6ModeInfo) -> i32,"
+field = "        pub mode_info: unsafe extern \"C\" fn(u32, *mut super::K6ModeInfo) -> i32,"
 if field not in s:
     anchors = [
         "        pub cancel_poll: unsafe extern \"C\" fn() -> i32,",

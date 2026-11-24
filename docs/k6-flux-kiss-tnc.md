@@ -89,3 +89,20 @@ TX gate matrix (short/long/unselected/no-AFSK never key), band edges, the
 single-entry registry (TX-only flags), `ap_tx_encode` against
 `modem/aprs.py:hdlc_bits` bit-for-bit, and `modem.k6mod.build` of
 `fluxtnc.c` (clang `-fropi`, two-address identical, level 14, name block).
+
+## Optional matched API26 installed-mode discovery
+
+K6_MODE_REGISTRY=1 adds a *read-only* API26 callback which can enumerate
+an installed SOTTO TEST module as a VOICE-only mode with zero payload.
+For safety, the generic FLUX TNC module builds with that feature OFF:
+existing API29 firmware may have a different extension-table layout.
+Only an explicitly matched firmware and TNC compiled with
+FLUXTNC_ENABLE_HOST_MODE_REGISTRY=1 will query that pointer,
+and only when API level is **exactly 26**. Invalid identities, duplicate
+module entries and missing callbacks cannot grant packet TX.
+Voice-only KISS DATA is refused with a vendor command-6 error;
+mode selection never transmits.
+
+Cross-language host/TNC conformance tests are in
+tests/test_k6_kiss_abi_roundtrip.py and ordinary host controls are in
+tests/test_k6_kiss_tnc.py.

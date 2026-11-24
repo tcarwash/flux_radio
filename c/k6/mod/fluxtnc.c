@@ -64,6 +64,41 @@ static void fluxtnc_send(const k6_api_t *api, fluxtnc_t *s, unsigned op,
     api->serial_write(s->out, (uint16_t)n);
 }
 
+/* The API26 callback is NEW and is not wire-compatible with all older
+   experimental API26+ images. Generic Data-pack bundles compile it OUT.
+   Enable only for a TNC built and distributed together with a verified
+   K6_MODE_REGISTRY firmware image. Exact level==26 avoids accidental
+   invocation of unrelated extension slots in existing API29 radios. */
+#if defined(FLUXTNC_ENABLE_HOST_MODE_REGISTRY) && FLUXTNC_ENABLE_HOST_MODE_REGISTRY == 1
+#define FLUXTNC_CAN_DISCOVER(api) ((api)->level == 26 && (api)->mode_info != 0)
+#else
+#define FLUXTNC_CAN_DISCOVER(api) 0
+#endif
+
+/* API26 optional installed-provider registry. The firmware scans metadata
+   without launching a second module or touching the TNC code arena.
+   Only known Sotto *voice-only* entries may be selected. 1 found, 0
+   absent, -1 malformed or SPI busy. */
+static int fluxtnc_provider_find(const k6_api_t *api, uint16_t wanted,
+                                 k6_mode_info_t *out) {
+  unsigned i;
+  if (!FLUXTNC_CAN_DISCOVER(api))
+    return 0;
+  for (i = 0; i < 32; i++) {
+    int r = api->mode_info((uint32_t)i, out);
+    if (r < 0)
+      return -1;
+    if (r == 0)
+      return 0;
+    if (!fluxk_provider_valid(out->mode_id, out->flags, out->max_payload,
+                              out->name_len, out->name))
+      return -1;
+    if (out->mode_id == wanted)
+      return 1;
+  }
+  return -1; /* unbounded or corrupted enumerator: fail closed */
+}
+
 /* SET_HARDWARE request dispatch. */
 static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
                           const uint8_t *p, unsigned n, int afsk_ok) {
@@ -89,6 +124,32 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
           fluxtnc_send(api, s, op, FLUXK_OK, e, el);
         }
       }
+      if (FLUXTNC_CAN_DISCOVER(api)) {
+        k6_mode_info_t info;
+        unsigned seen = 0;
+        for (i = 0; i < 32; i++) {
+          int r = api->mode_info((uint32_t)i, &info);
+          unsigned bit;
+          if (r < 0) {
+            fluxtnc_send(api, s, op, FLUXK_ERR_BUSY, 0, 0);
+            return;
+          }
+          if (r == 0)
+            break;
+          if (!fluxk_provider_valid(info.mode_id, info.flags,
+                                    info.max_payload, info.name_len, info.name)) {
+            fluxtnc_send(api, s, op, FLUXK_ERR_UNSUPPORTED, 0, 0);
+            return;
+          }
+          bit = (info.mode_id == 0x0100u) ? 1u : 2u;
+          if (seen & bit)
+            continue; /* duplicate installed providers: one mode per identity */
+          seen |= bit;
+          blen = fluxk_list_body(e, info.mode_id, info.flags,
+                                 info.max_payload, info.name, info.name_len);
+          fluxtnc_send(api, s, op, FLUXK_OK, e, blen);
+        }
+      }
       blen = fluxk_list_body(e, 0xFFFFu, 0, 0, 0, 0);
       fluxtnc_send(api, s, op, FLUXK_OK, e, blen);
       return;
@@ -99,17 +160,30 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
       uint16_t id =
           (uint16_t)((unsigned)args[0] | ((unsigned)args[1] << 8));
       const fluxk_backend_t *b = fluxk_backend_find(id);
-      if (!b)
-        st = FLUXK_ERR_UNKNOWN;
-      else if (!afsk_ok)
-        st = FLUXK_ERR_UNSUPPORTED;
-      else {
-        s->cur_mode = id;          /* selection only: never transmits */
-        blen = fluxk_put_u16le(body, id);
+      if (b) {
+        if (!afsk_ok)
+          st = FLUXK_ERR_UNSUPPORTED;
+        else {
+          s->cur_mode = id;          /* selection only: never transmits */
+          blen = fluxk_put_u16le(body, id);
+        }
+      } else {
+        k6_mode_info_t info;
+        int found = fluxtnc_provider_find(api, id, &info);
+        if (found < 0)
+          st = FLUXK_ERR_BUSY;
+        else if (!found)
+          st = FLUXK_ERR_UNKNOWN;
+        else {
+          s->cur_mode = id;          /* voice-only; DATA below must refuse */
+          blen = fluxk_put_u16le(body, id);
+        }
       }
     } else if (op == FLUXK_OP_CAPS) {
       blen = fluxk_put_u16le(body, 0);   /* max_rx: no native receive */
-      blen += fluxk_put_u16le(body + blen, afsk_ok ? FLUXK_MAX_PAYLOAD : 0);
+      blen += fluxk_put_u16le(body + blen,
+                             (afsk_ok && s->cur_mode == FLUXK_MODE_APRS1200) ?
+                               FLUXK_MAX_PAYLOAD : 0);
     } else {                       /* STATUS */
       blen = fluxk_put_u16le(body, s->tx_ok);
       blen += fluxk_put_u16le(body + blen, s->tx_fail);
@@ -122,8 +196,19 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
 static void fluxtnc_data(const k6_api_t *api, fluxtnc_t *s,
                          const uint8_t *p, unsigned n, int afsk_ok) {
   uint32_t hz;
-  if (!fluxk_data_tx_ok(s->cur_mode, n, afsk_ok))
-    return;                        /* malformed / unselected: never key */
+  if (!fluxk_data_tx_ok(s->cur_mode, n, afsk_ok)) {
+    uint8_t mode[2];
+    unsigned st = n > FLUXK_MAX_PAYLOAD ? FLUXK_ERR_TOO_LONG :
+                  n < FLUXK_MIN_APRS ? FLUXK_ERR_MALFORMED :
+                  FLUXK_ERR_UNSUPPORTED;
+    fluxk_sat_inc(&s->tx_fail);
+    fluxk_put_u16le(mode, s->cur_mode);
+    /* Unsolicited Flux command-0 refusal: standard KISS applications
+       ignore vendor command-6 replies, while Flux clients get an
+       explicit no-RF result for unsupported voice-only modes. */
+    fluxtnc_send(api, s, 0, st, mode, 2);
+    return;
+  }
   if (!ap_tx_encode(&s->enc, p, n) || s->enc.bits > 1024) {
     fluxk_sat_inc(&s->tx_fail);
     return;

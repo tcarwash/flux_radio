@@ -166,11 +166,9 @@ K6_MODE_RFTEST=${K6_MODE_RFTEST:-0}
 export K6_MODE_REGISTRY
 if [ "$K6_MODE_REGISTRY" = 1 ]; then
   python3 "$HERE/apply-mode-registry.py"
-  PACK_CFG="$PACK_CFG --cfg k6_mode_registry"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
-  PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"
 fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then
   [ "${K6_LIVE_SERIAL:-0}" = 1 ] || { echo "Remote UI requires live serial" >&2; exit 1; }
@@ -198,6 +196,8 @@ K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PK
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"; fi
+if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi
 if [ "${K6_USER_STORE:-0}" = 1 ]; then

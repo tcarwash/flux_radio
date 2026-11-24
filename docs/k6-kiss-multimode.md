@@ -92,3 +92,49 @@ Physical acceptance still requires Thumb relocation, RAM/scratch
 budget, raw UART restoration, negative parser/oversize/mode tests,
 independent AX.25 reference checks, and an independently approved
 one-shot dummy-load bench lease and restoration evidence.
+
+## Optional API26 discovery build and compatibility boundary
+
+The optional firmware extension enabled by K6_MODE_REGISTRY=1 exports a
+read-only mode_info(index,out) callback at API26. It inspects verified
+installed packed-library metadata, and returns SOTTO TEST (0x0100,
+VOICE-only, zero packet MTU). SOTTO RFTEST is excluded unless the
+separate K6_MODE_RFTEST=1 experimental flag is set. It never launches
+or runs another module, never transmits, and cannot accept KISS DATA.
+
+The C KISS TNC deliberately compiles this optional callback out by
+default. Existing development radios may advertise API29 but assign
+different functions to extension-table slots; reading an unknown
+API26+ callback there would be unsafe. For a *matched* newly built
+API26 firmware image, build the TNC with
+FLUXTNC_ENABLE_HOST_MODE_REGISTRY=1 and check the exact radio build
+identity before installation. The TNC will then invoke mode_info only
+when api.level==26, not just because it is >=26. The generic Data pack
+build remains compatible with API14+ and advertises only native
+APRS-1200 packet TX until an explicitly matched registry variant
+is installed.
+
+Compiler-verified combined Aura image (offline, no flashing):
+- K6_FSK_RX_SERVICE=1
+- K6_VFO_PROBE=1
+- K6_VFO_SPI_PROBE=1
+- K6_VFO_SELECTOR=1
+- K6_SOTTO_VFO=1
+- K6_MODE_REGISTRY=1
+
+With the pinned Aura revision and submodule initialized, this variant
+builds to 111,880 bytes (120KiB application limit) and uses an optional
+read-only SPI mode registry. The default Data TNC also passed
+thumbv6m-none-eabi compilation with its optional registry macro
+explicitly enabled.
+
+**Still not implemented:** an arbitrary installed packet modem must
+define a canonical bounded packet ingress, ownership/handoff, timeouts,
+TX/RX result and cleanup contract. Foreground code shares one arena,
+so the TNC cannot simply call another module while itself running.
+The host must stage a message in a trusted mailbox, release the
+foreground TNC, run the selected provider, then resume the TNC and
+return its result. Until that cross-module ABI is built and tested,
+other installed modems must not advertise packet TX/RX in KISS.
+Sotto voice selection is presence-aware but deliberately PTT-inhibited
+until its own live transmit mode is qualified.
