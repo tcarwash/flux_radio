@@ -75,6 +75,20 @@ static void fluxtnc_send(const k6_api_t *api, fluxtnc_t *s, unsigned op,
 #define FLUXTNC_CAN_DISCOVER(api) 0
 #endif
 
+/* Host-owned mailbox staging (c/k6/mod/k6_packet_mailbox.h). Compiled OUT
+   unless FLUXTNC_ENABLE_PACKET_MAILBOX=1 AND the host is exactly API 27
+   with mb_version == K6MB_VERSION (1) and a non-NULL stage_packet: never
+   an arbitrary API29 tail slot on an old physical build. Staging only
+   COPIES bytes to host storage; the TNC keys nothing on this path. */
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+#include "k6_packet_mailbox.h"
+#define FLUXTNC_CAN_MAILBOX(api) \
+  ((api)->level == 27 && (api)->mb_version == (uint32_t)K6MB_VERSION && \
+   (api)->stage_packet != 0)
+#else
+#define FLUXTNC_CAN_MAILBOX(api) 0
+#endif
+
 /* API26 optional installed-provider registry. The firmware scans metadata
    without launching a second module or touching the TNC code arena.
    Only known Sotto *voice-only* entries may be selected. 1 found, 0
@@ -172,9 +186,22 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
         int found = fluxtnc_provider_find(api, id, &info);
         if (found < 0)
           st = FLUXK_ERR_BUSY;
-        else if (!found)
+        else if (!found) {
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+          if (FLUXTNC_CAN_MAILBOX(api) && id != 0 && id != 0xFFFFu) {
+            /* Provider-selected, pending host verification: selection
+               alone never transmits. DATA below stages the frame into
+               the host mailbox (no keying here); the provider claim
+               enforces identity/capability and refuses voice-only or
+               unknown providers without RF. */
+            s->cur_mode = id;
+            blen = fluxk_put_u16le(body, id);
+          } else
+            st = FLUXK_ERR_UNKNOWN;
+#else
           st = FLUXK_ERR_UNKNOWN;
-        else {
+#endif
+        } else {
           s->cur_mode = id;          /* voice-only; DATA below must refuse */
           blen = fluxk_put_u16le(body, id);
         }
@@ -192,47 +219,66 @@ static void fluxtnc_sethw(const k6_api_t *api, fluxtnc_t *s,
   fluxtnc_send(api, s, op, st, body, blen);
 }
 
-/* DATA dispatch: encode + guarded TX chain, or drop without keying. */
-static void fluxtnc_data(const k6_api_t *api, fluxtnc_t *s,
-                         const uint8_t *p, unsigned n, int afsk_ok) {
+/* DATA dispatch: encode + guarded TX chain, or drop without keying.
+   Returns 1 when exactly one packet was staged into the host mailbox: the
+   caller must then release the UART/foreground and return K6MB_TNC_STAGED
+   so the host can dispatch a provider after this module returns (never
+   nested). Returns 0 otherwise (sent natively, refused, or dropped). */
+static int fluxtnc_data(const k6_api_t *api, fluxtnc_t *s,
+                        const uint8_t *p, unsigned n, int afsk_ok) {
   uint32_t hz;
   if (!fluxk_data_tx_ok(s->cur_mode, n, afsk_ok)) {
     uint8_t mode[2];
     unsigned st = n > FLUXK_MAX_PAYLOAD ? FLUXK_ERR_TOO_LONG :
                   n < FLUXK_MIN_APRS ? FLUXK_ERR_MALFORMED :
                   FLUXK_ERR_UNSUPPORTED;
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+    /* Non-native selected mode with an exact level-27 mailbox host: stage
+       for the host dispatcher instead of keying here. Known voice-only
+       entries (Sotto) stay refused; the provider claim re-verifies
+       capability, so a voice-only or unknown id can never reach RF. */
+    if (st == FLUXK_ERR_UNSUPPORTED && FLUXTNC_CAN_MAILBOX(api)) {
+      k6_mode_info_t voice;
+      int known_voice = fluxtnc_provider_find(api, s->cur_mode, &voice);
+      if (known_voice <= 0 && n <= K6MB_MAX_PAYLOAD) {
+        if (api->stage_packet(s->cur_mode, p, (uint16_t)n) == 0)
+          return 1;
+        st = FLUXK_ERR_BUSY;   /* host could not take it: fail closed */
+      }
+    }
+#endif
     fluxk_sat_inc(&s->tx_fail);
     fluxk_put_u16le(mode, s->cur_mode);
     /* Unsolicited Flux command-0 refusal: standard KISS applications
        ignore vendor command-6 replies, while Flux clients get an
        explicit no-RF result for unsupported voice-only modes. */
     fluxtnc_send(api, s, 0, st, mode, 2);
-    return;
+    return 0;
   }
   if (!ap_tx_encode(&s->enc, p, n) || s->enc.bits > 1024) {
     fluxk_sat_inc(&s->tx_fail);
-    return;
+    return 0;
   }
   hz = api->rx_hz();               /* TX on the current frequency */
   if (!fluxk_hz_ok(hz)) {
     fluxk_sat_inc(&s->tx_fail);
-    return;
+    return 0;
   }
   /* Two separated samples above the observed B-chip idle floor, as in
      aprsbeacon.c. This coarse carrier check is NOT a full CSMA scheme. */
   api->delay_us(200000);
   if (KM_RSSI_DBM(api->fd_read(0x67)) > FLUXK_BUSY_DBM) {
     fluxk_sat_inc(&s->tx_fail);
-    return;
+    return 0;
   }
   api->delay_us(100000);
   if (KM_RSSI_DBM(api->fd_read(0x67)) > FLUXK_BUSY_DBM) {
     fluxk_sat_inc(&s->tx_fail);
-    return;
+    return 0;
   }
   if (api->tx_on(3000) != 0) {
     fluxk_sat_inc(&s->tx_fail);
-    return;
+    return 0;
   }
   s->keyed = 1;
   if (api->afsk_tx_send(s->enc.data, s->enc.bits))
@@ -241,6 +287,7 @@ static void fluxtnc_data(const k6_api_t *api, fluxtnc_t *s,
     fluxk_sat_inc(&s->tx_ok);
   api->tx_off();
   s->keyed = 0;
+  return 0;
 }
 
 int k6_main(const k6_api_t *api) {
@@ -288,23 +335,49 @@ int k6_main(const k6_api_t *api) {
                               s->pay, &n);
         if (fr == FLUXK_KISS_FRAME) {
           unsigned port = (type >> 4) & 15u, cmd = type & 15u;
-          if (port == 0 && cmd == FLUXK_CMD_DATA)
+          if (port == 0 && cmd == FLUXK_CMD_DATA) {
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+            /* Staged: release the UART/foreground now. The host runs the
+               provider entry action after k6_main returns (never nested),
+               then resumes the TNC session and reports completion. s is
+               scratch/arena memory the host must NOT touch after return:
+               the staged bytes already live in host storage. */
+            if (fluxtnc_data(api, s, s->pay, n, afsk_ok)) {
+              r = K6MB_TNC_STAGED;
+              stopped = 1;   /* staged: outer loop must exit, no "down" */
+              break;         /* out of the drain loop; checked below */
+            }
+#else
             fluxtnc_data(api, s, s->pay, n, afsk_ok);
-          else if (port == 0 && cmd == FLUXK_CMD_SETHW)
+#endif
+          } else if (port == 0 && cmd == FLUXK_CMD_SETHW)
             fluxtnc_sethw(api, s, s->pay, n, afsk_ok);
           /* Other ports/commands: ignored, never key. */
         }
       }
     }
     api->delay_us(5000);
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+    if (r == K6MB_TNC_STAGED)
+      break;                       /* staged: release foreground now */
   }
+#else
+  }
+#endif
   if (s->keyed)                    /* never leave the TX keyed */
     api->tx_off();
   if (s->kiss_on) {
     api->kiss_mode(0);
     s->kiss_on = 0;
   }
+#if defined(FLUXTNC_ENABLE_PACKET_MAILBOX) && FLUXTNC_ENABLE_PACKET_MAILBOX == 1
+  if (r == K6MB_TNC_STAGED)
+    api->say("flux tnc: packet staged");
+  else if (!stopped)
+    api->say("flux tnc: down");
+#else
   if (!stopped)
     api->say("flux tnc: down");
+#endif
   return r;
 }
