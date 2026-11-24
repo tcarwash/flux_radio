@@ -199,3 +199,18 @@ probes rather than representative communication benchmarks. Neither case
 supports spending scarce module/RAM budget on a generic 256-byte vector LRU.
 A lower-risk next candidate is avoiding the redundant winner-vector fetch
 between `cb_search` and `cb_sub`; quantify any code/stack growth first.
+
+## Resource and sequence-contract hardening
+
+The model now requires a successful `resource_open(14)` before reading the
+read-only Sotto deck, matching the actual API29 resource lifecycle. The
+codebook resource can be read without an opened deck. A compiled-module test
+checks that early deck reads are rejected, that a wrong slot does not open the
+deck, and that opening slot 14 permits the exact expected bytes.
+
+**FDV1 message IDs deliberately do not wrap within one session.** This is a
+frozen protocol rule in `c/k6/mod/dv_guard33_session.h`, not a decoder bug.
+The Python and independently compiled C decoders both reject a forged END
+control whose `first_id=254`, `last_id=1`, `segments=4` crosses the byte
+boundary. Do not silently adopt modulo-256 session reassembly unless the
+wire protocol and both encoder and decoder change together.

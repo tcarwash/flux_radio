@@ -104,7 +104,7 @@ class LiveTx(Emu):
         self.pre_release=0;self.spi_reads=0;self.spi_us=spi_us;self.tx_frames=[]
         self.cache=OrderedDict();self.cache_bytes=cache_bytes;self.cache_used=0
         self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter();self.codebook_reads=[]
-        self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"]
+        self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"];self.deck_opened=False
         self.tx_backend=backend;self.deadline=0
         room=arena-len(artifact["code"])-24
         if room<=0:raise ValueError("module exceeds arena")
@@ -209,10 +209,13 @@ class LiveTx(Emu):
         a=self.A
         r0,r1,r2,r3=[uc.reg_read(r) for r in (a.UC_ARM_REG_R0,a.UC_ARM_REG_R1,a.UC_ARM_REG_R2,a.UC_ARM_REG_R3)]
         ret=0;us=1
-        if name=="resource_open":ret=len(self.deck) if r0==14 and not self.keyed else -1
+        if name=="resource_open":
+            if r0==14 and not self.keyed:
+                self.deck_opened=True;ret=len(self.deck)
+            else:ret=-1
         elif name=="resource_read":
             src=self.cb if r0==0 else self.deck if r0==1 else b""
-            if r1+r3>len(src) or not r3:ret=-1
+            if (r0==1 and not self.deck_opened) or r1+r3>len(src) or not r3:ret=-1
             else:
                 uc.mem_write(r2,src[r1:r1+r3]);self.spi_reads+=1
                 if self.keyed:
