@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "repo": "tcarwash/flux_radio",
+  "max_parallel": 4,
+  "max_per_cycle": 14,
+  "timeout_seconds": 150,
+  "jobs": {
+    "7": {
+      "ref": "origin/research/offline-fsk-irq-lab-20261123",
+      "tests": [
+        "tests/test_fsk_irq_offline.py"
+      ]
+    },
+    "10": {
+      "ref": "origin/research/offline-sotto-fsk-dv-20261123",
+      "tests": [
+        "tests/test_k6_sotto_fsk_offline.py",
+        "tests/test_k6_sotto_fsk_capture_playout.py"
+      ]
+    },
+    "16": {
+      "ref": "origin/research/tx15y-dual-tone-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx15y_dual_tone_probe.py",
+        "tests/test_k6_tx15y_dual_tone_analyze.py"
+      ]
+    },
+    "17": {
+      "ref": "origin/research/tx24-reg40-deviation-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx24_reg40_tone_probe.py",
+        "tests/test_k6_tx24_reg40_deviation_analyze.py"
+      ]
+    },
+    "19": {
+      "ref": "origin/research/tx26-c4fsk-bchip-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx26_c4fsk.py"
+      ]
+    },
+    "20": {
+      "ref": "origin/research/tx27-reg51-signed-dac-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx27_reg51_dac.py"
+      ]
+    },
+    "21": {
+      "ref": "origin/research/tx28-fastspi-rrc-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx28_fastspi.py"
+      ]
+    },
+    "24": {
+      "ref": "origin/research/rx01-pa11-flat-4fsk-offline-20261123",
+      "tests": [
+        "tests/test_k6_rx01_pa11_4fsk.py"
+      ]
+    },
+    "26": {
+      "ref": "origin/research/tx24b-fsk-reg40-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx24b_fsk_reg40_probe.py",
+        "tests/test_k6_tx24b_fsk_reg40_analyze.py"
+      ]
+    },
+    "29": {
+      "ref": "origin/research/whisper8-mfsk-offline-20261123",
+      "tests": [
+        "tests/test_k6_whisper8.py",
+        "tests/test_k6_whisper8_iq.py"
+      ]
+    },
+    "30": {
+      "ref": "origin/research/dv-guard33-rx-playout-20261123",
+      "tests": [
+        "tests/test_k6_dv_guard33_packet.py",
+        "tests/test_k6_dv_guard33_selftest.py",
+        "tests/test_k6_dv_guard33_session.py"
+      ]
+    },
+    "35": {
+      "ref": "origin/research/tx32-live-ptt-coex-offline-20261123",
+      "tests": [
+        "tests/test_k6_tx32_coex.py"
+      ]
+    },
+    "37": {
+      "ref": "origin/research/tx34-step-response-20261124",
+      "tests": [
+        "tests/test_k6_tx34_step_response.py"
+      ]
+    }
+  }
+}

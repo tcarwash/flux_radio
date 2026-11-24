@@ -24,3 +24,44 @@ Updated 2026-11-24. The installed user service `flux-experiment-autopilot.servic
 Issue [#21](https://github.com/tcarwash/flux_radio/issues/21) candidate [`automation/tx28-fastspi-rx-bench-20261124`](https://github.com/tcarwash/flux_radio/tree/automation/tx28-fastspi-rx-bench-20261124) was written by two device-free delegates and independently corrected/tested. Original fast-SPI module performed 384 readbacks; FULL_BENCH implements 10,000 in one finite RX-only module invocation (compiled Cortex-M0 1,420 bytes, bit-level Unicorn modeled 10,000 writes/10,000 reads, 0 errors and complete modeled restore). Twenty offline tests passed. The independent reviewer approved the exact frozen first hardware manifest SHA256 `b0c6fd58...4517`; a fresh GH bench ACK led to a **real one-shot on-radio preflight** on Nov 24. It **BLOCKED before module installation** because the generated RX harness incorrectly assumed packed KUL2 slot images were at most 7168 bytes, but live populated system slots are up to 16384 bytes. The original 31 module hashes and VFO, original build/API, empty slot30 and TX OFF were independently confirmed by the whole-bench locked probe; bench was released. That old grant is consumed forever. Any corrected follow-up must use a new committed source, new manifest and independent review, not repeat the first.
 
 This pipeline is autonomous but not unrestricted. Code-writing agents do not receive device access; only reviewed, pinned and bounded physical controllers may use the dummy-loaded radio. A clean timer alone is not proof the research queue is being worked; status must show intake/build/review/physical states.
+
+## Device-free fixture lane — explicitly separate from hardware queue
+
+Owner instruction (2026-11-24): offline fixtures and emulators do **not** belong
+in the physical experiment queue. The local `k6_experiment_sweep.py`
+executes 13 explicit research-ref suites in isolated fresh worktrees and
+runs their selected test files using pytest with **no USB devices and no
+network**, at up to four-way concurrency. Results and source hashes are
+stored privately in `~/.local/state/flux-experiment-autopilot/offline-sweep.json`
+and individual logs under `offline-sweeps/`; it **never posts to GitHub**, never
+claims the radio, never registers a physical manifest, and never reports an
+RF PASS. The separate `flux-experiment-fixture-sweep.timer` checks for changed
+pinned source SHAs every 15 minutes and skips completed SHAs.
+
+First local sweep: 13/13 branch suites PASS; 295 executed fixture tests;
+zero physical radio or bench operations. `flux-queue status` displays these
+under **Fixtures** distinct from actual hardware attempts.
+
+The physical queue #11 remains for genuinely necessary bench measurements,
+not for repeating Python model tests. A new physical session is added only
+after the offline candidate is pinned, independently qualified and assigned
+an explicit locally trusted physical harness. All physical results are
+reported separately, with live hardware provenance and a real restore check.
+
+Throughput settings: 2-minute physical pipeline timer; up to four active
+intake preparation reviewers and 32 assessments/day; 12 new isolated
+candidate builds/day; 12 finite reviewed physical one-shots/day. Physical
+attempts cannot overlap and are always protected by the whole-bench lock,
+TX time-limit, and complete baseline restore/verification. A failed physical
+experiment with independently proven session_restore and session_verify
+PASS may release the bench automatically (the attempted manifest is still
+consumed). An unverified failure keeps the bench held.
+
+
+Hardware-only intake: the physical service invokes the intake runner
+with --once --hardware-only. It no longer submits preparation assessments
+for [Flux RF][OFFLINE] issues; these are software research fixtures and
+remain in the local sweep. Hardware titles are intake-eligible. An
+explicitly prepared local candidate from an older OFFLINE research issue
+may be promoted to a physical session only after its tested, pinned
+hardware harness exists. That promotion is distinct from fixture results.

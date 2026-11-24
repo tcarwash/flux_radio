@@ -191,3 +191,17 @@ def test_intake_backlog_and_missing_snapshot_visible(monkeypatch,tmp_path):
         (tmp_path/"intake-snapshot.json").write_text(json.dumps({
             "mode":"READ_ONLY_PREPARATION_INTAKE","hardware_approvals_created":1}))
         q.intake_status()
+
+
+
+def test_fixture_status_is_local_only_and_never_radio_pass(monkeypatch,tmp_path):
+    monkeypatch.setattr(q,"STATEDIR",tmp_path)
+    (tmp_path/"offline-sweep.json").write_text(json.dumps({
+        "schema":1,"jobs":{
+            "issue-19:a":{"result":"PASS","test_passed":12},
+            "issue-26:b":{"result":"FAIL_TESTS","test_passed":5}}}))
+    x=q.fixture_status()
+    assert x["local_only"] is True and x["radio_access"] is False
+    assert x["queue_publications"]==0
+    assert x["passed_tests"]==12
+    assert x["counts"]=={"PASS":1,"FAIL_TESTS":1}

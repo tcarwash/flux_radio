@@ -3,8 +3,8 @@ Description=Periodic trusted Flux experiment queue processing
 
 [Timer]
 OnBootSec=90s
-OnUnitActiveSec=10min
-RandomizedDelaySec=20s
+OnUnitActiveSec=2min
+RandomizedDelaySec=3s
 Persistent=true
 Unit=flux-experiment-autopilot.service
 

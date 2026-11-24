@@ -2,7 +2,7 @@
   "schema": 1,
   "enabled": true,
   "repo": "tcarwash/flux_radio",
-  "max_daily": 2,
+  "max_daily": 12,
   "recipes": {
     "20": {
       "base_ref": "origin/research/tx27-reg51-signed-dac-offline-20261123",

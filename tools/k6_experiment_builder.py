@@ -48,7 +48,7 @@ def config_load(path=CONFIG):
         raise Refused("invalid builder policy")
     if config["repo"]!="tcarwash/flux_radio" or type(config["enabled"]) is not bool:
         raise Refused("untrusted builder repository")
-    if not 1<=config["max_daily"]<=4:raise Refused("unsafe daily builder budget")
+    if not 1<=config["max_daily"]<=16:raise Refused("unsafe daily builder budget")
     if not isinstance(config["recipes"],dict):raise Refused("invalid recipe mapping")
     for issue,r in config["recipes"].items():
         if not re.fullmatch(r"[1-9]\d*",issue):raise Refused("invalid issue")

@@ -311,19 +311,41 @@ def builder_status():
         "journal_missing":doc["missing"]}
 
 
+def fixture_status():
+    # Standalone local software regression evidence. It never creates
+    # physical queue entries, bench leases or RF PASS claims.
+    document=read_jobs(STATEDIR / "offline-sweep.json")
+    current=list(document["jobs"].values())
+    states={}
+    for record in current:
+        result=record.get("result","UNKNOWN")
+        states[result]=states.get(result,0)+1
+    return {
+        "local_only":True,
+        "radio_access":False,
+        "queue_publications":0,
+        "suites":len(current),
+        "counts":states,
+        "passed_tests":sum(r.get("test_passed",0) for r in current
+                           if r.get("result")=="PASS"),
+        "journal_missing":document["missing"],
+    }
+
+
 def status(now=None, check_github=False):
     now = now or datetime.now().astimezone()
     result = {"timestamp": now.isoformat(), "health": "UNKNOWN",
               "scheduler": scheduler_status(now),
               "bench": bench_status(check_github=check_github),
               "offline": None, "hardware": None, "reviews": None,
-              "intake": None, "builder": None, "alerts": []}
+              "intake": None, "builder": None, "fixtures": None, "alerts": []}
     try:
         result["offline"] = offline_status()
         result["hardware"] = hardware_status()
         result["reviews"] = review_status()
         result["intake"] = intake_status()
         result["builder"] = builder_status()
+        result["fixtures"] = fixture_status()
     except (OSError, ValueError, KeyError) as exc:
         result["alerts"].append(f"local state unreadable: {exc}")
     if not result["scheduler"]["healthy"]:
@@ -421,6 +443,13 @@ def display(data):
         print(f"  Builder     {counts.get('TESTED_NEEDS_INDEPENDENT_REVIEW',0)} tested"
               f" · {counts.get('MANIFEST_REGISTERED_FOR_REVIEW',0)} registered"
               f" · {counts.get('BLOCKED_NO_AUTO_RETRY',0)} blocked")
+    fixture=data.get("fixtures")
+    if fixture:
+        c=fixture["counts"]
+        print(f"  Fixtures    {c.get('PASS',0)}/{fixture['suites']} local suites"
+              f" · {fixture['passed_tests']} tests passed"
+              f" · {c.get('FAIL_TESTS',0)+c.get('TIMEOUT',0)} not passing"
+              f" · NO radio/queue")
     offline = data["offline"]
     if offline:
         print(f"  Offline     {offline['passed']}/{offline['registered']} complete"

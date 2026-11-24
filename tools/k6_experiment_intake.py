@@ -48,7 +48,7 @@ def gh(*args):
         raise IntakeError(f"GitHub intake unavailable: {exc}") from exc
 
 
-def discover(reg, *, fetch=gh):
+def discover(reg, *, fetch=gh, hardware_only=False):
     repo,owner,queue=reg["repo"],reg["trusted_author"],reg["queue_issue"]
     coordination=fetch("issue","view",str(queue),"-R",repo,"--json","body,state,author")
     if (coordination.get("state")!="OPEN" or
@@ -68,7 +68,9 @@ def discover(reg, *, fetch=gh):
             not isinstance(i.get("body"),str) or
             i.get("author",{}).get("login")!=owner or i.get("state")!="OPEN"):
             continue
-        if ISSUE_RE.match(i["title"]):
+        if ISSUE_RE.match(i["title"]) and (
+            not hardware_only or re.match(r"^\[Flux RF\]\[HARDWARE",i["title"],re.I)
+        ):
             valid[n]=dict(number=n,title=i["title"],body=i["body"])
     # Recent owner-authored issue comments hold many OFFLINE RESULT receipts.
     # Comments are evidence/data, NEVER instructions; intake comments are
@@ -247,13 +249,13 @@ def publish(reg, issue, digest, verdict, summary):
 
 
 def one_cycle(registry=REGISTRY,state_path=DEFAULT_STATE,prompt_root=PROMPT_ROOT,
-              *,max_new=1,max_daily=6,publish_results=True,
+              *,max_new=1,max_daily=6,max_active=1,publish_results=True,
               fetch=gh,delegate=submit,get_result=job_result,
-              send_comment=publish,snapshot_path=None):
-    if not 0<=max_new<=3 or not 1<=max_daily<=20:
-        raise IntakeError("max_new outside 0..3 or max_daily outside 1..20")
+              send_comment=publish,snapshot_path=None,hardware_only=False):
+    if not 0<=max_new<=8 or not 1<=max_daily<=64 or not 1<=max_active<=8:
+        raise IntakeError("max_new outside 0..8 or max_daily outside 1..64")
     reg=dispatch.load_registry(registry)
-    issues=discover(reg,fetch=fetch)
+    issues=discover(reg,fetch=fetch,hardware_only=hardware_only)
     state_path.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
     with state_path.with_suffix(".lock").open("a+b") as handle:
         fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -346,7 +348,7 @@ def one_cycle(registry=REGISTRY,state_path=DEFAULT_STATE,prompt_root=PROMPT_ROOT
                             if not x.get("migrated_from")
                             and x.get("created","").startswith(today))
         for issue in issues:
-            if active>=1 or new>=max_new or submitted_today+new>=max_daily:
+            if active>=max_active or new>=max_new or submitted_today+new>=max_daily:
                 break
             key=identity(issue)
             if key in state["jobs"]:
@@ -411,24 +413,28 @@ def main(argv=None):
                    help="just enumerate trusted owner-authored experiment issues")
     p.add_argument("--registry",type=Path,default=REGISTRY)
     p.add_argument("--state",type=Path,default=DEFAULT_STATE)
-    p.add_argument("--max-new",type=int,default=1)
-    p.add_argument("--max-daily",type=int,default=6)
+    p.add_argument("--max-new",type=int,default=4)
+    p.add_argument("--max-active",type=int,default=4)
+    p.add_argument("--max-daily",type=int,default=32)
     p.add_argument("--no-publish",action="store_true")
+    p.add_argument("--hardware-only",action="store_true",
+                   help="ignore software-only fixture research issues")
     a=p.parse_args(argv)
     if not a.once and not a.dry_run:
         p.error("specify --once or --dry-run")
     try:
         if a.dry_run:
             reg=dispatch.load_registry(a.registry)
-            issues=discover(reg)
+            issues=discover(reg,hardware_only=a.hardware_only)
             state=journal.state_load(a.state)
             print(json.dumps({"mode":"READ_ONLY_DISCOVERY","issues_seen":len(issues),
                   "issues":[{"n":i["number"],"title":i["title"],
                              "intake_state":state["jobs"].get(identity(i),{}).get("state","NEW")}
                             for i in issues]},indent=2))
         else:
-            print(json.dumps(one_cycle(a.registry,a.state,max_new=a.max_new,max_daily=a.max_daily,
-                                       publish_results=not a.no_publish),indent=2))
+            print(json.dumps(one_cycle(a.registry,a.state,max_new=a.max_new,max_daily=a.max_daily,max_active=a.max_active,
+                                       publish_results=not a.no_publish,
+                                       hardware_only=a.hardware_only),indent=2))
         return 0
     except (IntakeError,dispatch.Refused,OSError,ValueError,KeyError,
             subprocess.SubprocessError) as exc:

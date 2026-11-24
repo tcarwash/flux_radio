@@ -96,3 +96,32 @@ def test_unapproved_delegation_does_not_post_or_touch_bench(monkeypatch,tmp_path
     out=a.one_cycle(state_path=tmp_path/"state.json",review_path=tmp_path/"review.json",
                     bench_lock=tmp_path/"bench.lock")
     assert out["events"][0]["action"]=="WAITING_FOR_LOCAL_APPROVAL"
+
+
+
+def test_failed_experiment_releases_only_after_independent_global_postflight(monkeypatch,tmp_path):
+    fake_setup(monkeypatch)
+    actions=[]
+    monkeypatch.setattr(a,"queue_comment",lambda cfg,body:
+        actions.append(body.splitlines()[0]) or
+        "https://github.com/tcarwash/flux_radio/issues/11#issuecomment-999")
+    verified={"result":"BLOCKED","session_id":"mocked-lab-session","jobs":[],
+              "events":[
+                {"name":"session_preflight","status":"PASS","returncode":0},
+                {"name":"job01-run","status":"FAIL","returncode":1},
+                {"name":"session_restore","status":"PASS","returncode":0},
+                {"name":"session_verify","status":"PASS","returncode":0}]}
+    monkeypatch.setattr(a.batch,"run_session",lambda *_,**__:verified)
+    out=a.one_cycle(state_path=tmp_path/"journal.json",
+                    review_path=tmp_path/"review.json",
+                    bench_lock=tmp_path/"bench.lock",
+                    output_root=tmp_path/"records")
+    assert out["events"][0]["result"]=="BLOCKED"
+    assert a.postflight_verified(verified)
+    assert any(x.startswith("BLOCKED / RELEASE") for x in actions)
+    assert not any(x.startswith("BLOCKED / HOLD") for x in actions)
+    assert not a.postflight_verified({**verified,"events":verified["events"][:-1]})
+    assert not a.postflight_verified({
+        **verified,"events":[{"name":"session_restore","status":"PASS","returncode":0},
+                            {"name":"session_verify","status":"FAIL","returncode":1}]})
+    assert not a.postflight_verified({"result":"BLOCKED","events":[]})

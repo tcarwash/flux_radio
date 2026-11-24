@@ -140,6 +140,22 @@ def queue_comment(config,body):
     return url
 
 
+def postflight_verified(result):
+    """A failed *experiment* can release the bench after trusted global restore.
+
+    Never trust a job's own restore verdict here. Only the separately
+    SHA-pinned session-level baseline checker can release the whole bench.
+    A missing/failed global postflight must remain BLOCKED / HOLD.
+    """
+    events = result.get("events", [])
+    return all(
+        any(isinstance(e, dict) and e.get("name")==stage and
+            e.get("status")=="PASS" and e.get("returncode")==0
+            for e in events)
+        for stage in ("session_restore", "session_verify")
+    )
+
+
 def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_path=REVIEW,
               bench_lock=BENCH_LOCK,output_root=None):
     cfg=hw.load_config(config_path)
@@ -207,6 +223,10 @@ def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_p
                     if passed:
                         queue_comment(cfg,f"PASS / RELEASE | Flux autonomous bench | issue #{n} session {m['session_id']} | full original packed slot hashes and VFO restored, session status PASS. Whole bench released.\n")
                         hw.publish(cfg,n,result,approval)
+                    elif postflight_verified(result):
+                        # Do not leave a stale GH claim after the exact
+                        # independent whole-bench baseline was restored.
+                        queue_comment(cfg,f"BLOCKED / RELEASE | Flux autonomous bench | issue #{n} session {m['session_id']} | experiment failed but independent session restore + verify PASS (full slot hashes/VFO/idle). This manifest is consumed, no auto-retry.\n")
                     else:
                         queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | issue #{n} session {m['session_id']} | physical state may be unverified. No repeat without operator inspection.\n")
                     events.append({"issue":n,"action":"PHYSICAL_ONE_SHOT","result":result["result"]})

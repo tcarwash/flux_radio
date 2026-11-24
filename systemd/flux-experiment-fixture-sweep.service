@@ -1,0 +1,7 @@
+[Unit]
+Description=Flux device-free fixture regression sweep (NO GitHub queue, NO radio)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_sweep.py --once
+TimeoutStartSec=1000

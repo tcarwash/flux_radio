@@ -70,7 +70,7 @@ def policy(path=APPROVAL_POLICY):
         raise Refused("installed API not separately qualified for automatic approval")
     if p["permitted_kinds"]!=["RX_ONLY","BOUNDED_TX"]:
         raise Refused("physical scope outside approved RX-only/finite-TX")
-    if not 1<=p["max_sessions_per_day"]<=8:
+    if not 1<=p["max_sessions_per_day"]<=16:
         raise Refused("excessive daily physical test allowance")
     if not 500<=p["rf_session_limit_ms"]<=1900:
         raise Refused("unsafe RF watchdog ceiling")
@@ -279,8 +279,19 @@ def register_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
             if all(oldpins.get(str(Path(record["worktree"])/x["path"]))==x["sha256"]
                    for x in record["pins"]):
                 continue
-        # Validate and SHA-pin locally BEFORE changing the coordination issue.
-        m=generate(n,recipe,record,p)
+        # A bad *offline candidate* is not a controller/service failure.
+        # Isolate it and advance other validated hardware candidates.
+        # This never grants radio access, and a failed generated script is
+        # never enrolled in the trusted queue.
+        try:
+            m=generate(n,recipe,record,p)
+        except (Refused,batch.Refused,ValueError,OSError) as exc:
+            record["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+            record["error"]=f"{type(exc).__name__}: {exc}"[:400]
+            journal.state_write(builder_state,b)
+            events.append({"issue":n,"state":"BLOCKED_CANDIDATE_NEEDS_REPAIR",
+                           "reason":str(exc)[:150]})
+            continue
         if not ranked(reg,n):
             ensure_ranked(reg,n,write=True)
             events.append({"issue":n,"state":"ENROLLED_IN_TRUSTED_QUEUE"})

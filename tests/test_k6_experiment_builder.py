@@ -12,7 +12,7 @@ import k6_experiment_builder as b
 def test_config_real_and_bounded():
     cfg=b.config_load()
     assert cfg["repo"]=="tcarwash/flux_radio"
-    assert cfg["max_daily"]<=4
+    assert cfg["max_daily"]<=16
     assert cfg["recipes"]["21"]["kind"]=="RX_ONLY"
 
 

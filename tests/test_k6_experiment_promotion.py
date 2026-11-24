@@ -16,7 +16,7 @@ def test_policy_matches_dummy_loaded_owner():
     x=p.policy()
     assert x["operator"]=="AG7SU" and x["dummy_load"] is True
     assert x["permitted_kinds"]==["RX_ONLY","BOUNDED_TX"]
-    assert x["max_sessions_per_day"]<=8
+    assert x["max_sessions_per_day"]<=16
     assert x["rf_session_limit_ms"]<=1900
 
 
@@ -128,3 +128,29 @@ def test_no_automatic_grant_without_review(monkeypatch,tmp_path):
                      hardware_state_path=hw_state)
     assert got["events"]==[]
     assert json.loads(grants.read_text())["approved"]=={}
+
+
+
+def test_one_unpromotable_candidate_does_not_kill_pipeline(monkeypatch,tmp_path):
+    cfg=tmp_path/"hardware.json"
+    builder_state=tmp_path/"builder.json"
+    builder_state.write_text(json.dumps({"schema":1,"jobs":{
+        "issue-20":{"state":"TESTED_NEEDS_INDEPENDENT_REVIEW",
+                    "worktree":"/no/unsafe/source"},
+        "issue-21":{"state":"TESTED_NEEDS_INDEPENDENT_REVIEW",
+                    "worktree":"/a/different/path"}}}))
+    fake_registry={"repo":"tcarwash/flux_radio","queue_issue":11,
+                   "trusted_author":"tcarwash","manifests":{},"schema":1}
+    monkeypatch.setattr(p,"ensure_generated",lambda:fake_registry)
+    monkeypatch.setattr(b,"config_load",lambda:{
+        "recipes":{"20":{"kind":"BOUNDED_TX"},"21":{"kind":"RX_ONLY"}}})
+    monkeypatch.setattr(p,"generate",lambda n,*args:(_ for _ in ()).throw(
+        p.Refused("generated entrypoint lacks required preflight")) )
+    report=p.register_once(builder_state=builder_state,hardware_config=cfg)
+    assert len(report["events"])==2
+    assert all(e["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+               for e in report["events"])
+    state=json.loads(builder_state.read_text())["jobs"]
+    assert state["issue-20"]["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+    assert state["issue-21"]["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+    assert not cfg.exists()

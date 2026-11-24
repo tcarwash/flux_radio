@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic local Flux RF software fixture tests (separate from bench queue)
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=15min
+RandomizedDelaySec=5s
+Persistent=true
+Unit=flux-experiment-fixture-sweep.service
+
+[Install]
+WantedBy=timers.target

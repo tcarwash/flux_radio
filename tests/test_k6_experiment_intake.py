@@ -237,3 +237,11 @@ def test_contradictory_review_cannot_overrule_owner_offline_result(tmp_path):
             get_result=lambda j:("NEEDS_OFFLINE","I saw no offline evidence"),
             send_comment=lambda *args:pytest.fail("must not publish stale advice"))
     assert got["events"][0]["reason"]=="CONTRADICTORY_EVIDENCE"
+
+
+
+def test_hardware_only_intake_excludes_software_fixture_work():
+    reg={"repo":REPO,"trusted_author":OWNER,"queue_issue":QUEUE}
+    result=it.discover(reg,fetch=gh_fake,hardware_only=True)
+    assert [r["number"] for r in result]==[30]
+    assert all("[HARDWARE" in r["title"] for r in result)

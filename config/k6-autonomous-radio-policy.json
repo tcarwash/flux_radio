@@ -9,6 +9,6 @@
     "RX_ONLY",
     "BOUNDED_TX"
   ],
-  "max_sessions_per_day": 6,
+  "max_sessions_per_day": 12,
   "rf_session_limit_ms": 1900
 }
