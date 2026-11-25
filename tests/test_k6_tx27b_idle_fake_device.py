@@ -31,7 +31,7 @@ class FakeRadio:
         self.vfos=[dict(hz=433500000,mode='FM',wide=True),
                    dict(hz=144390000,mode='FM',wide=True)]
     def info(self):return {'build_id':bytes.fromhex(bench.EXPECTED_BUILD),'protocol':5}
-    def module_capabilities(self,**kw):return {'module_api_max':29,'cable_only':True}
+    def module_capabilities(self,**kw):return {'module_api_max':bench.EXPECTED_API,'cable_only':True}
     def capabilities(self):return {'features':['lib_mutate','module_caps','run']}
     def status(self):return {'transmitting':False,'standby_idle':True,'vfos':self.vfos}
     def library_directory(self):return {k:(k*16384,len(x)) for k,x in self.slots.items()}

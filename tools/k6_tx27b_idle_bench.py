@@ -23,9 +23,9 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 PORT='/dev/ttyUSB0'
 ISSUE=40
 TEMP_SLOT=30
-EXPECTED_BUILD='339e08a2b77c7679'
+EXPECTED_BUILD='5d8e7f39844d42f9'
 EXPECTED_PROTOCOL=5
-EXPECTED_API=29
+EXPECTED_API=31
 EXPECTED_VFOS=((433500000,'FM',True),(144390000,'FM',True))
 SOURCE=ROOT/'c/k6/mod/tx27b_reg51_idle_diag.c'
 DEFAULT_BENCH=Path.home()/'.cache/flux/bench.lock'
@@ -167,7 +167,7 @@ def execute(prefix:Path,info,code,entry):
                 raise Refused(f'enrolled build/protocol changed: {build}/{radio.get("protocol")}')
             caps=link.module_capabilities(key=None)
             if caps.get('module_api_max')!=EXPECTED_API or not caps.get('cable_only'):
-                raise Refused('API29 cable-only enrollment not verified')
+                raise Refused('API31 cable-only enrollment not verified')
             features=link.capabilities()['features']
             for feat in ('lib_mutate','module_caps','run'):
                 if feat not in features:raise Refused(f'required host feature {feat} missing')
