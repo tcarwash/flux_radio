@@ -76,3 +76,28 @@ RFIC VOX max was **169**, versus 515 with the prior 1kHz stimulus. High-rate GP0
 The 1kHz response of the actual fixed-point PCM converter is 5.8× higher with generator 1kHz ON than OFF; approximate PCM RMS is 5.14× higher. The 2kHz bin does not rise with a 1kHz signal (indeed its mean is lower than OFF), providing further support for a genuine input-frequency-specific reconstruction. This is strong controlled **physical microphone-input-dependent 8kHz PCM** evidence, requiring no board modification. The measurement contains only short spectral/RMS summaries, not a saved PCM waveform or recovered intelligible speech. The broadband noise floor in the OFF run is nonzero; no subjective audio quality or full-band SNR has been established, and no real-time Sotto codec/concurrent DMA pass has been run.
 
 **Next physical validation:** same `CATALOG → MIC PCM` slot25 with signal generator awake, output ON at **2kHz, nominal 0.1V**; dummy load attached, UART unplugged, hold PTT ~2s for `MIC PCM SAVED`/`ABORT`, reconnect **without power cycling**, retrieve `gp0-pcm-v1/tone-2khz-01.json`. Look for increased **2kHz PCM** spectral estimate and absence/reduction at 1kHz, with RFIC VOX distinctly higher than 169. No firmware/module updates required. Thereafter prioritize a bounded continuous sample ring or on-device codec input pipeline under the constrained ~185us DMA ring turnaround, and use the already-established SDR monitor to verify RF/codec/audio.
+
+### Final physical frequency tracking: 2kHz → 8kHz GP0 PCM (2026-11-25 21:04 UTC)
+
+After the operator set the mic-pad generator to **2kHz, nominal 0.1V output ON**, launched the existing `MIC PCM` slot25 with physical PTT on dummy load, and reconnected UART without power cycling, we retrieved a CRC-valid MAB1 **version8** result with all four 32ms windows completed. Saved `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-2khz-01.json` SHA256 **`bc2ec8cc48c1b055e9f7e47234db34057fba2ecad259544e7f922c3e63351191`**, UTC retrieval timestamp `2026-11-25T21:04:18.274178+00:00` (not a guaranteed RF capture timestamp). The radio remained standby idle, not transmitting, at 7.76 V on VFO A 443.500 MHz; the bench was unowned.
+
+RFIC VOX maximum 434, GP0 selector12 via PB1 DMA, measured 64:1 density sample rate **87,260 samples/s**; GP0 fixed-point converter emitted exactly **1,824 signed 8kHz PCM samples** (800 DC-settling warm-up, 4 × 256 analyzed). No DMA overrun, captured failure, or clipping. Measurements:
+
+| 32ms PCM window | 1kHz coherent score | 2kHz coherent score | Approx PCM RMS | clipped |
+|---|---:|---:|---:|---:|
+| 0 | 544 | **24,299** | 8,896 | 0 |
+| 1 | 439 | **24,072** | 8,768 | 0 |
+| 2 | 608 | **23,766** | 8,640 | 0 |
+| 3 | 136 | **23,331** | 8,512 | 0 |
+
+Averaged three-condition proof:
+
+| Physical stimulus | RFIC VOX | PCM 1kHz peak avg | PCM 2kHz peak avg | Approx PCM RMS avg | 8kHz PCM output |
+|---|---:|---:|---:|---:|---:|
+| generator OFF | 169 | 380 | 473 | 1,872 | 1,824 |
+| 1kHz/nominal 0.1V ON | 515 | **2,195** | 340 | 9,616 | 1,824 |
+| 2kHz/nominal 0.1V ON | 434 | 432 | **23,867** | 8,704 | 1,824 |
+
+**Conclusion, bounded to measured evidence:** physical input-frequency-dependent audio makes it through the *existing* K6 RFIC GP0 output select12 to PB1 at roughly 5.5M GPIO samples/s, then through actual module-executed DMA bit-density decimation to signed 8kHz PCM on the MCU. Physical PCB modification is not required for microphone signal acquisition with the RFIC ADC on during PA-muted TX. Four windows independently tracked each injected tone; the generator OFF control demonstrated a lower noise floor. The *markedly different* 1kHz and 2kHz spectral scores at nominal equal stimulus amplitude must be investigated; a flat 8kHz voice pass cannot be inferred, and oscillator sensitivity, frequency response, filter/delay and artifacts remain open questions. PCM content was summarized, not recorded as a full-waveform WAV. Intelligible speech, analog acoustic-microphone SNR, and continuous PCM capture *during Sotto encoder/FSK RF work* remain unvalidated.
+
+**Next engineering focus:** isolate GP0 DMA ring ownership and solve real-time decimation/PCM ring production during Sotto encoding (the 1,024-byte raw DMA buffer wraps in about 185µs). A bounded real speech PCM capture and host WAV reconstruction plus full-band sweep would provide fidelity evidence. Maintain installed, working `MIC PCM` slot25 and original `SOTTO MIC` slot30, and only replace slot30 after an independent live RF+codec+audio monitor confirms speech.
