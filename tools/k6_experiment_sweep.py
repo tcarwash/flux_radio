@@ -246,6 +246,10 @@ def main(argv=None):
             ]}
         else:
             result=one_cycle(args.config,args.state,max_per_cycle=args.max_per_cycle)
+            # Publish completed software-only receipts to the shared local ledger.
+            # This does not create GitHub issues or operate the radio.
+            from k6_offline_results import import_sweep
+            result["shared_results"] = import_sweep(args.state)
         print(json.dumps(result, indent=2))
         return 0
     except (Refused,ValueError,OSError,subprocess.SubprocessError,

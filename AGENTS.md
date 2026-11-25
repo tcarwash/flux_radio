@@ -12,6 +12,22 @@
 - Emulator evidence does not establish physical-radio or RF behavior.
 - For new firmware/module UI work, consult `docs/k6-ui-conventions.md` and keep key semantics, VFO handoff and simulator interactions consistent; document deliberate exceptions.
 
+## Offline experiment results (shared between agent threads)
+
+- Offline fixture/emulator runs are **not** GitHub queue issues or hardware tests.
+- Before duplicating offline research, query the shared SQLite results ledger with
+  `flux-offline-results list --query "FSK"` and inspect relevant records with
+  `flux-offline-results show ID`.
+- Register new independent software work with `flux-offline-results register --name "..." --owner "agent-name" --sha FULL_COMMIT_SHA --test tests/test_example.py`.
+  Run tests yourself with your own device-free environment, then finalize using
+  `flux-offline-results finish ID --status PASS --summary "..." --metrics-json '{"tests_passed":3}'`.
+  Record failures and limitations as well; never claim an offline PASS proves RF behavior.
+- The periodic fixture sweeper automatically imports its receipts into the same ledger.
+  The ledger stores evidence only and **never schedules code or touches the radio**.
+- Database lives on the shared development host at
+  `~/.local/state/flux-experiments/offline-results.sqlite3`; the `flux-offline-results`
+  host CLI is accessible to other connected agent threads.
+
 ## Prompt-time experiment result check
 
 - If the current agent prompt relates to K6 experiments, RF/modem work,
