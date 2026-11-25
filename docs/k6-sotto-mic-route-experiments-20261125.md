@@ -104,3 +104,25 @@ Operator performed the generator-output-OFF control, reconnecting serial **witho
 Crucial stimulus-quality caveat: the captured **overall RFIC VOX maxima are practically equal** (ON 197; OFF 198), and per-stage VOX is also similar (ON GP0 stages roughly 180–184 vs OFF 180–196). That differs from the earlier physical MIC RAW tone-on/off pair (max VOX 660 vs 315), so this test pair has not independently confirmed that its nominal 1kHz generator stimulus entered the RFIC during the tested TX states. The ~0.8 percentage-point differences in GP0 selector12 unsynchronized bit fractions could be ordinary sampling phase/aliasing jitter; they cannot validate voice capture without an actual measured 1kHz response. Thus results are **negative in the tested configurations**, not a definitive proof of no possible internal RFIC→MCU path.
 
 Recommended next diagnostic is an instrumented **RFIC VOX tone-present gate** with a low-threshold/captured time series before sweeping routes, or a verified generator amplitude/tone check through ordinary analog-FM TX, then only repeat the relevant GP0 path when an independently demonstrated ON/OFF mic stimulus difference exists. Avoid further unattended route sweeps on an unvalidated stimulus. Because the already-known PA11 initialization transient is invariant ON/OFF, AF route sweeps alone are not likely to fix PCM capture. No further firmware or SPI modification has been made after these results; `SOTTO MIC` stays in slot30.
+
+### Verified generator-awake tone ON re-run, 2026-11-25 20:26Z
+
+The operator suspected the generator had fallen asleep during the first nominal tone-on run, woke it and re-ran **the same installed MIC ROUTES v2 module** with nominal 1kHz/0.1V output ON, then reconnected UART without power cycling. Physical live status was standby idle, transmitting=false, 7.75V, VFO A 443.500MHz. The CRC-valid v4 report contains all nine stages; permanently saved as `/home/tyler/flux-bench/sotto-mic-calibration-20261125/routes-v1/mic-routes-tone-on-03.json` with SHA256 `e31976edc22b15a28e2e3f96926182448e94337f92971472774d5eace59bc3d9`, serial retrieval UTC `2026-11-25T20:26:27.210556+00:00` (not physical capture timestamp).
+
+**Stimulus confirmation:** total maximum RFIC VOX **537** with generator awake vs **198** with generator OFF and **197** during the apparently sleeping original ON run. The GP0-stage RFIC VOX increased from about 180–196 OFF to about **524–528** ON. That is direct evidence the RFIC is sensing a substantial injected microphone signal during this re-run. VOX is an envelope detector rather than proof the injected tone's frequency is precisely 1kHz, but it independently validates a meaningful ON/OFF stimulus contrast.
+
+| Routing diagnostic | OFF control | Verified tone ON redo |
+|---|---|---|
+| AF4 PA11 1kHz amplitude / mean abs PCM / raw HIGH | 0 / 1 / 100% | 0 / 1 / 100% |
+| AF9 bypass PA11 1kHz amplitude / mean abs PCM / raw HIGH | 0 / 1 / 100% | 0 / 1 / 100% |
+| AF5 PA11 1kHz amplitude / mean abs PCM / raw HIGH | 0 / 1 / 100% | 0 / 1 / 100% |
+| AF1 PA11 1kHz amplitude / mean abs PCM / raw HIGH | 0 / 1 / 100% | 0 / 1 / 100% |
+| GP0 mode9 PB1 HIGH / edge fractions | 0% / 0% | 0% / 0% |
+| GP0 mode11 PB1 HIGH / edge fractions | 0% / 0% | 0% / 0% |
+| GP0 mode12 PB1 HIGH / edge fractions | **49.41% / 56.47%** | **50.59% / 61.18%** |
+| GP0 mode13 PB1 HIGH / edge fractions | 100% / 0% | 0% / 0% |
+| GP0 mode14 PB1 HIGH / edge fractions | 0% / 0% | 100% / 0% |
+
+**Meaning:** a genuine RFIC microphone stimulus now fails to yield *any* steady PCM/1kHz component in all four tested AF routing selections, strongly ruling out those direct paths to the existing PA11 sampler. GP0 selector12 shows an increase in **asynchronously sampled** PB1 transition fraction of 4.71 percentage points and a 1.18 percentage-point increase in HIGH fraction, but the probe takes only 256 samples per 10ms; timing/aliasing, RFIC output-frequency changes, and CPU sampling cadence could explain the difference. GP0 selectors13 and14 exchanged static digital HIGH/LOW states despite the same configured selector sequence, further warning against simple binary interpretations. **No recovered PCM or 1kHz spectral signature from GP0 has been demonstrated.** This re-run supersedes the first nominal tone-on trial for stimulus validation; do not average the two as though generator output was known ON in both.
+
+Next highest-value non-invasive follow-up, if pursued: a **dedicated selector12 time-series capture** with the PA muted, physical PTT, a calibrated generator-off baseline and distinct 1kHz vs 2kHz input runs; record oversampled / DMA PB1 bit-density blocks rather than only one-bit HIGH/edge fractions. Confirm ROI timing and check for input-frequency-correlated spectral energy using a reproducible host-side demodulator. Asynchronous 25.6k reads/s may not resolve the ~6.5Mb/s sigma-delta digital stream; investigate the existing GP0 DMA and timer infrastructure for capture timing and interference with the PA11 TIM17 ISR before making any new changes. Preserve the good Sotto module in slot30; do not treat GP0 activity alone as mic access.
