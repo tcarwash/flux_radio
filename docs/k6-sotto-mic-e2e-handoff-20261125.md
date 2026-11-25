@@ -92,3 +92,24 @@ The radio had nonempty undocumented data in apparent free slots 1-7. Slot 25 ori
 - `/home/tyler/flux-bench/sotto-mic-calibration-20261125/install-report.json`
 
 Live cable installation was signed and exact readback verified: MIC CAL serial 1795627682, code SHA256 `e82ed68289daf5a87e6068e23acbb4f019b46a6d0d9fffedf27df01b6ca45257`; cable-connected physical `run-coop 25` returned expected `-4` from shared mic/UART exclusivity without transmitting or freezing. After calibration, restore the original 921-B MIC DIAG module by **re-signing its saved code with a fresh monotonic serial** (because the old serial 3 will be rejected), using original level29 and slot25. Verify original code hash and exact readback. Bench was released, original SOTTO MIC slot30 remains serial 1795626699.
+
+## 2026-11-25 physical MIC CAL result: sampled but no 1-kHz PCM tone
+
+Operator photo of the K6's `MIC CAL RESULT` during a verified normal-FM-audible, ~0.1 V generator tone into the external microphone pads (exact Vpp/Vpeak/Vrms still unspecified):
+
+| Field | Observed |
+|---|---:|
+| N | 7920 |
+| LOST | 0 |
+| PK | 8357 |
+| AVG | 152 |
+| MIN | -1948 |
+| MAX | 8357 |
+| V (REG64 VOX min/max) | 0 / 177 |
+| G (REG7D gain) | 31 |
+| ZC (PCM sign changes) | 7 |
+| ISR (peak cycles per 125-us tick) | 4304 |
+
+Interpretation: the TIM17 ISR runs at essentially its intended 8 kHz sample cadence (7920 produced in the ~1-s window), the ring reports no overrun, and the sampled ISR peak is only ~35.9% of its 12,000-cycle budget. **The sampled PCM does not exhibit a recognizable 1-kHz sine**: a properly DC-centered 1-kHz sine across 7920 samples would have ~1980 sign crossings, versus 7 measured. A large peak alongside AVG=152 might be startup/analog-route transients, not continuous speech. VOX varies while the FM receiver hears the tone: that is evidence the RFIC mic input sees it, not that MCU PA11 receives a waveform. ZC alone cannot exclude a DC-biased or low-SNR tone; future cal can compare tone-on/off and measure 1-kHz correlation or lag-4 differential energy rather than relying exclusively on sign changes.
+
+**Source-level routing hypothesis:** `sotto-api30-mic.rs.inc` currently sets `REG_47` AF selection bits to `0x0400` (AF mode 4), which BK4819 register documentation and this repository's `docs/k6-afsweep.md` identify as raw/baseband output, not a demonstrated TX mic-monitor path. The MCU pin PA11 is documented as the speaker PWM/RC output route, while the external microphone input feeds the FD6818B RFIC. The experimental one-wire sigma-delta sampler can only detect the injected microphone audio if an actual analog coupling route exists from MICP to the PA11 network; it hasn't been demonstrated. Do **not** boost `REG_7D` beyond its already-max setting, infer physical mic PCM from a healthy VOX reading, or change RF registers in TX blindly. Check one tone-off baseline and, if accessible, use a high-impedance scope probe to observe the PA11/RC node while distinguishing analog envelope from MCU-driven sigma-delta pulses. A conservative firmware-only diagnostic may compare per-block lag-4/sample variance and RFIC's other audio output modes with strict saved-register restore. Hardware routing or an alternate mic capture path may be required.
