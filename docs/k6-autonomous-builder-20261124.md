@@ -98,7 +98,7 @@ an RX-only test. Physical PASS is not an offline fixture PASS.
 The active hardware pipeline includes a device-free repair step between
 candidate generation and physical manifest promotion. It inspects only
 locally trusted worktrees and preselected blocked candidate issues #26, #30,
-and #20 (in that priority order), allowing at most **two repairs per
+and #20 (fairly ordered by fewest prior attempts), allowing at most **four repairs per
 candidate**. A repair delegate has no shell, radio, USB or SDR access; it
 can edit only the candidate's allowlisted paths. The supervisor reruns the
 specified pytest suite in a no-network device-free sandbox, checks a real

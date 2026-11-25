@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Repair blocked generated K6 bench candidates without radio/device access.
 
-Unlike a physical one-shot, an OFFLINE candidate may have up to two
+Unlike a physical one-shot, an OFFLINE candidate may have up to four
 device-free edit/test attempts. The original source and immutable hardware
 attempt receipts are never reset or modified.
 """
