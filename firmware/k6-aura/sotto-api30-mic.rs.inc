@@ -4,6 +4,7 @@
 #[cfg(k6_sotto_mic)]
 static mut SOTTO_MIC_ROUTE: bool=false;
 #[cfg(k6_sotto_mic)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_MIC_SAVED:[u16;4]=[0;4];
 #[cfg(k6_sotto_mic)]
 const SOTTO_MIC_REGS:[u8;4]=[0x30,0x47,0x48,0x7d];

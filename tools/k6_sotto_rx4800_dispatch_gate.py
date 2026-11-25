@@ -159,7 +159,7 @@ class Dispatcher:
         v=b.uc.reg_read(UC_ARM_REG_R0)
         return v if v<2**31 else v-2**32
 
-    def verified_cable_stage(self,code:bytes,entry:int,expected_chunks:int|None=None):
+    def verified_cable_stage(self,code:bytes,entry:int,expected_chunks:int|None=None,*,max_call_quanta:int=500):
         from unicorn import UC_HOOK_CODE
         envelope=k6mod.image(code,entry,serial=42,key=None,level=31)
         # CPU-side byte input to the real C cable ingress (CRC + replay checks).
@@ -171,10 +171,10 @@ class Dispatcher:
         arena=self.syms["arena"]
         pkt_addr=0x20005000
         self.board.uc.mem_write(pkt_addr,bytes(packets[0][:11])+bytes([packets[0][11]^0x40])+packets[0][12:])
-        assert self.call(self.linked[CABLE],pkt_addr,64,arena,11776)==-1  # bad CRC
+        assert self.call(self.linked[CABLE],pkt_addr,64,arena,11776,limit=max_call_quanta)==-1  # bad CRC
         for index,pkt in enumerate(packets):
             self.board.uc.mem_write(pkt_addr,pkt)
-            actual=self.call(self.linked[CABLE],pkt_addr,64,arena,11776)
+            actual=self.call(self.linked[CABLE],pkt_addr,64,arena,11776,limit=max_call_quanta)
             expected=3 if index==len(packets)-1 else 1
             if actual!=expected:
                 raise RuntimeError(
@@ -198,15 +198,19 @@ class Dispatcher:
         for burst in air.bursts:
             burst.start+=delta
             burst.end+=delta
-        self.rf=RFBackend(AirSource(air,240000,HZ))
+        # Follow the actual source burst frequency. The legacy virtual
+        # fixture is centered at 433.5 MHz, but the compiled live VFO host
+        # may emit at a different frequency (e.g. 439.5 MHz).
+        center=air.bursts[0].hz
+        self.rf=RFBackend(AirSource(air,240000,center))
         self.board.rf_backend=self.rf
-        hz=HZ//10
+        hz=center//10
         self.board.fd_regs[0x38]=hz&0xffff
         self.board.fd_regs[0x39]=hz>>16
 
     def execute(self,expected_return:int=6,require_rf:bool=True,
                 require_radio_tx:bool=False,min_api31_calls:int|None=None,
-                on_quantum=None):
+                on_quantum=None,*,expected_rf_frames:int=6):
         from unicorn.arm_const import (
             UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_SP,
             UC_ARM_REG_LR,UC_ARM_REG_PC,
@@ -249,7 +253,7 @@ class Dispatcher:
         if not require_rf:
             return {}
         fsk=self.rf.status()["fsk_rx"]
-        if fsk["frames"]!=6 or fsk["words"]!=198 or fsk["overruns"] or fsk["underflows"]:
+        if fsk["frames"]!=expected_rf_frames or fsk["words"]!=33*expected_rf_frames or fsk["overruns"] or fsk["underflows"]:
             raise RuntimeError(f"Normal dispatcher consumed wrong RF frames: {fsk}")
         return fsk
 

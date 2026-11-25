@@ -277,6 +277,11 @@ if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
+# Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
+# persistent registers/context. Standard and RAM0=stack images are unchanged.
+if [ "${K6_RAM0:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ]; then
+  PACK_CFG="$PACK_CFG --cfg k6_sotto_ram0_state"
+fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi

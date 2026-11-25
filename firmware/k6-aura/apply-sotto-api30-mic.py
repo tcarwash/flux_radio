@@ -16,6 +16,13 @@ def sub_once(s,old,new):
     if new in s:return s
     if s.count(old)!=1:raise SystemExit('Sotto API30 overlay anchor changed '+repr(old[:90]))
     return s.replace(old,new,1)
+# The full API28-31 expanded-arena profile can reclaim more than 100 B of
+# protected SRAM0 by moving only persistent control state, never module code,
+# IRQ vectors, or its stack. K6_RAM0=stack leaves this cfg disabled.
+if 'static mut MOD_CTX: ModCtx = ModCtx {' in s:
+    s=sub_once(s,'static mut MOD_CTX: ModCtx = ModCtx {',
+        '#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]\n'
+        'static mut MOD_CTX: ModCtx = ModCtx {')
 s=sub_once(s,'    mic_stream: mod_sotto_mic_unavailable,',
            '    mic_stream: mod_sotto_mic_stream,')
 s=sub_once(s,'    unsafe{sotto_tx29_cleanup();}\n',
@@ -28,7 +35,24 @@ s=sub_once(s,'fn run_module(app: &mut App, syst: &mut SYST) {\n',
            '    unsafe{SOTTO_MIC_ROUTE=false;}\n')
 body=(here/'sotto-api30-mic.rs.inc').read_text()
 if '// SOTTO_API30_MIC_BEGIN' not in s:s+='\n'+body+'\n'
+# Action key table runs in a small static array; relocate it with the
+# host's other persistent state only in the expanded Sotto RAM0 profile.
+if 'static mut ACTION_IDS: [u8;32] = [0;32];' in s:
+    s=sub_once(s,'static mut ACTION_IDS: [u8;32] = [0;32];',
+        '#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]\n'
+        'static mut ACTION_IDS: [u8;32] = [0;32];')
 pager.write_text(s)
+# Live serial uses a dedicated bounded cancel decoder; on profiles enabling
+# both LIVE_SERIAL and Sotto, it can live in protected RAM0 without sharing
+# either the PCM ring or radio module scratch.
+live=src/'cps/live.rs'
+if live.exists():
+    l=live.read_text()
+    if 'static mut CANCEL:CancelState=CancelState::empty();' in l:
+        l=sub_once(l,'static mut CANCEL:CancelState=CancelState::empty();',
+            '#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]\n'
+            'static mut CANCEL:CancelState=CancelState::empty();')
+        live.write_text(l)
 mods=hal.read_text()
 if 'pub mod pcm_capture;' not in mods:
     mods+='\n#[cfg(k6_sotto_mic)]\npub mod pcm_capture;\n'

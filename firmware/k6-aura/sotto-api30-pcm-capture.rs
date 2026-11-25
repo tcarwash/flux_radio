@@ -21,7 +21,9 @@ const TURNS:u32=48;
 struct Ring {pcm:[i16;320],produced:u8,consumed:u8,offset:u8,lost:u8}
 const _:()=assert!(core::mem::size_of::<Ring>()==644);
 static mut RING:*mut Ring=core::ptr::null_mut();
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SAVED:[u32;5]=[0;5];
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut CIC:[u32;4]=[0;4];
 static mut DC:i32=0;
 static mut WARM:u8=3;

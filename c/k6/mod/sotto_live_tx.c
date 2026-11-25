@@ -61,11 +61,9 @@ int k6_main(const k6_api_t*a){
     // 60-ms press, not a UART transition, is required. The operator
     // must unplug the cable and attach a dummy load.
     a->lcd_text(0,"SOTTO TX BENCH");
-    a->lcd_text(1,"Dummy load only");
-    a->lcd_text(2,"Unplug cable");
-    a->lcd_text(3,"Hold PTT to speak");
-    a->lcd_flush();
-    a->say("Unplug cable; hold PTT");
+    a->lcd_text(1,"Dummy load / cable out");
+    a->lcd_text(2,"Hold PTT to speak");
+    /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
     t0=a->ms();pressed=0;
     r=a->mic_stream(3,0,0);
     if(r<0)return -4;
@@ -107,7 +105,7 @@ ptt_ready:
         }
         r=sl_engine_tick(s,&o,&c);
         if(r<0)goto fail;
-        if(r==1){a->say("SOTTO TX done");return (int)s->tx.encoded;}
+        if(r==1)return (int)s->tx.encoded;
         if(s->mic.produced==s->mic.consumed&&!s->pending)a->delay_us(300);
     }
 fail:

@@ -7,6 +7,7 @@
 #[cfg(k6_fsk4800_rx)]
 const RX4800_REGS: [u8; 9] = [0x3f,0x59,0x58,0x72,0x5a,0x5b,0x5c,0x5d,0x5e];
 #[cfg(k6_fsk4800_rx)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut RX4800_SAVED: [u16; 9] = [0;9];
 #[cfg(k6_fsk4800_rx)]
 static mut RX4800_ACTIVE: bool = false;

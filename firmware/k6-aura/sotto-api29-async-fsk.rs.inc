@@ -8,6 +8,7 @@ static mut SOTTO_TX29_ACTIVE: bool = false;
 #[cfg(k6_sotto_async_fsk)]
 static mut SOTTO_TX29_SNAPSHOT: bool = false;
 #[cfg(k6_sotto_async_fsk)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_SAVED: [u16;9] = [0;9];
 #[cfg(k6_sotto_async_fsk)]
 static mut SOTTO_TX29_UNTIL: u32 = 0;
