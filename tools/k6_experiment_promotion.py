@@ -397,7 +397,11 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
                         for logf in sorted(Path(ev_path).parent.glob("job*-run.log")):
                             txt=logf.read_text(errors="replace").strip()
                             if txt:
-                                err_summary=f"Physical run failed: {txt.splitlines()[-1][:240]}"
+                                lines=[line.strip() for line in txt.splitlines() if line.strip()]
+                                blocker=next((line for line in lines if line.startswith(
+                                    ("REFUSED:","RuntimeError:","InstallError:","ValueError:",
+                                     "ERROR:","FAILED:"))),lines[-1])
+                                err_summary=f"Physical run failed: {blocker[:240]}"
                                 break
                     record["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
                     record["error"]=err_summary
