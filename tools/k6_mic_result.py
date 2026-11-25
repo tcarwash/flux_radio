@@ -42,11 +42,35 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2,3):
+    if len(data)!=33 or data[0] not in (1,2,3,4):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==4:
+        max_vox=struct.unpack_from("<H",data,28)[0]
+        completed=data[30]
+        if completed!=9 or max_vox>1023:
+            raise ValueError("MIC ROUTES stages/VOX invalid")
+        rows=[]
+        for idx,mode in enumerate((4,9,5,1)):
+            pcm,tone,high=data[1+idx*3:4+idx*3]
+            rows.append({"path":"af_to_pa11","af_select":mode,
+                        "steady_pcm_mean_abs":decompress_pcm(pcm),
+                        "steady_pcm_1khz_peak":decompress_pcm(tone),
+                        "pa11_raw_high_fraction":round(high/255,4)})
+        for idx,sel in enumerate((9,11,12,13,14)):
+            high,trans,vox=data[13+idx*3:16+idx*3]
+            rows.append({"path":"gp0_to_pb1","gp0_output_select":sel,
+                        "pb1_high_fraction":round(high/255,4),
+                        "pb1_transition_fraction":round(trans/255,4),
+                        "approx_vox_max":vox*4})
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":4,"measurement":"af_bypass_and_gp0_tx_mic_probe",
+                "capture":"PA-muted TX lease; physical PTT required",
+                "stage_window_ms":200,"stage_settle_ms":40,"startup_discard_ms":120,
+                "stage_count":completed,"vox_max":max_vox,"stages":rows,
+                "note":"PB1 asynchronous bit sampling is a coarse activity probe, not a decoded audio signal"}
     if data[0]==3:
         isr_peak,vox,n=struct.unpack_from("<HHH",data,25)
         if n!=8000 or vox>1023 or not 100<=isr_peak<=12000:
