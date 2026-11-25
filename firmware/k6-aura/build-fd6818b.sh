@@ -240,6 +240,7 @@ if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then
 fi
 if [ "$K6_SOTTO_MIC" = 1 ]; then
   python3 "$HERE/apply-sotto-api30-mic.py"
+  python3 "$HERE/apply-mic-result-serial.py"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }

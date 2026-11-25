@@ -24,6 +24,27 @@ const VIRTUAL_KEY:u8=0x83;
 const SCREEN_PAGE:u8=0x84;
 #[cfg(k6_remote_ui)]
 const SCREEN_END:u8=0x85;
+// Boot-local diagnostic mailbox, populated only by module say("MAB1:...").
+// Its readout is passive: no FSK, RF transmit, flash, or module execution.
+#[cfg(k6_sotto_mic)]
+const MIC_RESULT:u8=0x86;
+#[cfg(k6_sotto_mic)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut MIC_RESULT_BASE64:[u8;44]=[0;44];
+#[cfg(k6_sotto_mic)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut MIC_RESULT_VALID:bool=false;
+#[cfg(k6_sotto_mic)]
+pub fn cache_mic_result(msg:&[u8]){
+    if msg==b"MAB1:CLR" {unsafe{MIC_RESULT_VALID=false;}return;}
+    if msg.len()!=49 || &msg[..5]!=b"MAB1:" {return;}
+    if !msg[5..].iter().all(|c| matches!(*c,b'A'..=b'Z'|b'a'..=b'z'|b'0'..=b'9'|b'+'|b'/')){return;}
+    unsafe{
+        core::ptr::copy_nonoverlapping(msg[5..].as_ptr(),core::ptr::addr_of_mut!(MIC_RESULT_BASE64).cast::<u8>(),44);
+        MIC_RESULT_VALID=true;
+    }
+}
+
 #[cfg(k6_live_serial)]
 const PTT_LEASE_TICKS:u16=8_000; // 800 ms at 100 us/tick
 // Never make a remotely keyed transmitter depend solely on main-loop polling.
@@ -865,6 +886,15 @@ fn handle(app: &mut App, syst: &mut SYST, req: &Request) {
                 d[9..].copy_from_slice(unsafe{&*core::ptr::addr_of!(k6_build_id)});
             }
             reply(req,&d);
+        }
+        #[cfg(k6_sotto_mic)]
+        MIC_RESULT if req.arg==0 => {
+            if !idle {reply(req,&[BUSY]);return;}
+            if unsafe{MIC_RESULT_VALID}{
+                let mut payload=[0u8;46];payload[1]=1;
+                unsafe{core::ptr::copy_nonoverlapping(core::ptr::addr_of!(MIC_RESULT_BASE64).cast::<u8>(),payload[2..].as_mut_ptr(),44);}
+                reply(req,&payload);
+            }else{reply(req,&[OK,0]);}
         }
         #[cfg(k6_remote_ui)]
         SCREENSHOT if req.arg==0 => {

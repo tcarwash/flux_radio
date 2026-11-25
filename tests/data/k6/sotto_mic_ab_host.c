@@ -17,6 +17,16 @@ static uint8_t gain_history[2];
 static int deny_gain;
 static char lcd[6][24], reported[3][24];
 static int reported_valid;
+static char mic_report[64];
+static unsigned clear_calls, complete_calls;
+static void say(const char *s){
+    if(strcmp(s,"MAB1:CLR")==0){clear_calls++;mic_report[0]=0;return;}
+    if(strncmp(s,"MAB1:",5)==0){
+        if(strlen(s)>=sizeof(mic_report))abort();
+        strcpy(mic_report,s);
+        complete_calls++;
+    }
+}
 static const unsigned amplitudes[32]={[0]=100,[8]=800,[16]=1900,[24]=3200,[31]=4600};
 
 static void advance(uint32_t t){
@@ -72,18 +82,19 @@ static int lcd_flush(void){
 int main(int argc,char **argv){
     deny_gain=(argc>1&&strcmp(argv[1],"deny")==0);
     k6_api_t api={0};
+    api.say=say;
     api.abi=1;api.level=31;api.fd_read=read_reg;api.fd_write=write_reg;
     api.delay_us=delay;api.ms=ms;api.key_down=key;api.scratch=scratch;
     api.tx_on=tx_on;api.tx_off=tx_off;api.mic_stream=ptt;
     api.lcd_text=lcd_text;api.lcd_flush=lcd_flush;
     int ret=k6_main(&api);
     if(deny_gain){
-        if(ret!=-7||!tx_start_count||!tx_stop_count||!mic_start_count||!mic_stop_count||live_ring)
+        if(ret!=-7||!tx_start_count||!tx_stop_count||!mic_start_count||!mic_stop_count||live_ring||clear_calls!=1||complete_calls!=0)
             return 11;
         puts("GAIN REJECTION CLEANUP PASS");
         return 0;
     }
-    if(ret!=3||!reported_valid||gain_count!=2||tx_start_count!=1||tx_stop_count!=1||
+    if(ret!=3||!reported_valid||clear_calls!=1||complete_calls!=1||strlen(mic_report)!=49||gain_count!=2||tx_start_count!=1||tx_stop_count!=1||
        mic_start_count!=1||mic_stop_count!=1||live_ring)return 12;
     const uint8_t expected[3]={31,31,8};
     unsigned tone_values[3]={0};
@@ -101,6 +112,7 @@ int main(int argc,char **argv){
     // Neither the initial baseline nor its matching re-write should shift tone.
     if(abs((int)tone_values[0]-(int)tone_values[1])>10||tone_values[2]>=tone_values[1])return 16;
     if(gain_history[0]!=31||gain_history[1]!=8||reg7d!=0xe920)return 17;
+    printf("encoded=%s\n",mic_report);
     puts("SWEEP + CLEANUP PASS");
     return 0;
 }

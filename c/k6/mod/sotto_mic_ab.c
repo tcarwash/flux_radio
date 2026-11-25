@@ -53,6 +53,39 @@ static int drain_block(const k6_api_t *a,pcm_ring_t *ring,uint32_t *phase_index,
   return 1;
 }
 
+/* Cable-disconnected results report: compact binary metrics are base64
+ * encoded into one <=60-byte module say() line. The matching firmware caches
+ * that line in SRAM for a later read-only live-serial query. No flash writes. */
+static uint16_t crc16_xmodem(const uint8_t *data,unsigned n){
+  uint16_t crc=0;
+  for(unsigned i=0;i<n;i++){
+    crc^=(uint16_t)data[i]<<8;
+    for(unsigned k=0;k<8;k++)crc=(uint16_t)((crc<<1)^((crc&0x8000u)?0x1021u:0u));
+  }
+  return crc;
+}
+static void put16(uint8_t *p,uint16_t v){p[0]=(uint8_t)v;p[1]=(uint8_t)(v>>8);}
+static void report_saved(const k6_api_t*a,const gain_result_t *r){
+  static const char alphabet[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  uint8_t raw[33];char line[50];
+  raw[0]=1; // MIC A/B record format v1, three 10-byte fixed-order stages
+  for(unsigned i=0;i<NGAINS;i++){
+    uint8_t *out=&raw[1+i*10];
+    put16(out,r[i].tone);put16(out+2,r[i].clipped);
+    put16(out+4,r[i].avg);put16(out+6,r[i].vox);put16(out+8,r[i].samples);
+  }
+  uint16_t crc=crc16_xmodem(raw,31);
+  put16(raw+31,crc);
+  char *p=cat(line,"MAB1:");
+  for(unsigned i=0;i<33;i+=3){
+    uint32_t v=((uint32_t)raw[i]<<16)|((uint32_t)raw[i+1]<<8)|raw[i+2];
+    *p++=alphabet[(v>>18)&63u];*p++=alphabet[(v>>12)&63u];
+    *p++=alphabet[(v>>6)&63u];*p++=alphabet[v&63u];
+  }
+  *p=0;
+  a->say(line);
+}
+
 static void show(const k6_api_t *a,const gain_result_t *results,int detail){
   char line[24];char *p;
   a->lcd_text(0,detail?"STAGE AVG VOX":"STAGE 1K CLIP");
@@ -84,6 +117,7 @@ int k6_main(const k6_api_t *a){
   a->lcd_text(1,"1kHz tone at 0.1V");
   a->lcd_text(2,"Hold PTT ~3 sec");
   a->lcd_flush();
+  a->say("MAB1:CLR"); // invalidate prior result on any fresh attempted run
   int ptt=0;
   uint32_t wait=a->ms();
   while(a->ms()-wait<15000u){
@@ -141,6 +175,7 @@ stop:
   if(started)a->mic_stream(1,0,0);
   a->tx_off();
   if(ret)return ret;
+  report_saved(a,results); // after key-up; telemetry retained until reboot
   show(a,results,0);
   uint32_t end=a->ms();int detail=0;
   while(a->ms()-end<16000u){

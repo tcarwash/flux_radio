@@ -19,6 +19,7 @@ CAPS, MODE, VFO = 0x68, 0x69, 0x6a
 BURST, BURST_DATA, BURST_END, INFO = 0x6b, 0x6c, 0x6d, 0x6e
 BURST_LONG = 0x7d
 SCREENSHOT, VIRTUAL_KEY, SCREEN_PAGE, SCREEN_END = 0x82, 0x83, 0x84, 0x85
+MIC_RESULT = 0x86
 KEY_NAMES = tuple(str(i) for i in range(10)) + (
     "STAR", "POUND", "MENU", "EXIT", "UP", "DOWN", "VM", "AB",
     "BAND", "SIDE1", "SIDE2")
@@ -99,6 +100,16 @@ class LiveLink(CpsLink):
 
     def status(self):
         return decode_status(self.request(STATUS))
+
+    def mic_result(self):
+        """Fetch last completed MIC A/B measurement without running a module."""
+        from k6_mic_result import decode_mic_result
+        try:
+            return decode_mic_result(self.request(MIC_RESULT))
+        except InstallError as exc:
+            if str(exc)==ERRORS[2]:
+                raise InstallError("Radio firmware lacks the MIC A/B result mailbox (0x86)") from exc
+            raise
 
     def ptt_hold(self, token):
         """Key or renew the same bounded 800 ms firmware PTT lease.
@@ -764,6 +775,8 @@ def main():
     p.add_argument("--port", required=True)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
+    mic_result=sub.add_parser("mic-result",help="read latest completed MIC A/B measurements (RAM only)")
+    mic_result.add_argument("--save",type=Path,help="write retrieved JSON to a NEW local file")
     sub.add_parser("caps")
     sub.add_parser("health")
     sub.add_parser("upload-probe", help="validate upload speed without executing or writing a module")
@@ -833,6 +846,15 @@ def main():
             elif a.cmd == "backup":
                 from k6_install import backup as save_backup
                 save_backup(link, a.output)
+            elif a.cmd == "mic-result":
+                result=link.mic_result()
+                result["retrieved_at_utc"] = __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc).isoformat()
+                output=json.dumps(result,indent=2)
+                if a.save:
+                    a.save.parent.mkdir(parents=True,exist_ok=True)
+                    with a.save.open("x") as dst:dst.write(output+"\n")
+                print(output)
             elif a.cmd == "caps":
                 print(json.dumps(link.capabilities(), indent=2))
             elif a.cmd == "health":
