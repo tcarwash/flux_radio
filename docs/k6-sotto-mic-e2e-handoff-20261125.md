@@ -113,3 +113,24 @@ Operator photo of the K6's `MIC CAL RESULT` during a verified normal-FM-audible,
 Interpretation: the TIM17 ISR runs at essentially its intended 8 kHz sample cadence (7920 produced in the ~1-s window), the ring reports no overrun, and the sampled ISR peak is only ~35.9% of its 12,000-cycle budget. **The sampled PCM does not exhibit a recognizable 1-kHz sine**: a properly DC-centered 1-kHz sine across 7920 samples would have ~1980 sign crossings, versus 7 measured. A large peak alongside AVG=152 might be startup/analog-route transients, not continuous speech. VOX varies while the FM receiver hears the tone: that is evidence the RFIC mic input sees it, not that MCU PA11 receives a waveform. ZC alone cannot exclude a DC-biased or low-SNR tone; future cal can compare tone-on/off and measure 1-kHz correlation or lag-4 differential energy rather than relying exclusively on sign changes.
 
 **Source-level routing hypothesis:** `sotto-api30-mic.rs.inc` currently sets `REG_47` AF selection bits to `0x0400` (AF mode 4), which BK4819 register documentation and this repository's `docs/k6-afsweep.md` identify as raw/baseband output, not a demonstrated TX mic-monitor path. The MCU pin PA11 is documented as the speaker PWM/RC output route, while the external microphone input feeds the FD6818B RFIC. The experimental one-wire sigma-delta sampler can only detect the injected microphone audio if an actual analog coupling route exists from MICP to the PA11 network; it hasn't been demonstrated. Do **not** boost `REG_7D` beyond its already-max setting, infer physical mic PCM from a healthy VOX reading, or change RF registers in TX blindly. Check one tone-off baseline and, if accessible, use a high-impedance scope probe to observe the PA11/RC node while distinguishing analog envelope from MCU-driven sigma-delta pulses. A conservative firmware-only diagnostic may compare per-block lag-4/sample variance and RFIC's other audio output modes with strict saved-register restore. Hardware routing or an alternate mic capture path may be required.
+
+## 2026-11-25 paired tone-on and tone-off MIC CAL experiment
+
+The operator found the injected 1 kHz sine substantially louder on a nearby FM receiver (signal generator still indicated `0.1 V`) and repeated `MIC CAL`, followed by a **generator-output-off** silence test. Both display results were submitted as photographs; voltage convention and actual voltage at the microphone pads remain unknown.
+
+| MIC CAL field | Tone on (louder FM) | Generator off |
+|---|---:|---:|
+| N | 7920 | 7920 |
+| LOST | 0 | 0 |
+| PK | 32768 | 8657 |
+| AVG (abs PCM) | 1473 | 156 |
+| MIN | -32768 | -4080 |
+| MAX | 32767 | 8657 |
+| VOX (REG64 min/max) | 0 / 517 | 0 / 178 |
+| G | 31 | 31 |
+| ZC (sign changes about literal zero) | 175 | 5 |
+| ISR max cycles | 4304 | 4304 |
+
+A reproducible tone-on/tone-off differential exists: absolute PCM mean rose 1473/156=**9.44×**, VOX max rose 517/178=**2.90×**, and zero crossings rose 175/5=**35×**. This strengthens the hypothesis that some microphone information reaches PA11's experimental sampler. However the tone-on PCM has hit both 16-bit representation limits; `pcm_capture::isr` explicitly clamps the derived PDM/CIC signal to i16, so **digital output saturation is demonstrated, but analog preamp clipping is not yet proven**. With a 1kHz signal at 8ksps for 7920 samples, clean zero-centered PCM would have about 1980 sign changes, not 175. Because this metric uses *literal zero*, DC offset, severe distortion, sparse glitches or poor scaling could distort the crossing count; a direct 1kHz correlation (8-sample periodic I/Q projection) and DC-centered crossing statistic are better discriminators.
+
+Both runs preserved timely ISR service (4304 cycles peak out of 12000) and no queue overrun (LOST 0). Don't interpret the peak as absolute microphone voltage: voltage calibration of the analog microphone path and one-wire PA11 converter has not been established. Keep the known-working `SOTTO MIC` slot30 untouched. Recommended next experiment: generator **20mV and 50mV in the *same unspecified amplitude convention* as the prior 100mV setting**, one-second MIC CAL each, with stable 1kHz sinusoid, same wiring; record average/peak and VOX and listen for normal-FM signal; no need to risk higher voltage. In subsequent diagnostic module versions, add a coherent 1kHz estimator plus a clipping counter and DC-removed RMS/zero crossing; this will resolve whether a 1-kHz component is present despite DC bias. Do not alter the firmware's mic gain register until correlated PCM amplitude and clipping mechanism are characterized.
