@@ -39,18 +39,53 @@ static char *signed_num(char *p,int32_t n){
   if(n<0){*p++='-';return num(p,(uint32_t)(-n));}
   return num(p,(uint32_t)n);
 }
+/* Coherent 1-kHz magnitude in PCM peak counts at the nominal 8-kHz sample
+ * rate. Eight sample-phase means reject DC without an analogue calibration;
+ * quadrature projections also tolerate any unknown generator phase.
+ * All intermediates fit in signed/unsigned 32 bits for <=8000 i16 samples.
+ * Each phase is accumulated after discarding the first 20 ms of warm-up.
+ * Q8 unit-circle coefficients 256*sin/cos(2*pi*k/8).
+ * This estimates the fundamental, not clipping or total broadband energy. */
+static uint32_t absi(int32_t x){return x<0?(uint32_t)(-x):(uint32_t)x;}
+static int32_t divi(int32_t x,uint32_t n){
+  if(!n)return 0;
+  uint32_t q=__aeabi_uidiv(absi(x),n);
+  return x<0?-(int32_t)q:(int32_t)q;
+}
+static uint32_t isqrt_u32(uint32_t v){
+  uint32_t bit=1u<<30,ans=0;
+  while(bit>v)bit>>=2;
+  while(bit){
+    if(v>=ans+bit){v-=ans+bit;ans=(ans>>1)+bit;}
+    else ans>>=1;
+    bit>>=2;
+  }
+  return ans;
+}
+static uint32_t tone_1k_amp(const volatile int32_t phase_sum[8],uint32_t phase_cycles){
+  static const int16_t si[8]={0,181,256,181,0,-181,-256,-181};
+  static const int16_t co[8]={256,181,0,-181,-256,-181,0,181};
+  if(!phase_cycles)return 0;
+  int32_t ip=0,qp=0;
+  for(unsigned k=0;k<8;k++){
+    int32_t avg=divi(phase_sum[k],phase_cycles);
+    ip+=avg*si[k];qp+=avg*co[k];
+  }
+  uint32_t a=absi(ip)>>10,b=absi(qp)>>10;
+  return isqrt_u32(a*a+b*b);
+}
 static void message(const k6_api_t*a,const char*head,const char*body){
   a->lcd_text(0,head);a->lcd_text(1,body);a->lcd_flush();
 }
 static void stats(const k6_api_t*a,uint32_t ns,int32_t mn,int32_t mx,
                   uint32_t peak,uint32_t abs_sum,uint32_t zc,
                   uint32_t vox_lo,uint32_t vox_hi,uint32_t gain,
-                  uint8_t lost,uint32_t isr){
+                  uint8_t lost,uint32_t isr,uint32_t tone_1k,uint32_t clipped){
   char b[24];char*p;
   a->lcd_text(0,"MIC CAL RESULT");
   p=cat(b,"N=");p=num(p,ns);p=cat(p," LOST=");p=num(p,lost);*p=0;a->lcd_text(1,b);
   p=cat(b,"PK=");p=num(p,peak);p=cat(p," AVG=");p=num(p,ns?__aeabi_uidiv(abs_sum,ns):0);*p=0;a->lcd_text(2,b);
-  p=cat(b,"MIN=");p=signed_num(p,mn);p=cat(p," MAX=");p=signed_num(p,mx);*p=0;a->lcd_text(3,b);
+  p=cat(b,"1K=");p=num(p,tone_1k);p=cat(p," CLIP=");p=num(p,clipped);*p=0;a->lcd_text(3,b);
   p=cat(b,"V=");p=num(p,vox_lo);*p++='/';p=num(p,vox_hi);p=cat(p," G=");p=num(p,gain);*p=0;a->lcd_text(4,b);
   p=cat(b,"ZC=");p=num(p,zc);p=cat(p," ISR=");p=num(p,isr);*p=0;a->lcd_text(5,b);
   a->lcd_flush();
@@ -79,6 +114,9 @@ int k6_main(const k6_api_t *a){
   uint32_t start=a->ms();uint32_t samples=0, peak=0, abs_sum=0,zc=0;
   int32_t mn=32767,mx=-32768,prev=0;uint8_t have_prev=0;
   uint32_t vox_lo=1023,vox_hi=0;
+  volatile int32_t phase_sum[8];
+  for(unsigned k=0;k<8;k++)phase_sum[k]=0;
+  uint32_t tone_samples=0,clipped=0;
   // No LCD SPI or flash work while the 8-kHz PDM ISR is running.
   while(a->ms()-start<1000u){
     if(a->mic_stream(3,0,0)!=1||a->key_down()||r->lost)break;
@@ -92,6 +130,13 @@ int k6_main(const k6_api_t *a){
       if(av>peak)peak=av;
       abs_sum+=av;
       if(have_prev&&((v>0)!=(prev>0)))zc++;
+      // Skip the first 160 PCM samples (20 ms) to suppress first-TX
+      // and GPIO-mode-change transients in the 1-kHz/clipping diagnostics.
+      if(samples>=160){
+        phase_sum[tone_samples&7u]+=v;
+        tone_samples++;
+        if(v==32767||v==-32768)clipped++;
+      }
       have_prev=1;prev=v;samples++;
     }
     __asm__ volatile("" ::: "memory");
@@ -104,8 +149,17 @@ int k6_main(const k6_api_t *a){
   a->mic_stream(1,0,0);
   a->tx_off();
   if(samples==0){mn=0;mx=0;vox_lo=0;}
-  stats(a,samples,mn,mx,peak,abs_sum,zc,vox_lo,vox_hi,gain,lost,isr);
-  uint32_t end=a->ms();
-  while(a->ms()-end<12000u){if(a->key_down())break;a->delay_us(30000);}
+  uint32_t tone=tone_1k_amp(phase_sum,tone_samples/8u);
+  stats(a,samples,mn,mx,peak,abs_sum,zc,vox_lo,vox_hi,gain,lost,isr,tone,clipped);
+  uint32_t end=a->ms();uint32_t second_page=0;
+  while(a->ms()-end<12000u){
+    if(a->key_down())break;
+    if(!second_page&&a->ms()-end>=6000u){
+      char b[24];char *p=cat(b,"MIN=");
+      p=signed_num(p,mn);p=cat(p," MAX=");p=signed_num(p,mx);*p=0;
+      a->lcd_text(3,b);a->lcd_flush();second_page=1;
+    }
+    a->delay_us(30000);
+  }
   return samples>0&&!lost?(int)(samples/80):-12;
 }
