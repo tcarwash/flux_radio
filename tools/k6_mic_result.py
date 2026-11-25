@@ -42,11 +42,50 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2,3,4,5,6,7,8,9):
+    if len(data)!=33 or data[0] not in (1,2,3,4,5,6,7,8,9,10,11):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==11:
+        error=data[1]
+        valid={5:"TX lease refused",6:"RFIC mic route refused",9:"PTT released before arming",
+               11:"DMA calibration overrun",12:"DMA calibration timeout",
+               17:"GP0 enable refused",18:"GP0 selector refused",
+               19:"TIM17 busy",20:"DMA1 CH1 busy",21:"invalid DMA calibration rate",
+               22:"GP0 selector restoration error",23:"GP0 enable restoration error",
+               26:"IRQ9/SRAM vector ownership invalid",27:"IRQ capture/producer failure",
+               28:"PCM ring overflow",29:"insufficient PCM/IRQ progress"}
+        if error not in valid:
+            raise ValueError("MIC IRQ error code invalid")
+        count,peak=struct.unpack_from("<HH",data,3)
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":11,"measurement":"gp0_dma_irq_8khz_pcm_stream",
+                "completed":False,"error_code":error,"reason":valid[error],
+                "irq_failure_code":data[2],"interrupts_before_failure":count,
+                "peak_isr_cycles_before_failure":peak}
+    if data[0]==10:
+        vox,fs10,samples,irqs,blocks,peak,avg,clipped,missed=struct.unpack_from("<HHHHHHHHH",data,1)
+        backlog,irqerr=data[19],data[20]
+        pcm_peak,consumed,rms=struct.unpack_from("<HHH",data,21)
+        if not (0<=vox<=1023 and 3500<=fs10<=13000 and
+                3500<=samples<=10000 and 3000<=irqs<=20000 and
+                35<=blocks<=110 and 0<avg<=peak<9000 and backlog<=4 and
+                irqerr==0 and missed==0 and consumed==blocks*80):
+            raise ValueError("MIC IRQ streaming sample/ISR/queue contract invalid")
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":10,"measurement":"gp0_dma_irq_8khz_pcm_stream",
+                "capture":"PA-muted TX RFIC mic-only; DMA1 IRQ9 producer preempts foreground",
+                "gp0_selector":12,"density_sample_rate":fs10*10,
+                "pcm_produced_samples":samples,"pcm_consumed_samples":consumed,
+                "pcm_blocks_consumed":blocks,"dma_half_interrupts":irqs,
+                "peak_isr_timer_ticks":peak,"mean_isr_timer_ticks":avg,
+                "timer_ticks_per_second_nominal":96000000,
+                "pcm_clipped_samples":clipped,"missed_dma_halves":missed,
+                "peak_pcm_backlog_blocks":backlog,"irq_error":irqerr,
+                "pcm_peak_abs":pcm_peak,"pcm_rms_approx":rms,
+                "vox_max":vox,
+                "note":"2ms per block synthetic foreground codec workload; real Sotto encoding/FSK concurrent operation not yet proven"}
     if data[0]==9:
         error=data[1]
         if error not in (5,6,9,11,12,17,18,19,20,21,22,23,24,25):

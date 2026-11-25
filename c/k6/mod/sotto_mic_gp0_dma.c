@@ -5,7 +5,9 @@
 #define K6_MODULE_LEVEL 30
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
-#ifdef MIC_GP0_PCM_ONLY
+#ifdef MIC_GP0_IRQ_ONLY
+K6_MODULE_NAME("MIC IRQ");
+#elif defined(MIC_GP0_PCM_ONLY)
 K6_MODULE_NAME("MIC PCM");
 #else
 K6_MODULE_NAME("MIC GP0");
