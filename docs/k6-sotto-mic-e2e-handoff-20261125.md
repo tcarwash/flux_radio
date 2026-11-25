@@ -63,3 +63,16 @@ The full compiled ARM transmit/receive simulation now intercepts only the **phys
 **Important test frequency note:** After a module invocation the live status reported VFO A **443.500 MHz**, despite a temporary `k6_live tune 433500000` earlier. The receiver monitor is at **433.500 MHz**. Explicitly verify/set VFO A to 433.500 MHz **using the radio's physical VFO controls** before the attended RF test, or reconfigure the monitor to the actual active VFO; do not assume the previous serial retune persists across a Catalog module session.
 
 Attended follow-up: disconnect cable, attach microphone, launch **SOTTO MIC** (slot 30), verify **`SOTTO MIC BENCH`** now appears, hold PTT, speak briefly, release. Record RF monitor BEGIN/VOICE/END and re-key/RX behavior. The LCD rendering fix is installed but its **physical display outcome awaits the operator's next check**.
+
+## Attended RF result 2026-11-25, 443.500 MHz: complete RF/codec packets, silent speech
+
+The operator confirmed **SOTTO MIC launches, the red TX LED stays on while PTT is held, and the SDR monitor displays `voice` packet types**. The initial false negative was a **10 MHz frequency mismatch**: K6 VFO A was 443.500 MHz, while the Sotto Monitor defaults to 433.500 MHz. After setting the monitor to 443.500 MHz with decoder offset -31,300 Hz, the real RTL-SDR receiver recovered a complete session: **1 BEGIN + 26 VOICE + 1 END, 28 CRC-valid packets, 0 CRC rejected, 205 six-byte codec frames, zero sync-bit errors**. The independent monitor observed 4800 baud and ~1.98-2.12 kHz FSK separation. The physical RF packet path now has positive evidence. No serial cable was attached during mic TX, so there is no on-radio mic/TIM17 telemetry for this run.
+
+Saved exact monitor snapshots on the development host:
+
+- `/storage5/dev/sotto-monitor/evidence/mic-live-443500-20261125T1719Z.json`
+- `/storage5/dev/sotto-monitor/evidence/mic-live-443500-20261125T1719Z.wav`
+
+**Speech is not yet validated**: although all codec frames pass packet CRC, the PCM WAV is 65,600 samples at 8 kHz (8.2 s), and only 639 samples are nonzero, all in the first decoded 320 ms; later packets decode to exact silence. The 205 recovered 6-byte codec frames have only six distinct codewords; **201/205 are just two alternating codewords** (`1300d89c241d` 101 times; `1302ee09241d` 100 times), consistent with essentially silent PCM input. This suggests a microphone capture/routing/level defect (or an encoder input defect), not an SDR tuning problem. Don't mark audible speech or duplex listening complete until independent microphone sample dynamics or recovered intelligible audio are verified. Next most discriminating experiment is a bounded raw/peak microphone capture with physical mic connected, tracking PA11/TIM17 sample variance under speaking vs silence, plus a test-vector codec sanity check before altering RF timing or packet framing.
+
+The monitor defaults to 433.500 MHz from `Monitor.reset()/Monitor.start()` and does not sync to the radio; manually match its frequency to the active VFO before each physical test. The monitor's -31.3 kHz digital offset is a separate hardware calibration, not a 10 MHz tuning correction.
