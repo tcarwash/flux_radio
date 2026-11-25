@@ -81,3 +81,25 @@ The result is CRC-valid **MAB1 version10** / `gp0_dma_irq_8khz_pcm_stream`, save
 **Physical result:** the newly implemented real *module SRAM* Thumb IRQ9 DMA producer remains active while the foreground intentionally spends ~2ms per 10ms PCM block not consuming audio. The ~24.6us longest observed ISR is well below the ~94us physical DMA half period, and the four-block PCM ring never backed up by more than one block. The RFIC microphone gate is active as expected, and no RF PA was enabled. This validates the *continuous capture/mocked-concurrency* feasibility gate, stronger than the previous short foreground-busy PCM captures. It is not yet proof of real codec/FSK concurrency: actual Sotto codebook SPI read timing and critical sections could delay IRQs, and the sampled 2kHz signal's spectral content was not recorded in this version10 report (RMS/peak/VOX only). Do not claim intelligible digital voice or transmit a new Sotto module until the GP0 encoder runs in an isolated virtual qualification and passes a physical attended test.
 
 **Next engineering work:** integrate the `gp0_irq_audio_t` service into a **separate** Sotto GP0 TX source with common `sl_engine_t.mic` PCM ring and real Sotto codec resource API. Measure *true* module flash and scratch RAM budget (currently `SOTTO MIC` slot30 code ~9780B; new PIC IRQ component ~1000B, GP0 control and DSP further), ensure layout fits module arena without code/scratch collision. Also bound `sl_engine_tick()` + codebook SPI masking and ensure the encoder never holds PRIMASK globally for >~90us. Virtual Cortex-M0 RF IQ/FSK decoding and independent Sotto audio decode must pass before touching slot30 or making attended transmissions. A new diagnostic slot27 may be used only after verifying it is free/unmodified; preserve known-good slot25 and slot30.
+
+## First combined Sotto encoder/GP0 IRQ size gate — **does not fit**, offline only
+
+After the physical IRQ PASS, a **throwaway build-only source sketch** spliced the GP0 IRQ service into the actual 2026-11-25 pinned slim Sotto TX source (`sotto_live_tx.c`) and reused the exact Sotto codec adaptation flags from `tools/k6_sotto_module.py`. The target was linked twice through `modem.k6mod.build`, the same PIC check that produces installed radio images. This test did not enable RF or modify any installed modules. The preliminary sketch used a fixed **unvalidated** input rate and was **deleted after its sizing result** rather than leaving unsafe, runnable code in `c/k6/mod`.
+
+| Physical firmware / compiled code budget | Bytes |
+|---|---:|
+| Physical K6 module arena, expanded configuration | **14,976** |
+| Original installed `SOTTO MIC` code size | **9,780** |
+| Original scratch maximum after 24B envelope | **5,172** |
+| *Actual adapted* Sotto encoder context (`slim_enc_bytes`, host sizeof) | **3,160** |
+| Sotto existing live engine (`sl_engine_t`) | **928** |
+| Old engine + adapted encoder state | **4,088** |
+| Remaining original scratch beyond required state | **1,084** |
+| Working GP0 IRQ DMA ring | **1,024** |
+| Working GP0 IRQ context | **72** |
+| Actual combined source prototype PIC code | **10,960** |
+| Combined-source available scratch, after envelope | **3,992** |
+| Combined-source state + ring + context + alignment | **5,188** |
+| **Combined-source scratch deficit** | **1,196** |
+
+This **1.2KiB arena shortfall** is a genuine implementation gate, not something that further generator or RF tests will solve. A simple append of the real GP0 IRQ code to the 9,780B Sotto module is **not ready for installation**. Further work should reclaim at least ~1.2KiB of combined code/state space *plus additional buffer and stack headroom*, while retaining the physically proven 1,024B DMA ring and 40ms 4-block PCM queue if possible. A direct optimization may move some GP0 IRQ/control logic from the module into a firmware resident callable service (base image currently only ~136B flash headroom, so that needs flash reclamation), relocate cold Sotto codec routines into existing system SPI code pages, or significantly reduce the codec's 3,160B working set and/or transmit session state. Simply halving DMA or PCM buffers is a possible memory experiment but **reduces interrupt/service deadlines**, so must be independently measured against RFIC SPI masking; do not silently trade sample loss for fit. A proper next step is a **measured code+arena optimization branch** with failed-space check, compiled Pico/Unicorn codec/FSK gate and explicit worst-case interrupt deadlines before another physical install.
