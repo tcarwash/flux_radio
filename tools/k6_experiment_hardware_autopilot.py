@@ -232,6 +232,7 @@ def bundle_manifests(eligible,*,output_root,api_raw):
             prefix=str(bundle_dir/f"issue-{n}-{job_id}")
             for step_name in ("run","restore","verify"):
                 j[step_name]["argv"]=_rewrite_flag(j[step_name]["argv"],"--prefix",prefix)
+                j[step_name]["argv"]=_rewrite_flag(j[step_name]["argv"],"--baseline",before)
             jobs.append(j)
     earliest_lease=min((m_i["lease_expires_utc"] for _,_,m_i,_,_ in selected),key=_parse_utc)
     bundle_m={

@@ -272,3 +272,17 @@ def test_approval_digest_includes_editable_api_config(tmp_path, capsys):
     assert updated["approval_sha256"] != preview["approval_sha256"]
     assert updated["manifest_sha256"] == preview["manifest_sha256"]
     assert not trace.exists()
+
+
+def test_bundled_session_isolates_failed_job_and_continues_to_next_job(tmp_path):
+    m, trace, _ = fresh(tmp_path, jobs=2)
+    m["session_id"] = "bundle-20-26-20261124T230000Z"
+    m["jobs"][0]["issue_url"] = "https://github.com/tcarwash/flux_radio/issues/20"
+    m["jobs"][1]["issue_url"] = "https://github.com/tcarwash/flux_radio/issues/26"
+    m["jobs"][0]["run"]["argv"][-1] = "FAIL"
+    r = invoke(m, tmp_path)
+    assert r["result"] == "BLOCKED"
+    assert [j["result"] for j in r["jobs"]] == ["BLOCKED", "PASS"]
+    assert "j1-run" in trace.read_text().splitlines()
+    assert "session_verify" in trace.read_text().splitlines()
+

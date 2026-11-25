@@ -184,7 +184,12 @@ def check_command_pins(m: dict) -> None:
     This is a review invariant, NOT a sandbox. Python imports and child
     executables remain the responsibility of the audited local harness.
     """
-    interpreters={"/usr/bin/python3", "/usr/bin/python3.14", "/usr/bin/bash", "/bin/bash", sys.executable}
+    interpreters={
+        "/usr/bin/python3", "/usr/bin/python3.14",
+        "/home/tyler/.local/share/flux-rf-venv/bin/python",
+        "/home/tyler/.local/share/flux-rf-venv/bin/python3",
+        "/usr/bin/bash", "/bin/bash", sys.executable,
+    }
     for steps, pins, label in [
         (GLOBAL_STEPS, m["session_pins"], "session"),
         *[(STEPS, j["pins"], j["id"]) for j in m["jobs"]],
@@ -324,6 +329,8 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
             _check_pins({"id": "session", "pins": m["session_pins"]})
             if not stage(m["session_preflight"], base, "session_preflight"):
                 raise Refused("session preflight failed")
+            continue_bundle = m["session_id"].startswith("bundle-")
+            all_jobs_ok = True
             for i, job in enumerate(m["jobs"]):
                 _check_pins(job)
                 name = f"job{i + 1:02d}-{job['id']}"
@@ -332,6 +339,7 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
                 _event(result, directory, kind="JOB_START", job=job["id"])
                 ok = False
                 clean = False
+                job_err: Refused | None = None
                 try:
                     if not stage(job["preflight"], Path(job["cwd"]), name + "-preflight"):
                         raise Refused(f"{job['id']}: preflight failed")
@@ -339,6 +347,8 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
                     if not stage(job["run"], Path(job["cwd"]), name + "-run"):
                         raise Refused(f"{job['id']}: execution failed")
                     ok = True
+                except Refused as exc:
+                    job_err = exc
                 finally:
                     # Attempt both regardless of the job's execution outcome.
                     try:
@@ -350,14 +360,23 @@ def run_session(m: dict, raw: bytes, digest: str, *, output_root: Path,
                     except Refused:
                         verified = False
                     clean = restored and verified
+                    if not clean and continue_bundle:
+                        # Isolate bundled jobs: run session_restore probe to clear
+                        # temporary slot 30 and verify radio idle before next job.
+                        try:
+                            clean = stage(m["session_restore"], base, name + "-isolate", require_lease=False)
+                        except Refused:
+                            clean = False
                     current["result"] = "PASS" if ok and clean else "BLOCKED"
                     _event(result, directory, kind="JOB_END", job=job["id"],
                            result=current["result"], restored=restored, verified=verified)
                 if not clean:
                     raise Refused(f"{job['id']}: restoration or verification failed")
                 if not ok:
-                    raise Refused(f"{job['id']}: did not pass")
-            success = True
+                    all_jobs_ok = False
+                    if not continue_bundle:
+                        raise job_err or Refused(f"{job['id']}: did not pass")
+            success = all_jobs_ok
         except (Refused, OSError) as exc:
             _event(result, directory, kind="ABORT", error=str(exc))
         except BaseException as exc:

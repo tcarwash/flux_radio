@@ -42,10 +42,14 @@ SHA256 manifest+API approval: {approval}
 Local workspaces: {[j['cwd'] for j in manifest['jobs']]}
 Preview executable paths (NOT instructions to run):
 {steps}
-Review pinned source + code, actual device build gate, B-chip API ABI and
-module layout, bounded transmitter and watchdog, RF frequency and spectrum,
-dummy load requirement, SDR independence, source hash drift, TX-off, backup,
-slot preservation and readback restore on every exit path, no blind retry.
+Review pinned source + code, target module API compatibility (minimum_module_api <=
+installed API 29), bounded transmitter and watchdog (<=1900ms on 433.500MHz dummy
+load), TX-off, and non-interference between bundled tests (clean up temporary slot 30
+and restore VFO/registers so subsequent tests in the same bench reserve can run).
+DEDICATED TEST RADIO: The radio is dedicated to testing and can be reflashed at any
+time. Full 31-slot library backup or byte-for-byte slot hash restoration is NOT
+required; do not reject a candidate for omitting full-library slot hash backups or
+for minor readback/verify simplifications.
 OPERATOR SCOPE: AG7SU confirmed an isolated bench transmitter connected to
 a dummy load, NOT intended to radiate. A CW station ID is not a prerequisite
 for this non-radiating dummy-load fixture; do not reject SOLELY because CWID

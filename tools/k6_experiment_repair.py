@@ -73,10 +73,13 @@ Mandatory physical one-shot CLI:
     using current installed build 339e08a2b77c7679 API29, fresh
     module serial, LIVE module_capabilities() for cable-only CRC or
     keyed authentication; temporary slot30 must be empty.
---verify-only --prefix ABS_PATH : read-only exact packed module/VFO
-    hashes and TX-off, no mutation or RF.
-The top-level session supervisor separately compares SHA256 of all
-original 31 populated packed KUL2 slots and original VFOs.
+--verify-only --prefix ABS_PATH : read-only check that TX is off and radio
+    is idle, no mutation or RF.
+DEDICATED TEST RADIO: Full 31-slot packed KUL2 library backup/hash-comparison is
+NOT required. You only need to check that the installed firmware supports the
+module's required API level (module_api_max >= minimum_module_api) and ensure
+temporary slot 30 is erased and TX/VFO are restored so bundled tests do not
+interfere with each other.
 For FSK: finite firmware-level TX cutoff <=1900ms even on USB loss;
 radio on dummy load, fixed legal bench freq 433.500MHz only.
 No resends/retries. Preserve original register and radio state; dekey

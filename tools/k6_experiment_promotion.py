@@ -208,26 +208,27 @@ def generate(n,recipe,record,p):
         "session_verify":{"argv":after,"timeout_seconds":timeout},
     }
     prefix=output/"auto-bench"
-    run_args=["/usr/bin/python3",script_abs,"--run","--prefix",str(prefix),
+    venv_py="/home/tyler/.local/share/flux-rf-venv/bin/python"
+    py=venv_py if Path(venv_py).is_file() else "/usr/bin/python3"
+    run_args=[py,script_abs,"--run","--prefix",str(prefix),
               "--dummy-load-confirmed","--operator-lease-confirmed",
               "--queue-lease-acknowledged"]
     if recipe["kind"]=="BOUNDED_TX":
         run_args.extend(["--max-tx-ms",str(p["rf_session_limit_ms"]),
                          "--frequency-hz","433500000"])
     step={
-        "preflight":{"argv":["/usr/bin/python3",script_abs,"--preflight-only"],
+        "preflight":{"argv":[py,script_abs,"--preflight-only"],
                      "timeout_seconds":45},
         "run":{"argv":run_args,"timeout_seconds":120},
-        "restore":{"argv":["/usr/bin/python3",script_abs,"--verify-only",
-                           "--prefix",str(prefix)],"timeout_seconds":70},
-        "verify":{"argv":["/usr/bin/python3",script_abs,"--verify-only",
-                          "--prefix",str(prefix)],"timeout_seconds":70},
+        "restore":{"argv":after,"timeout_seconds":70},
+        "verify":{"argv":after,"timeout_seconds":70},
     }
     deps=["tools/k6_install.py","tools/k6_live.py","tools/k6_port_lock.py",
           "tools/k6_user_store_migrate.py","modem/k6mod.py","c/k6/k6_mod.h",
           "c/k6/mod/module.ld"]
     candidate_pins=list({str(worktree/x) for x in record["changed_files"]}|{
-        str(worktree/x) for x in deps if (worktree/x).is_file()})
+        str(worktree/x) for x in deps if (worktree/x).is_file()}|(
+        {probe} if Path(probe).is_file() else set()))
     session_deps=["tools/k6_experiment_bench_probe.py","tools/k6_live.py",
                   "tools/k6_install.py","tools/k6_port_lock.py",
                   "tools/k6_user_store_migrate.py"]

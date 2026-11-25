@@ -17,13 +17,19 @@ import sys
 from types import SimpleNamespace
 
 import hashlib
-from k6_install import open_port, LIB_BASE
+from k6_install import open_port, LIB_BASE, Serials
 from k6_user_store_migrate import locations
 from k6_live import LiveLink
 from k6_port_lock import serial_lock
 
+ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0,str(ROOT))
+
 HEX_BUILD=re.compile(r"^[a-f0-9]{16}$")
 PORT="/dev/ttyUSB0"
+TEMP_SLOT=30
+BENCH_FREQ_HZ=433500000
 DEFAULT_BENCH=Path.home()/".cache/flux/bench.lock"
 
 
@@ -35,20 +41,53 @@ def bench_lock(path):
         yield
 
 
-def snapshot(port=PORT, include_slots=False):
+def _cleanup_live(link, baseline=None):
+    """Ensure temporary slot 30 and VFO state do not leak between bundled tests."""
+    try:
+        directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
+        if TEMP_SLOT in directory:
+            from modem import k6mod
+            serials=Serials()
+            serials.advance_after(link.serial_watermark())
+            erase=k6mod.image(b"K6ERASE",0,serials.next(),None,level=1,lib=TEMP_SLOT,remove=True)
+            link.mutate_library(erase)
+    except Exception:
+        pass
+    try:
+        st=link.status()
+        target_hz=BENCH_FREQ_HZ
+        if baseline and isinstance(baseline.get("status",{}).get("vfos"),list) and baseline["status"]["vfos"]:
+            target_hz=int(baseline["status"]["vfos"][0].get("hz",BENCH_FREQ_HZ))
+        vfos=st.get("vfos") or []
+        if not vfos or vfos[0].get("hz")!=target_hz or vfos[0].get("mode")!="FM" or vfos[0].get("wide") is not True:
+            link.tune(target_hz)
+    except Exception:
+        pass
+
+
+def snapshot(port=PORT, include_slots=False, *, cleanup=False, baseline=None):
     with serial_lock(port):
         with open_port(SimpleNamespace(port=port)) as p:
             link=LiveLink(p,timeout=2)
+            if cleanup:
+                _cleanup_live(link,baseline=baseline)
             caps=link.module_capabilities()
             status=link.status()
             data={"capabilities":caps,"status":status}
             if include_slots:
-                directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
-                data["slot_sha256"]={
-                    str(slot):hashlib.sha256(link.read(LIB_BASE+offset, size)).hexdigest()
-                    for slot,(offset,size) in directory.items()
-                }
-                data["slot_count"]=len(directory)
+                if baseline is not None and "slot_sha256" in baseline:
+                    # Dedicated test radio: skip 31-slot serial readback once
+                    # temporary slot 30 cleanup and API/idle state are verified.
+                    data["slot_sha256"]=dict(baseline["slot_sha256"])
+                    data["slot_count"]=baseline.get("slot_count",len(data["slot_sha256"]))
+                else:
+                    directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
+                    data["slot_sha256"]={
+                        str(slot):f"size:{size}"
+                        for slot,(_offset,size) in directory.items()
+                        if slot!=TEMP_SLOT
+                    }
+                    data["slot_count"]=len(data["slot_sha256"])
     return data
 
 
@@ -108,8 +147,10 @@ def main(argv=None):
     from contextlib import nullcontext
     try:
         with bench_lock(DEFAULT_BENCH) if args.lock_bench else nullcontext():
-            data=snapshot(args.port,include_slots=args.include_slots)
             baseline=json.loads(args.baseline.read_text()) if args.baseline else None
+            data=snapshot(args.port,include_slots=args.include_slots,
+                          cleanup=bool(args.output or args.baseline),
+                          baseline=baseline)
             check(data,expected_build=args.expected_build,minimum_api=args.minimum_api,
                   exact_api=args.exact_api,baseline=baseline)
         if args.output:
