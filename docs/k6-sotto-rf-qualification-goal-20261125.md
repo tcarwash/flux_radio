@@ -141,3 +141,27 @@ Temporary library slot27 should be restored to original `FSK DIAG`
 (code SHA256
 `56f2dd94c352352590907f93c8f1eb934fa44cece88eddd9957ce20cf6964bd5`)
 and bench released only after all tests and evidence export are complete.
+
+## Verified final closeout (2026-11-25 08:24 PST)
+
+Bench test scope completed. Original `FSK DIAG` module was reinstalled
+in slot 27 and read back from the radio; its code SHA-256 matches the
+pre-test backup exactly:
+`56f2dd94c352352590907f93c8f1eb934fa44cece88eddd9957ce20cf6964bd5`.
+The wrapper generated a fresh monotonic envelope serial (the cable loader
+rejects replayed serials), preserving the original module code unchanged.
+VFO A was restored to **433.500 MHz** after the loader reset, battery
+was 7.71 V, `transmitting=false`, `standby_idle=true`.
+
+SDR monitor was stopped and verified `state=idle`, with no pending error,
+peak acquisition queue 1, and 8,398 USB chunks captured in this session.
+Its **cumulative** counters were 59 CRC-valid, 3 CRC-rejected; these
+include deliberately failing experimental variants, not the final six-run
+qualification (which was 18/18 and zero rejects). Final diagnostics,
+rejected IQ and radio verification are saved under
+`/storage5/dev/sotto-monitor/evidence/bench-rf-goal-20261125/`.
+The temporary port-4533 K6 Hamlib bridge was terminated; no dedicated
+K6 rigctld instance remains running. The exclusive `flux-sotto-rf`
+bench reservation was **released and confirmed `nobody holds the bench`**.
+Both source worktrees are clean after commits; no source was pushed or
+merged, and no physical radio changes or active RF tests were left behind.
