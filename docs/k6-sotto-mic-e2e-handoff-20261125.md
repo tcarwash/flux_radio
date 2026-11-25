@@ -151,3 +151,26 @@ Exact reinstallation artifacts:
 `/home/tyler/flux-bench/sotto-mic-calibration-20261125/install-v2-report.json`
 
 Next attended bench sequence: disconnect serial programming cable, generator 1 kHz, use `CATALOG → MIC CAL`; run with output disabled as baseline, then nominal 0.02V and 0.05V settings as already suggested (same generator voltage convention/ground/impedance), keep output amplitude below previous 0.1V setting until PCM gain is understood, photograph first six seconds (`1K` and `CLIP`). Keep dummy load on radio. Compare `1K` amplitude proportionality against generator setting and baseline, and `CLIP` count. If `CLIP > 0` with low input, we should debug the PA11/CIC scaling or settle transients before RF/mic gain tweaks.
+
+## MIC CAL v2 physical amplitude sweep: nominal 0.1, 0.2, 0.5 V (2026-11-25)
+
+The operator submitted three LCD photographs in stated order `0.1 0.2 0.5`. Input voltage calibration (peak vs Vpp vs RMS, scope-verified level, loading and bias) is **still unknown**, so treat these as nominal generator settings, not voltages physically verified at the mic pads.
+
+| LCD field | nominal 0.1 V | nominal 0.2 V | nominal 0.5 V |
+|---|---:|---:|---:|
+| N | 7920 | 7920 | 7920 |
+| LOST | 0 | 0 | 0 |
+| PK | 32768 | 32768 | 32768 |
+| AVG | 1151 | 1475 | 1491 |
+| MIN | -32768 | not shown | not shown |
+| MAX | 32767 | not shown | not shown |
+| 1K | second page, not shown | 1373 | 1343 |
+| CLIP | second page, not shown | 116 | 101 |
+| VOX min/max | 0/542 | 0/968 | 0/943 |
+| G | 31 | 31 | 31 |
+| ZC | 165 | 179 | 177 |
+| ISR | 4304 | 4304 | 4304 |
+
+The first capture had already rolled onto the six-second *second page* showing MIN/MAX; its `1K`/`CLIP` values are not available. The other two showed the first page. `CLIP` counts exclude the initial 160 samples, so the rates were **116/7760≈1.49%** and **101/7760≈1.30%**. The fundamental peak amplitude dropped slightly (1373 →1343, **−2.2%**) when nominal source input rose 2.5× (0.2→0.5 V). AVG changed only +1.1%, VOX maximum declined 968→943, ZC stayed near 180 rather than ~2000 for 1 kHz sinusoid at 8 ksps. Some coherent 1 kHz component is detectable but **the PCM output has an effective level plateau and is not a faithful or linear reproduction of the injected sine**. A saturated *analog microphone amplifier* is not proven: the one-wire PA11 CIC/DC reconstruction independently clamps to i16, and the RFIC VOX meter can saturate on its own. No capture-data errors: 7920 samples, LOST0 and ISR4304 across all runs.
+
+**Recommendation:** Avoid increasing the generator beyond the largest already tried 0.5 nominal; decrease instead to **0.02 and 0.05** nominal settings and add an output-OFF baseline using v2's `1K`/`CLIP` figures. Verify actual Vpp with an oscilloscope at the radio's mic pads and confirm zero external DC offset / proper AC coupling; 0.5 V may be very high for an electret mic input. If coherent 1K and CLIP remain comparable at low levels, prioritize PA11/AF route and sigma-delta scaling investigation instead of further mic gain. Prefer measuring the PA11 node with a high impedance scope to distinguish the RFIC microphone input from the MCU's sampled net. Don't reflash, change gain or claim intelligible voice without a controlled raw waveform check. Installed firmware/module unchanged for this documentation result.
