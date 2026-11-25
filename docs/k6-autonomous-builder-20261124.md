@@ -121,3 +121,12 @@ Promotion acquires the same candidate-state flock nonblockingly, and skips
 if a writer is active, preventing lost journal updates. Both timers run on
 2-minute intervals. The third local fixture timer still has no radio access.
 A blocked candidate cannot key the radio or fail the physical dispatcher.
+
+
+## Repair fairness and evidence feedback
+The candidate lane allows four strictly device-free revision attempts per
+experiment; each failed test log is fed into the next local repair prompt.
+Candidates with the fewest attempts are selected first, so an easy new
+REG51 harness cannot be starved by multiple longer Sotto iterations.
+The limit is for software-only retries, NEVER on-radio retransmissions:
+physical grants remain exact-SHA one-shot with independent KUL2 restore.

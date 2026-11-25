@@ -23,7 +23,7 @@ import k6_experiment_builder as builder
 STATE=builder.STATE
 CONFIG=builder.CONFIG
 OUT=builder.ROOT_OUT
-MAX_REPAIRS=2
+MAX_REPAIRS=4
 BLOCKED=frozenset(("BLOCKED_NO_AUTO_RETRY","BLOCKED_CANDIDATE_NEEDS_REPAIR"))
 PRIORITY=(26,30,20)
 PYTHON="/home/tyler/.local/share/flux-rf-venv/bin/python"
@@ -161,7 +161,13 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
         except BlockingIOError:
             return {"mode":"REPAIR_BUSY_SKIP","events":[],"hardware_operations":0}
         data=journal.state_load(state_path)
-        for issue in PRIORITY:
+        # Fair scheduling: a candidate with fewer repair attempts runs
+        # first. A complex two-round Sotto candidate must not starve an
+        # untried REG51 task. Physical jobs are unaffected.
+        order=sorted(PRIORITY,key=lambda n:(
+            int(data["jobs"].get(f"issue-{n}",{}).get("repair_attempts",0)),
+            PRIORITY.index(n)))
+        for issue in order:
             key=f"issue-{issue}"
             old=data["jobs"].get(key)
             if not old or old.get("state") not in BLOCKED:
@@ -198,6 +204,15 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
             try:
                 original=out_root/f"issue-{issue}-{old.get('source_sha','')[:10]}/tests.log"
                 logs=original.read_text() if original.exists() else ""
+                # Give the delegate the concrete *latest* failure, not only
+                # the original failing fixture. New adversarial regression
+                # tests must inform every follow-up repair attempt.
+                previous=sorted(out_root.glob(f"repair-{issue}-{attempts}-*"))
+                if attempts and previous:
+                    for filename in ("tests.log","preflight.log"):
+                        recent=previous[-1]/filename
+                        if recent.is_file():
+                            logs+="\n\nLATEST "+filename+"\n"+recent.read_text()
                 prompt=target/"prompt.md"
                 make_prompt(issue,recipe,old,worktree,logs,prompt)
                 muse=["/home/tyler/.local/bin/muse","exec","--json",

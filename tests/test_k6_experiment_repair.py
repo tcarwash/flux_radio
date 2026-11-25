@@ -10,7 +10,7 @@ import k6_experiment_repair as repair
 
 
 def test_repair_is_explicitly_bounded_to_three_owned_candidates():
-    assert repair.MAX_REPAIRS==2
+    assert repair.MAX_REPAIRS==4
     assert repair.PRIORITY==(26,30,20)
 
 
