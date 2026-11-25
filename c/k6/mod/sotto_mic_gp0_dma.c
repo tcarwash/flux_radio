@@ -171,7 +171,11 @@ int k6_main(const k6_api_t*a){
  gpio=1;
  if(a->fd_write(0x34,(uint16_t)((old34&~0xfu)|12u))!=0||
      (a->fd_read(0x34)&0xfu)!=12u){ret=-18;goto done;}
- a->delay_us(40000u);
+ /* Allow the RFIC MIC ADC/bias to settle before claiming a negative
+  * result. The previous unpowered module TX mode had MICIN disabled.
+  * RFIC VOX still determines whether the tone-on stimulus was strong. */
+ a->delay_us(800000u);
+ if(a->mic_stream(3,0,0)!=1||a->key_down()){ret=-9;goto done;}
  oldahb=rd(RCC_AHB);oldapb=rd(RCC_APB2);
  if(oldapb&TIM17EN){ret=-19;goto done;}
  wr(RCC_AHB,oldahb|1u);
