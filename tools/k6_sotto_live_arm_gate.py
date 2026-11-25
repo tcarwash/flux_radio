@@ -65,6 +65,28 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
                         uc.mem_write(off,value.to_bytes(size,'little'))
             b.uc.hook_add(UC_HOOK_MEM_WRITE,mirror,begin=RAM_BASE,end=RAM_BASE+0xfff)
             syms=fw.syms
+            # This offline dispatcher jumps directly into the compiled
+            # foreground runner. It does not initialize Aura's real LCD
+            # SPI closure, whose GPIO pointer remains the simulator's
+            # uninitialized 0xa5a5a5a5 sentinel. Run the actual module
+            # lcd_flush entry and host-stack trampoline, but stub the
+            # *display-only* Rust callback to avoid a false GPIO fault.
+            # This verifies the module requested an LCD refresh, NOT
+            # the physical screen or its SPI transaction.
+            import subprocess
+            lcd_host=None
+            for line in subprocess.check_output(['llvm-nm','--demangle',str(elf)],text=True).splitlines():
+                words=line.split(maxsplit=2)
+                if len(words)==3 and words[2]=='aura::app::pager::mod_lcd_call_host':
+                    lcd_host=int(words[0],16)
+                    break
+            if lcd_host is None:
+                raise RuntimeError('Missing linked ARM LCD host callback')
+            lcd_calls=[0]
+            def mock_display_only(uc,addr,size,user):
+                lcd_calls[0]+=1
+                uc.reg_write(UC_ARM_REG_PC,uc.reg_read(UC_ARM_REG_LR)|1)
+            b.uc.hook_add(UC_HOOK_CODE,mock_display_only,begin=lcd_host,end=lcd_host)
             isr=syms.get('pcm_isr')
             ring_symbol=syms.get('pcm_ring')
             if isr is None or ring_symbol is None:
@@ -137,6 +159,8 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
             if b.fault:raise RuntimeError(f'Compiled ARM live encoder fault: {b.fault}')
             if not fw.returned:
                 raise RuntimeError(f'ARM live module did not finish; quantum={quantum}; stats={stats}; RF={rf.tx_status()}')
+            if lcd_calls[0] != 1:
+                raise RuntimeError(f'Live module did not request exactly one LCD refresh: {lcd_calls[0]}')
             status=rf.tx_status()
             if not fw.module_ret or fw.module_ret[0]<=0:
                 raise RuntimeError(f'ARM live encoder failed: trace={fw.trace} module={fw.module_ret}; stats={stats}; RF={status}; UART={bytes(b.uart_tx)[-500:]!r} boardcycles={b.cycles} quantum={quantum}')
@@ -218,6 +242,7 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
                         real_arm_live_codec=True,real_arm_mic_isr=True,
                         physical_mic=False,physical_rf=False,real_radio=False,
                         radio_enter_tx_calls=fw.trace['radio_enter_tx'],
+                        lcd_flush_calls=lcd_calls[0],lcd_spi_backend_mocked=True,
                         compiled_module_return=fw.module_ret[0],
                         pcm=stats,rf=status,frames=len(frames),session=session,
                         virtual_iq=decoder['fsk'],compiled_arm_receiver=arm_rx,playback=playback,

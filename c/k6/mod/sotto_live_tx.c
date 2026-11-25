@@ -63,6 +63,10 @@ int k6_main(const k6_api_t*a){
     a->lcd_text(0,"SOTTO TX BENCH");
     a->lcd_text(1,"Dummy load / cable out");
     a->lcd_text(2,"Hold PTT to speak");
+    /* Text only stages MOD_SCREEN. Explicitly flush the initial prompt
+     * before entering the 30-second physical PTT wait. No LCD work
+     * is performed once a transmit session begins. */
+    (void)a->lcd_flush();
     /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
     t0=a->ms();pressed=0;
     r=a->mic_stream(3,0,0);
