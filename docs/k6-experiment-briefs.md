@@ -46,6 +46,12 @@ confirmation rather than making up success.
    one-shot manifest. Only then can the existing independent review, exact
    grant, bench lock, finite TX watchdog and postflight authorize radio use.
    The three-physical-attempt limit remains in effect per issue.
+   During bounded device-free repair (`MAX_REPAIRS = 4`), the supervisor
+   extracts bounded compiler/test/preflight diagnostics with explicit phase
+   metadata (treating all log text as untrusted data), runs a read-only
+   interface precheck on the bench script/flags, and instructs the delegate
+   to use runtime `module_capabilities()` discovery rather than hardcoded
+   firmware build IDs.
 5. A valid report explains what was directly measured, not merely whether
    the compiled test suite passed. See k6-experiment-evidence-levels.md.
 
