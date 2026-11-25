@@ -208,3 +208,32 @@ The operator submitted two photographs after a real run of installed `MIC SWEEP`
 These are **real hardware measurements**, not the offline host fixture's synthetic gain response. All five gain rows printed rather than errors, so register writes were apparently accepted and the ring delivered enough samples per gain to avoid `ERR` (the current UI does not display sample counts or loss; firmware only checks them internally). `1K=0`, `C=0`, `A=1` at *all* five gains indicate virtually no measurable reconstructed analog waveform. VOX maximum ~181-201 matches the earlier known generator-OFF test `VOX max=178`, unlike previous tone-ON runs VOX ~517-968. **Leading hypothesis:** the generator output was disabled/disconnected or the mic-pad path was open during the sweep. Confirm external generator output was ENABLED and its tone actually audible on a nearby normal-FM receiver in the same setup before attributing the result to mic-gain ineffectiveness. An alternate possibility is that `fd_write(REG_7D)` while the sampler is active changes RFIC state or suppresses AF routing; even the first gain31 re-writes this register. Distinguish these by adding a gain31 no-write control before software gain changes if repeated tone-ON sweep reproduces silence.
 
 Importantly, these results **do not establish** that RFIC gain affects or fails to affect microphone PCM, or that Sotto MIC is fixed. The previous MIC CAL at 0.1 nominal source reported AVG=1151, VOX max=542 and clipping, so the new all-zero run is *not directly comparable* until verified constant input. `SOTTO MIC` slot30 and firmware unchanged; bench lock was free after the test.
+
+## 2026-11-25 second physical MIC SWEEP, tone verified at RFIC but PCM silent; A/B diagnostic staged
+
+The operator provided *another* two LCD photos of installed slot25 MIC SWEEP with source-tone conditions. The LCD values were:
+
+| Gain | 1K | C | A (mean abs PCM) | V (VOX max) |
+|---:|---:|---:|---:|---:|
+| 31 | 0 | 0 | 1 | 536 |
+| 24 | 0 | 0 | 1 | 549 |
+| 16 | 0 | 0 | 1 | 537 |
+| 8 | 0 | 0 | 1 | 576 (approximately; image is slightly blurred) |
+| 0 | 0 | 0 | 1 | 548 |
+
+This differs materially from the first generator-off sweep: RFIC VOX max was only ~181-201 in the first sweep. **VOX now reads ~536-576, comparable to the previous MIC CAL `0.1 V` tone-on result 542, yet post-sweep PCM metrics remain essentially zero at all gains**. Hence we have positive RFIC tone-detection evidence while the PA11 sigma-delta PCM sampler reports silence. Do not infer that gain calibration solved anything; the gain-vs-PCM response is not yet interpretable. The original v2 `MIC CAL` at 0.1 V previously recovered mean abs PCM 1151, whereas the installed gain sweep performs a `REG_7D` write (even for gain31) immediately after microphone stream activation. This suggests two testable hypotheses: (a) rewriting REG_7D while stream is live suppresses the PA11 analog path; (b) a software handling difference in MIC SWEEP (ring readout/settling) suppresses reconstruction. There is no evidence of FSK/RF transmit in the calibration.
+
+Added an **independent, small `MIC A/B` slot25 module** for a controlled three-stage experiment, with **same PTT hold, constant generator, same sampler and signal math for each stage**:
+
+1. `B31`: gain31 with *no call to fd_write* after `mic_stream(0)` (negative-control baseline)
+2. `W31`: write the *identical* REG_7D value with gain31 via `fd_write`, then sample
+3. `W08`: write gain8 and sample
+
+Each stage discards 120ms settling and measures 620ms; one 3.5-second PA-muted lease, no FSK and no RF PA, same contract as MIC SWEEP. LCD shows 3 rows of `1K` and `C` (clip) for 8 seconds, then AVG/VOX for 8 seconds; `B=no-write` and `W=write` are printed as reminders. In the first stage, the module only reads REG_7D, which the previous MIC CAL also did. It restores via host `mic_stream(1)` and `tx_off` on every error or successful end. The host-native test executes the actual C module and verifies a simulated 1K peak ~4599 for both baseline and same-value write, ~800 at gain8, no clipped samples, no leaking PTT or mic lease, and safe teardown if RFIC writes are rejected. The PIC ARM module builds at level30; focused tests: **17 passed, 2 skipped**. Synthetic test results do *not* verify physical silicon behavior.
+
+Staged artifacts on tyler-ldesktop (the radio is still connected to the signal-generator adapter, so no UART programming connection was available; no installation was attempted):
+
+- `/home/tyler/flux-bench/sotto-mic-calibration-20261125/slot25-mic-ab-staged.k6m`
+- `/home/tyler/flux-bench/sotto-mic-calibration-20261125/mic-ab-staging-report.json`
+
+The previous installed slot25 MIC SWEEP envelope is backed up at `/home/tyler/flux-bench/sotto-mic-calibration-20261125/slot25-mic-sweep-staged.k6m` and must match slot25 readback before replacement. Slot30 `SOTTO MIC` and base firmware are **unchanged**. To install, operator temporarily reconnects USB cable, bench is reserved, verify radio standby and exact slot25 equality, write signed slot25 envelope, exact readback and cable-connected no-PTT preflight, release bench. Then restore generator to 1kHz / nominal 0.1 V, confirm RFIC tone (VOX around 540), hold PTT ~3 seconds and photograph both pages. `B31 >0, W31 ≈0` would strongly implicate the REG_7D write. `B31≈0` too means there is likely a difference between MIC CAL and MIC SWEEP sampling or changed PA11 hardware state. Don't modify firmware gain or RFIC AF modes until this comparison is obtained.
