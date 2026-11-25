@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic device-free Flux candidate build/repair pipeline
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+RandomizedDelaySec=3s
+Persistent=true
+Unit=flux-experiment-candidate.service
+
+[Install]
+WantedBy=timers.target

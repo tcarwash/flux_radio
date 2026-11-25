@@ -1,0 +1,12 @@
+[Unit]
+Description=Flux K6 offline candidate builder and bounded repair (no radio)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/storage5/dev/flux-batch-api-config
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_builder.py --once
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_repair.py --once
+TimeoutStartSec=850
+NoNewPrivileges=yes
+UMask=0077

@@ -108,3 +108,16 @@ can the existing independent review and one-shot hardware permission run.
 Failing software fixtures or incomplete hardware wrappers do **not** receive
 RF authority or synthetic success credit. Failed repairs remain recorded
 with the exact failure reason and finite attempts.
+
+## Nonblocking split controller (2026-11-24)
+The physical dispatcher service remains a short-lived independent timer
+to intake HARDWARE issues, promote pinned tested candidates, run offline
+queue coordination, review manifest hashes, issue exact one-shot grants,
+and run the bench. The separate candidate service owns long-lived device-free
+candidate authoring and a finite repair budget. Their schedules are
+independent, so a slow Muse editing job cannot delay a preapproved radio
+experiment or results publication.
+Promotion acquires the same candidate-state flock nonblockingly, and skips
+if a writer is active, preventing lost journal updates. Both timers run on
+2-minute intervals. The third local fixture timer still has no radio access.
+A blocked candidate cannot key the radio or fail the physical dispatcher.

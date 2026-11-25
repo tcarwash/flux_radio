@@ -85,9 +85,25 @@ bytes and **live cable_only** signing (key=None for cable-only).
 Never trust mock scores as real radio/SDR success. RF scoring must
 use independent captured SDR evidence, not synthetic fixture scores.
 Do not claim PASS if SDR isn't available/packet evidence incomplete.
-For #30: strict exact six-frame BEGIN+4 known voice chunks+END ordering.
-Do not accept reordered frames. This is finite voice/test session, not
-a claim of functioning live DV. For #26: FIFO initial fill is required,
+For #30: six 6-byte *codec frames* are NOT six RF packets!
+A real finite FDV1 BEGIN/END test requires three separately transmitted
+64-byte RF packets: 0xE2 BEGIN control, one 0xA9 L64 carrying four
+known codec frames, 0xE2 END control. Each RF packet is 33 FIFO words
+(64-byte packet + sacrificial 0xA55A guard) at actual 4800 baud.
+Reuse existing tools/k6_dv_guard33_session.py encode_control and
+c/k6/mod/fsk_guard33_sotto_armed.c for RFIC registers/cleanup;
+tools/k6_fsk_sotto_sync_rx.py find_frames and select_guarded for
+BLIND IQ recovery. Level24 fsk_configured supports only 1200/2400
+baud, NOT native 4800. Never use fsk_configured as a pretend 4800
+transmitter; use audited register-driven 33-word FIFO path.
+K6_MODULE_NAME may offset k6_main entry to 16; always pass real
+k6mod.build() entry, never guess 0. TX must snapshot/restore RFIC
+registers and dekey PA before RX, independently erase temporary
+slot30, verify original VFO/mode and all packed KUL2 slots.
+Reject zero-dimension or prepacked-fixture SDR evidence as RF PASS.
+Do not accept reordered codec frames. This is finite voice/test
+session, not a claim of functioning live DV.
+For #26: FIFO initial fill is required,
 but no register-40 writes *after* PA activation; fix tests without
 removing this safety property.
 For #20: original harness only builds a synthetic manifest. Replace it

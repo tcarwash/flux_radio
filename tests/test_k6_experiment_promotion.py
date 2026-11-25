@@ -154,3 +154,23 @@ def test_one_unpromotable_candidate_does_not_kill_pipeline(monkeypatch,tmp_path)
     assert state["issue-20"]["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
     assert state["issue-21"]["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
     assert not cfg.exists()
+
+
+
+def test_promotion_skips_during_concurrent_candidate_edit(tmp_path):
+    from subprocess import Popen,PIPE
+    builder_state=tmp_path/"builder.json"
+    builder_state.write_text(json.dumps({"schema":1,"jobs":{}}))
+    lock=builder_state.with_suffix(".lock")
+    holder=Popen(["/usr/bin/python3","-c",
+        "import fcntl,sys,time;f=open(sys.argv[1],'a+b');"
+        "fcntl.flock(f,fcntl.LOCK_EX);print('LOCKED',flush=True);time.sleep(5)",
+        str(lock)],stdout=PIPE,text=True)
+    try:
+        assert holder.stdout.readline().strip()=="LOCKED"
+        out=p.register_once(builder_state=builder_state)
+        assert out["mode"]=="PROMOTION_BUSY_SKIP"
+        assert out["radio_access"] is False
+    finally:
+        holder.terminate()
+        holder.wait(timeout=3)

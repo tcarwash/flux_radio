@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime,timedelta,timezone
 import hashlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -259,6 +260,19 @@ def generate(n,recipe,record,p):
 
 def register_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
                   hardware_config=GENERATED):
+    """Never clobber a concurrent candidate writer's durable journal."""
+    builder_state=Path(builder_state)
+    builder_state.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
+    with builder_state.with_suffix(".lock").open("a+b") as lock:
+        try:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {"mode":"PROMOTION_BUSY_SKIP","events":[],
+                    "radio_access":False}
+        return _register_locked(policy_path,builder_state,hardware_config)
+
+
+def _register_locked(policy_path,builder_state,hardware_config):
     p=policy(policy_path)
     if not p["enabled"]:return {"mode":"AUTO_HARDWARE_PREPARATION_DISABLED","events":[]}
     reg=ensure_generated()
