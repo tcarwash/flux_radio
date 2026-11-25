@@ -46,7 +46,7 @@ def test_unmodified_api29_callback_in_register_and_fifo_fault_mock(tmp_path):
         capture_output=True, text=True, timeout=30,
     )
     assert run.returncode == 0, run.stdout + run.stderr
-    assert "6 passed; 0 failed" in run.stdout
+    assert "9 passed; 0 failed" in run.stdout
 
     pattern = re.compile(
         r"CASE (\w+) rc=(-?\d+) off_ms=(\d+) words=(\d+) bits=(\d+) bytes=(\d+)"
@@ -57,10 +57,10 @@ def test_unmodified_api29_callback_in_register_and_fifo_fault_mock(tmp_path):
     }
     assert found == {
         # Return codes are from unchanged mod_sotto_async_fsk(), not a port.
-        "nominal": (1, 145, 33, 528, 66),
-        "early_done": (1, 125, 33, 439, 54),
-        "early_done_jitter": (1, 129, 33, 458, 57),
-        "capacity32": (1, 145, 33, 512, 64),
-        "ready_drop": (-2, 130, 33, 463, 57),
+        "nominal": (1, 165, 33, 528, 66),
+        "early_done": (1, 145, 33, 439, 54),
+        "early_done_jitter": (1, 150, 33, 444, 55),
+        "capacity32": (1, 165, 33, 512, 64),
+        "ready_drop": (-2, 150, 33, 463, 57),
     }
     assert "CASE explicit_abort rc=0 off_ms=70" in run.stdout

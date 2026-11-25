@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append-only FSK async API29 host with PA-muted TX entry. Offline build only."""
+"""Opt-in continuous-PA Sotto API31 FSK host. Offline build only."""
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -66,7 +66,7 @@ elif 'app.radio.enter_tx_with_pa(syst,!digital)' not in section:
 s=change(s,'fn run_module(app: &mut App, syst: &mut SYST) {\n',
 '''fn run_module(app: &mut App, syst: &mut SYST) {
     #[cfg(k6_sotto_async_fsk)]
-    unsafe{SOTTO_TX29_ACTIVE=false;SOTTO_TX29_SNAPSHOT=false;}
+    unsafe{SOTTO_TX29_ACTIVE=false;SOTTO_TX29_STARTED=false;SOTTO_TX29_SNAPSHOT=false;}
 ''')
 body=(here/'sotto-api29-async-fsk.rs.inc').read_text()
 if '// SOTTO_API29_ASYNC_FSK_BEGIN' not in s:

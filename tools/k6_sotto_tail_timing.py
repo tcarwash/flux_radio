@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Offline hypothesis model of API29 native FSK TX-done, PA and FIFO cutoffs.
+"""Historical offline hypothesis model of the pre-qualification API29 FSK TX cutoffs.
 
-Produces no RF, serial I/O, flash, or bench actions. Source-anchored only:
+Produces no RF, serial I/O, flash, or bench actions. Anchored to a frozen
+pre-fix callback snapshot, NOT the current continuous-PA host:
 the FD6818B timing/IRQ semantics are deliberately *not* assumed known.
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from modem import pager
-HOST=ROOT/"firmware/k6-aura/sotto-api29-async-fsk.rs.inc"
+HOST=ROOT/"tests/data/k6/sotto_api29_pa_muted_20261124.rs.inc"
 LIVE=ROOT/"c/k6/mod/sotto_live_session.h"
 GUARD=bytes.fromhex("5aa5")
 BAUD=4800
@@ -26,7 +27,7 @@ PREFIX=bytes.fromhex("55"*16+"076b3e36")
 
 
 def source_contract():
-    """Refuse to silently model changed production constants/order."""
+    """Pin historical PA-muted callback; production behavior is tested separately."""
     h=HOST.read_text()
     s=LIVE.read_text()
     expected=(

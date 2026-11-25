@@ -1,4 +1,4 @@
-"""Offline-only source-anchored hypothesis/regression tests (not RF claims)."""
+"""Frozen pre-fix API29 hypothesis tests, NOT production RF claims."""
 import hashlib
 from pathlib import Path
 import numpy as np
@@ -17,7 +17,7 @@ def test_packet_fixture_is_canonical_valid_33_word_l64():
     assert len(hashlib.sha256(physical).digest())==32
 
 
-def test_source_contract_has_explicit_fifo_load_then_pa_then_tx():
+def test_historical_pa_muted_source_contract_fifo_then_pa_then_tx():
     c=t.source_contract()
     assert c["expected_fifo_words"]==33
     assert c["declared_length_register"]=="0x4100"

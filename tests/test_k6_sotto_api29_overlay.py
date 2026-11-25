@@ -74,7 +74,17 @@ def test_host_build_opt_in_requires_resource_and_api31():
     assert 'apply-sotto-api29-async-fsk.py' in shell
     assert '--cfg k6_sotto_async_fsk' in shell
     assert 'n!=33' in body and '0xa55a' in body
-    assert "SOTTO_TX29_UNTIL=mod_tick().wrapping_add(7000)" in body
+    assert "SOTTO_TX29_UNTIL=now.wrapping_add(7000)" in body
     assert 'mod_tx_off(); -2' in body
     assert 'sotto_tx29_cleanup()' in body
     assert 'mod_fd_read(0)!=0x4829' in body
+
+
+def test_api31_cable_capabilities_match_rust_and_c_module_ceiling():
+    # The wire record must advertise the same ceiling as the Rust API and
+    # C loader, or live API30 Sotto modules cannot be installed legally.
+    caps=(ROOT/"firmware/k6-aura/apply-capability-query.py").read_text()
+    assert 'if os.environ.get("K6_FSK4800_RX") == "1":\n    level = 31' in caps
+    assert 'elif os.environ.get("K6_PACKET_MAILBOX") == "1":\n    level = 27' in caps
+    assert 'elif os.environ.get("K6_MODE_REGISTRY") == "1":\n    level = 26' in caps
+    assert 'K6_FSK4800_RX' in (ROOT/"tools/k6_build.sh").read_text()

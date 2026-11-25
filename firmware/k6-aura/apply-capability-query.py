@@ -32,7 +32,22 @@ if designer not in ("0", "1"): raise SystemExit("invalid Designer gate")
 sotto = os.environ.get("K6_SOTTO_SERVICE", "0")
 if sotto not in ("0", "1"): raise SystemExit("invalid Sotto gate")
 mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if scan == '1' else 0) | (4 if fsk == '1' else 0) | (64 if sotto == "1" else 0)
-level = 25 if os.environ.get("K6_LIVE_SERIAL") == "1" else (24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23)
+# The Rust module table and the C KM_LEVEL ceiling are raised by the
+# Data API26/27/31 feature gates. Advertise the *same* ceiling over the
+# cable: otherwise legitimate level-30 microphone modules are refused.
+# These flags are already validated by build-fd6818b.sh before linking.
+if os.environ.get("K6_FSK4800_RX") == "1":
+    level = 31
+elif os.environ.get("K6_PACKET_MAILBOX") == "1":
+    level = 27
+elif os.environ.get("K6_MODE_REGISTRY") == "1":
+    level = 26
+elif os.environ.get("K6_LIVE_SERIAL") == "1":
+    level = 25
+elif fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1":
+    level = 24
+else:
+    level = 23
 # Shared record keeps legacy and live capability reporting identical.
 helper = f'''// FLUX_CAP_RECORD_BEGIN
 #[cfg(feature = "spilib")]
