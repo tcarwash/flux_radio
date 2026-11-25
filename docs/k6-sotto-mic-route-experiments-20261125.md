@@ -84,3 +84,23 @@ The overall maximum RFIC VOX was **197**, noticeably lower than the original phy
 **Result:** all AF selections tested leave the existing PA11 raw sampler at 100% HIGH with near-zero PCM and 1kHz amplitude; no observed sustained microphone PCM at PA11. GP0 selection 12 displays robust asynchronous PB1 bit activity, but this was previously known as a possible alternate high-rate digital signal and is **not demonstrated TX microphone samples**. The modes 9/11 were low, 13 high, 14 low in this TX state, which is distinctly different from previously characterized receive IF in GP0=13. The coarse 256 reads per 10ms are not high-rate enough to demodulate signal content, and aliasing/route switching are alternative explanations.
 
 **Next control, not yet performed:** keep precisely same connector setup, VFO, module, PTT duration but set signal-generator output OFF; collect `routes-v1/mic-routes-tone-off-01.json`. Look for repeatable VOX difference to confirm whether tone-on stimulus was effective, and especially any change in GP0 selector12 bit statistics. If the tone OFF and ON runs match, do not claim the selector12 activity is microphone-driven. If they differ, design a time-resolved, oversampled GP0 selector12 route-specific experiment with independently verified 1kHz spectral content, rather than concluding from sampled bit-transition fractions alone. No additional firmware flash is needed for the OFF control.
+
+### Corrected MIC ROUTES tone-OFF control (2026-11-25 20:23 UTC)
+
+Operator performed the generator-output-OFF control, reconnecting serial **without a reboot**. The radio remained idle/standby, transmitting=false and at 7.75V. The result was a valid version4 nine-stage capture stored at `/home/tyler/flux-bench/sotto-mic-calibration-20261125/routes-v1/mic-routes-tone-off-01.json`, SHA256 `12b6d3435e29a6f01061c4c4bdea88f0a40f4029ddede45c329a895e8b6abdb2`, read back `2026-11-25T20:23:54.428281+00:00` UTC. The companion tone-on result is `mic-routes-tone-on-02.json`, SHA256 `fb8d680df5b3d612a97608f9446862ea33d72f95458b24ced0529f389cc6fd15`.
+
+| Route | Tone ON | Generator OFF | Interpretation |
+|---|---|---|---|
+| PA11 AF 4 (raw) | PCM abs=1, 1kHz=0, raw high=100% | Same | No useful PA11 audio in either run |
+| PA11 AF 9 (bypass) | PCM abs=1, 1kHz=0, raw high=100% | Same | No useful PA11 audio in either run |
+| PA11 AF 5 (baseband2) | PCM abs=1, 1kHz=0, raw high=100% | Same | No useful PA11 audio in either run |
+| PA11 AF 1 (FM) | PCM abs=1, 1kHz=0, raw high=100% | Same | No useful PA11 audio in either run |
+| GP0 mode 9 | PB1 high=0%, transitions=0% | Same | Static LOW |
+| GP0 mode 11 | PB1 high=0%, transitions=0% | Same | Static LOW |
+| GP0 mode 12 | PB1 high=50.20%, transitions=57.25% | PB1 high=49.41%, transitions=56.47% | Digital switching is similar with generator ON/OFF; **no demonstrated mic correlation** |
+| GP0 mode 13 | PB1 high=100%, transitions=0% | Same | Static HIGH |
+| GP0 mode 14 | PB1 high=0%, transitions=0% | Same | Static LOW |
+
+Crucial stimulus-quality caveat: the captured **overall RFIC VOX maxima are practically equal** (ON 197; OFF 198), and per-stage VOX is also similar (ON GP0 stages roughly 180–184 vs OFF 180–196). That differs from the earlier physical MIC RAW tone-on/off pair (max VOX 660 vs 315), so this test pair has not independently confirmed that its nominal 1kHz generator stimulus entered the RFIC during the tested TX states. The ~0.8 percentage-point differences in GP0 selector12 unsynchronized bit fractions could be ordinary sampling phase/aliasing jitter; they cannot validate voice capture without an actual measured 1kHz response. Thus results are **negative in the tested configurations**, not a definitive proof of no possible internal RFIC→MCU path.
+
+Recommended next diagnostic is an instrumented **RFIC VOX tone-present gate** with a low-threshold/captured time series before sweeping routes, or a verified generator amplitude/tone check through ordinary analog-FM TX, then only repeat the relevant GP0 path when an independently demonstrated ON/OFF mic stimulus difference exists. Avoid further unattended route sweeps on an unvalidated stimulus. Because the already-known PA11 initialization transient is invariant ON/OFF, AF route sweeps alone are not likely to fix PCM capture. No further firmware or SPI modification has been made after these results; `SOTTO MIC` stays in slot30.
