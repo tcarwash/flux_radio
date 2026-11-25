@@ -33,6 +33,24 @@ sotto = os.environ.get("K6_SOTTO_SERVICE", "0")
 if sotto not in ("0", "1"): raise SystemExit("invalid Sotto gate")
 mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if scan == '1' else 0) | (4 if fsk == '1' else 0) | (64 if sotto == "1" else 0)
 level = 25 if os.environ.get("K6_LIVE_SERIAL") == "1" else (24 if fsk == "1" and os.environ.get("K6_CONFIG_FSK") == "1" else 23)
+# Keep the advertised K6CP API ceiling synchronized with the opt-in C
+# loader's KM_LEVEL and the appended Rust module service table.  Legacy
+# profiles must retain their existing API 23/24/25 capability record.
+registry = os.environ.get("K6_MODE_REGISTRY", "0")
+mailbox = os.environ.get("K6_PACKET_MAILBOX", "0")
+rx4800 = os.environ.get("K6_FSK4800_RX", "0")
+if any(flag not in ("0", "1") for flag in (registry, mailbox, rx4800)):
+    raise SystemExit("invalid optional module API flag")
+if rx4800 == "1" and not (registry == "1" and mailbox == "1"):
+    raise SystemExit("API31 RX requires API26 mode registry and API27 mailbox")
+if mailbox == "1" and registry != "1":
+    raise SystemExit("API27 mailbox requires API26 mode registry")
+if registry == "1":
+    level = max(level, 26)
+if mailbox == "1":
+    level = max(level, 27)
+if rx4800 == "1":
+    level = 31
 # Shared record keeps legacy and live capability reporting identical.
 helper = f'''// FLUX_CAP_RECORD_BEGIN
 #[cfg(feature = "spilib")]
