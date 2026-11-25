@@ -5,6 +5,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/storage5/dev/flux-batch-api-config
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_brief.py --sync
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_intake.py --once --max-new 4 --max-active 4 --max-daily 32 --hardware-only
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_promotion.py --once
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_autopilot.py --once --publish
@@ -12,6 +13,7 @@ ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experime
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_promotion.py --once --grants
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_postmortem.py --once
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_hardware_autopilot.py --once --config /home/tyler/.local/state/flux-experiment-autopilot/hardware-generated.json --policy /home/tyler/.local/state/flux-experiment-autopilot/hardware-generated-standing.json
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_failed_closeout.py --once
 TimeoutStartSec=450
 NoNewPrivileges=yes
 UMask=0077

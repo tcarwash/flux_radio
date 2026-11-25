@@ -49,6 +49,30 @@ def fake_setup(monkeypatch):
     return manifest
 
 
+def test_manual_issue_filter_never_runs_other_issue(monkeypatch,tmp_path):
+    fake_setup(monkeypatch)
+    monkeypatch.setattr(a.batch,"run_session",lambda *args,**kwargs:pytest.fail("hardware not approved"))
+    r=a.one_cycle(state_path=tmp_path/"hardware.json",
+                  review_path=tmp_path/"review.json",
+                  bench_lock=tmp_path/"bench.lock",
+                  issue_filter=29)
+    assert r["mode"]=="HARDWARE_ISSUE_NOT_APPROVED"
+    assert r["issue"]==29
+
+
+def test_attempt_limit_blocks_new_manifest_on_same_issue(monkeypatch,tmp_path):
+    fake_setup(monkeypatch)
+    monkeypatch.setattr(a.batch,"run_session",lambda *args,**kwargs:pytest.fail("limit bypassed"))
+    jobs={f"issue-9:{n:064x}":{"state":"BLOCKED_NO_AUTO_RETRY","when":f"2026-11-24T0{n}:00Z"}
+          for n in range(1,4)}
+    state=tmp_path/"hardware.json"
+    state.write_text(json.dumps({"schema":1,"jobs":jobs}))
+    r=a.one_cycle(state_path=state,review_path=tmp_path/"review.json",
+                  bench_lock=tmp_path/"bench.lock")
+    assert r["events"]==[{"issue":9,"action":"ATTEMPT_LIMIT_REACHED",
+                         "attempts":3,"max_attempts":3}]
+
+
 def test_one_shot_success_and_durable_dedup(monkeypatch,tmp_path):
     fake_setup(monkeypatch)
     actions=[]

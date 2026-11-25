@@ -27,6 +27,7 @@ import k6_experiment_batch as batch
 import k6_experiment_dispatch as queue
 import k6_experiment_hardware as hw
 import k6_experiment_review as review
+import k6_experiment_attempt_budget as budget
 
 ROOT=Path(__file__).resolve().parents[1]
 POLICY=ROOT/"config/k6-experiment-hardware-standing.json"
@@ -255,7 +256,7 @@ def bundle_manifests(eligible,*,output_root,api_raw):
 
 
 def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_path=REVIEW,
-              bench_lock=BENCH_LOCK,output_root=None):
+              bench_lock=BENCH_LOCK,output_root=None, issue_filter=None):
     cfg=hw.load_config(config_path)
     policy=standing_policy(policy_path)
     if not policy["enabled"]:
@@ -272,11 +273,39 @@ def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_p
         state=journal.state_load(state_path)
         reviews=journal.state_load(review_path)
         issues=sorted(int(x) for x in policy["approved"])
-        order=queue.check_github({"repo":cfg["repo"],"queue_issue":cfg["queue_issue"],
-                                  "trusted_author":cfg["trusted_author"]},issues)
+        if issue_filter is not None:
+            if type(issue_filter) is not int or issue_filter < 1:
+                raise batch.Refused("invalid selected issue number")
+            issues=[n for n in issues if n==issue_filter]
+            if not issues:
+                return {"mode":"HARDWARE_ISSUE_NOT_APPROVED","issue":issue_filter,
+                        "events":[],"journal":str(state_path)}
+        # Historical standing permits can outlive GitHub issue closure.
+        # Do not let one closed/exhausted issue prevent unrelated ready work.
+        reg={"repo":cfg["repo"],"queue_issue":cfg["queue_issue"],
+             "trusted_author":cfg["trusted_author"]}
+        order=queue.check_github(reg,[])
         events=[]
+        eligible=[]
+        for n in issues:
+            if budget.exhausted(n,state["jobs"]):
+                events.append({"issue":n,"action":"ATTEMPT_LIMIT_REACHED",
+                               "attempts":budget.count(n,state["jobs"]),
+                               "max_attempts":budget.MAX_HARDWARE_ATTEMPTS})
+                continue
+            if n not in order:
+                events.append({"issue":n,"action":"NOT_RANKED_SKIP"})
+                continue
+            try:
+                queue.check_github(reg,[n])
+            except queue.Refused as exc:
+                if f"#{n} not open and authored by" not in str(exc):
+                    raise
+                events.append({"issue":n,"action":"CLOSED_OR_UNTRUSTED_SKIP"})
+                continue
+            eligible.append(n)
         ready=[]
-        for n in sorted(issues,key=order.index):
+        for n in sorted(eligible,key=order.index):
             grant=policy["approved"][str(n)]
             key=f"issue-{n}:{grant['manifest_sha256']}"
             if key in state["jobs"]:
@@ -309,6 +338,9 @@ def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_p
             fresh_reviews=journal.state_load(review_path)
             confirmed=[]
             for n,grant,_,_,_ in ready:
+                if budget.exhausted(n,state["jobs"]):
+                    events.append({"issue":n,"action":"ATTEMPT_LIMIT_REACHED"})
+                    continue
                 try:
                     m_i,raw_i,approval_i=secure_approval(cfg,n,grant,fresh_reviews)
                 except batch.Refused as exc:
@@ -419,10 +451,12 @@ def main(argv=None):
     p.add_argument("--config",type=Path,default=hw.CONFIG)
     p.add_argument("--state",type=Path,default=STATE)
     p.add_argument("--review-state",type=Path,default=REVIEW)
+    p.add_argument("--issue",type=int,help="manual run: select one reviewed physical issue")
     args=p.parse_args(argv)
     if not args.once:p.error("only one bounded hardware queue iteration at a time")
     try:
-        print(json.dumps(one_cycle(args.config,args.policy,args.state,args.review_state),indent=2))
+        print(json.dumps(one_cycle(args.config,args.policy,args.state,args.review_state,
+                                   issue_filter=args.issue),indent=2))
         return 0
     except (batch.Refused,queue.Refused,ValueError,OSError,KeyError,subprocess.SubprocessError) as exc:
         print(f"REFUSED: {exc}",file=sys.stderr)

@@ -19,6 +19,7 @@ import fcntl
 
 import k6_experiment_autopilot as journal
 import k6_experiment_builder as builder
+import k6_experiment_attempt_budget as budget
 
 STATE=builder.STATE
 CONFIG=builder.CONFIG
@@ -199,7 +200,10 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
             order=sorted(candidates,key=lambda n:(
                 int(data["jobs"].get(f"issue-{n}",{}).get("repair_attempts",0)),
                 candidates.index(n)))
+            attempts_by_issue=budget.load_jobs()
             for issue in order:
+                if budget.exhausted(issue,attempts_by_issue):
+                    continue
                 key=f"issue-{issue}"
                 old=data["jobs"].get(key)
                 if not old or old.get("state") not in BLOCKED:

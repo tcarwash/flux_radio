@@ -25,6 +25,7 @@ import k6_experiment_batch as batch
 import k6_experiment_builder as builder
 import k6_experiment_dispatch as dispatch
 import k6_experiment_hardware as hardware
+import k6_experiment_attempt_budget as budget
 
 STATE_ROOT=Path.home()/".local/state/flux-experiment-autopilot"
 GENERATED=STATE_ROOT/"hardware-generated.json"
@@ -260,7 +261,8 @@ def generate(n,recipe,record,p):
 
 
 def register_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
-                  hardware_config=GENERATED):
+                  hardware_config=GENERATED,
+                  hardware_state_path=budget.DEFAULT_HARDWARE_STATE):
     """Never clobber a concurrent candidate writer's durable journal."""
     builder_state=Path(builder_state)
     builder_state.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
@@ -270,17 +272,23 @@ def register_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
         except BlockingIOError:
             return {"mode":"PROMOTION_BUSY_SKIP","events":[],
                     "radio_access":False}
-        return _register_locked(policy_path,builder_state,hardware_config)
+        return _register_locked(policy_path,builder_state,hardware_config,
+                                hardware_state_path)
 
 
-def _register_locked(policy_path,builder_state,hardware_config):
+def _register_locked(policy_path,builder_state,hardware_config,
+                     hardware_state_path):
     p=policy(policy_path)
     if not p["enabled"]:return {"mode":"AUTO_HARDWARE_PREPARATION_DISABLED","events":[]}
     reg=ensure_generated()
     b=journal.state_load(builder_state)
     recipes=builder.config_load()["recipes"]
     events=[]
+    attempts=budget.load_jobs(hardware_state_path)
     for nstr,recipe in recipes.items():
+        if budget.exhausted(int(nstr),attempts):
+            events.append({"issue":int(nstr),"state":"ATTEMPT_LIMIT_REACHED"})
+            continue
         record=b["jobs"].get(f"issue-{nstr}",{})
         if record.get("state")!="TESTED_NEEDS_INDEPENDENT_REVIEW":
             continue
@@ -368,6 +376,9 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
     builder_jobs=journal.state_load(builder_state)["jobs"]
     for nstr,recipe in builder.config_load()["recipes"].items():
         if used>=p["max_sessions_per_day"]:break
+        if budget.exhausted(int(nstr),hardware_attempts):
+            events.append({"issue":int(nstr),"state":"ATTEMPT_LIMIT_REACHED"})
+            continue
         record=builder_jobs.get(f"issue-{nstr}",{})
         if record.get("state")!="MANIFEST_REGISTERED_FOR_REVIEW":continue
         entry=reg["manifests"].get(nstr)

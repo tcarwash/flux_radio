@@ -180,13 +180,16 @@ def hardware_status():
     if not isinstance(standing, dict) or not isinstance(standing.get("approved"), dict):
         raise ValueError("hardware standing permissions missing or corrupt")
     local = read_jobs(STATEDIR / "hardware.json")
+    closed = read_jobs(STATEDIR / "failed-closeouts.json")["jobs"]
     issues = []
     for key, grant in sorted(standing["approved"].items(), key=lambda x: int(x[0])):
         manifest = cfg["manifests"].get(key, {})
         sha = grant.get("manifest_sha256")
         historical_key = f"issue-{key}:{sha}"
         previous = local["jobs"].get(historical_key)
-        if sha != manifest.get("sha256"):
+        if closed.get(f"issue-{key}",{}).get("state") == "CLOSED_FAILED":
+            state = "FAILED_CLOSED"
+        elif sha != manifest.get("sha256"):
             state = "UNENROLLED_OR_DRIFTED"
         else:
             state = previous.get("state", "AWAITING_REVIEW") if previous else "AWAITING_REVIEW"
@@ -202,6 +205,7 @@ def hardware_status():
         "blocked_total": sum(v.get("state") == "BLOCKED_NO_AUTO_RETRY"
                              for v in history.values()),
         "historical_attempts": len(history),
+        "failed_closed": sum(x.get("state") == "CLOSED_FAILED" for x in closed.values()),
         "approved_in_policy": len(standing["approved"]),
         "current": issues,
         "journal_missing": local["missing"],
@@ -461,7 +465,8 @@ def display(data):
     if hardware:
         print(f"  Hardware    {hardware['active']} active"
               f" · {hardware['blocked_total']} blocked attempts"
-              f" · {hardware['approved_in_policy']} registered")
+              f" · {hardware['approved_in_policy']} registered"
+              + (f" · {hardware['failed_closed']} failed/closed" if hardware.get('failed_closed') else ""))
         if hardware.get("waiting_independent_review"):
             print(f"              awaiting independent review: "
                   f"{hardware['waiting_independent_review']}")

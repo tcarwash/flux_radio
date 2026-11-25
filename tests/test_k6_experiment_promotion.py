@@ -146,7 +146,10 @@ def test_one_unpromotable_candidate_does_not_kill_pipeline(monkeypatch,tmp_path)
         "recipes":{"20":{"kind":"BOUNDED_TX"},"21":{"kind":"RX_ONLY"}}})
     monkeypatch.setattr(p,"generate",lambda n,*args:(_ for _ in ()).throw(
         p.Refused("generated entrypoint lacks required preflight")) )
-    report=p.register_once(builder_state=builder_state,hardware_config=cfg)
+    attempts=tmp_path/"attempts.json"
+    attempts.write_text(json.dumps({"schema":1,"jobs":{}}))
+    report=p.register_once(builder_state=builder_state,hardware_config=cfg,
+                           hardware_state_path=attempts)
     assert len(report["events"])==2
     assert all(e["state"]=="BLOCKED_CANDIDATE_NEEDS_REPAIR"
                for e in report["events"])

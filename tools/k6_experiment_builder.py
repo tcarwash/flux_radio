@@ -29,6 +29,7 @@ ROOT_OUT=Path.home()/".local/state/flux-experiment-autopilot/build-candidates"
 INTAKE=Path.home()/".local/state/flux-experiment-autopilot/intake.json"
 REPO=Path("/storage5/dev/ag7su-blowfang")
 WORKTREE_BASE=Path("/storage5/dev")
+BRIEF_RECIPES=Path.home()/".local/state/flux-experiment-autopilot/brief-recipes.json"
 ALLOWED_VERDICTS=frozenset(("NEEDS_PINNED_HARNESS","READY_FOR_INDEPENDENT_REVIEW",
                            "NEEDS_OFFLINE","NEEDS_FIRMWARE"))
 
@@ -44,8 +45,22 @@ def run(*argv,timeout=40,cwd=None):
     return p.stdout.rstrip("\n")
 
 
-def config_load(path=CONFIG):
+def config_load(path=CONFIG,brief_path=None):
     config=json.loads(Path(path).read_text())
+    # Bootstrap new owner-authored hardware issue briefs without requiring a
+    # handwritten per-issue recipe. The GitHub -> brief collector validates
+    # authorship; its generated paths/commands are independently checked here.
+    if brief_path is None and Path(path).resolve()==CONFIG.resolve():
+        brief_path=BRIEF_RECIPES
+    if brief_path is not None and Path(brief_path).is_file():
+        dynamic=json.loads(Path(brief_path).read_text())
+        if (dynamic.get("schema")!=1 or dynamic.get("repo")!="tcarwash/flux_radio"
+                or dynamic.get("trusted_author")!="tcarwash"
+                or not isinstance(dynamic.get("recipes"),dict)):
+            raise Refused("invalid owner-authored experiment brief registry")
+        for n,r in dynamic["recipes"].items():
+            if n not in config["recipes"]:
+                config["recipes"][n]=r
     if set(config)!={"schema","enabled","repo","max_daily","recipes"} or config["schema"]!=1:
         raise Refused("invalid builder policy")
     if config["repo"]!="tcarwash/flux_radio" or type(config["enabled"]) is not bool:
@@ -56,7 +71,7 @@ def config_load(path=CONFIG):
         if not re.fullmatch(r"[1-9]\d*",issue):raise Refused("invalid issue")
         if set(r)!={"base_ref","allowed_paths","tests","objective","kind"}:
             raise Refused("unexpected recipe fields")
-        if not re.fullmatch(r"origin/(?:research|integration)/[A-Za-z0-9_.-]+",r["base_ref"]):
+        if not re.fullmatch(r"origin/(?:main|(?:research|integration)/[A-Za-z0-9_.-]+)",r["base_ref"]):
             raise Refused("unreviewed candidate source branch")
         if r["kind"] not in ("RX_ONLY","BOUNDED_TX"):raise Refused("invalid experiment kind")
         for path in r["allowed_paths"]+r["tests"]:
@@ -188,6 +203,12 @@ def build_once(config=CONFIG,state_path=STATE,intake_path=INTAKE,
     if not cfg["enabled"]:return {"mode":"BUILDER_DISABLED","events":[]}
     if not repo.is_dir():raise Refused("firmware source repository not available")
     triaged=current_triage(intake_path)
+    brief_ready=set()
+    if Path(config).resolve()==CONFIG.resolve() and BRIEF_RECIPES.is_file():
+        brief_doc=json.loads(BRIEF_RECIPES.read_text())
+        if (brief_doc.get("schema")==1 and brief_doc.get("trusted_author")=="tcarwash"
+                and brief_doc.get("repo")=="tcarwash/flux_radio"):
+            brief_ready={int(n) for n in brief_doc.get("recipes",{})}
     state_path=Path(state_path)
     state_path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
     with worker_lock_path(state_path).open("a+b") as wlock:
@@ -207,9 +228,9 @@ def build_once(config=CONFIG,state_path=STATE,intake_path=INTAKE,
                           if x.get("started","").startswith(today))
             for issue,recipe in sorted(cfg["recipes"].items(),key=lambda x:(x[1]["kind"]!="RX_ONLY",{26:0,20:1,30:2}.get(int(x[0]),10),int(x[0]))):
                 n=int(issue)
-                if n not in triaged:continue
-                triage=triaged[n][1]
-                if triage.get("verdict") not in ALLOWED_VERDICTS:continue
+                if n not in triaged and n not in brief_ready:continue
+                triage=triaged[n][1] if n in triaged else {"verdict":"NEEDS_PINNED_HARNESS"}
+                if triage.get("verdict") not in ALLOWED_VERDICTS and n not in brief_ready:continue
                 key=f"issue-{n}"
                 if key in state["jobs"]:continue
                 if submitted>=cfg["max_daily"]:
