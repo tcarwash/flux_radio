@@ -9,6 +9,16 @@ import binascii
 import struct
 
 STAGES=("B31", "W31", "W08")
+# v2 captures time windows relative to first *valid* ISR PCM sample; the
+# sampler's first three warm-up ISR ticks are not represented in the windows.
+TIME_BIN_END_MS=(20,40,60,80,100,120,200,320,480,640,800,1000)
+
+
+def decompress_pcm(code: int)->int:
+    """Decode the v2 4-bit mantissa/4-bit exponent lower-bound estimate."""
+    if code<16:return code
+    return (16+(code&15))<<((code>>4)-1)
+
 
 
 def crc16_xmodem(data: bytes)->int:
@@ -31,11 +41,29 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0]!=1:
-        raise ValueError("MIC A/B mailbox format/version invalid")
+    if len(data)!=33 or data[0] not in (1,2):
+        raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==2:
+        clipped,vox,n=struct.unpack_from("<HHH",data,25)
+        if n<7600 or n>8100 or clipped>n or vox>1023:
+            raise ValueError("MIC TIME sample/VOX/clip totals invalid")
+        windows=[]
+        start=0
+        for i,end in enumerate(TIME_BIN_END_MS):
+            windows.append({"start_ms":start,"end_ms":end,
+                            "mean_abs_pcm":decompress_pcm(data[1+i*2]),
+                            "tone_1khz_pcm_peak":decompress_pcm(data[2+i*2])})
+            start=end
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":2,"measurement":"time_resolved_mic_pcm",
+                "sampling_rate_hz_nominal":8000,
+                "quantization":"approximate logarithmic PCM counts (up to 6.25% step)",
+                "window_origin":"first valid PCM after 3 ISR warm-up ticks",
+                "clipped_samples_total":clipped,"vox_max":vox,"samples":n,
+                "windows":windows}
     rows=[]
     for i,stage in enumerate(STAGES):
         tone,clipped,mean,vox,n=struct.unpack_from("<HHHHH",data,1+i*10)
