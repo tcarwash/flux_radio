@@ -52,3 +52,32 @@ A safe cable-attached `k6_live.py run-coop 25 --allow-higher-api` loaded the rea
 2. Launch `CATALOG → MIC IRQ` (**slot25**; not `SOTTO MIC` slot30). Hold real PTT **at least ~2 seconds**, enough for ~800ms bias settling and ~600ms continuous interrupt capture; expect `MIC IRQ SAVED` or `MIC IRQ ABORT`.
 3. Reconnect programming UART **without rebooting**. Retrieve `tools/k6_live.py --port /dev/ttyUSB0 mic-result --save ~/flux-bench/sotto-mic-calibration-20261125/gp0-irq-v1/tone-2khz-01.json`. A success should report >35 PCM blocks, >3500 DMA half-IRQs, peak TIM17 IRQ cost <9k counts, zero missed halves and PCM overflows and RFIC VOX substantially above 169 (OFF). On v11 error, use error code plus ISR peak/count for exact triage.
 4. **No need to enable RF** in this step; it only proves IRQ capture can run concurrently with a mocked ~2ms per 10ms foreground workload. If the real ISR passes, proceed to separate Sotto GP0 TX module offline and emulator tests, then an attended SDR-monitored RF session. Be careful: the existing Sotto encoder reads SPI codebooks; whether SPI critical sections allow the ~90µs DMA IRQ deadline is still unproven. Never silently claim speech success from this probe.
+
+## First physical continuous GP0 DMA IRQ capture — **PASS**, 2026-11-25
+
+Operator ran the installed `MIC IRQ` slot25 diagnostic after disconnecting UART, with generator at **2 kHz nominal 0.1 V output ON**, K6 on dummy load, physically holding PTT. On serial reconnection the live K6 reported **transmitting=false, 7.76V, standby_idle=false**; an initial attempt to read the boot-local mailbox returned `BUSY`. A passive LCD screenshot, stored in `gp0-irq-v1/after-attended-test.png`, showed the radio had returned to its **CATALOG 12/17** list with `MIC IRQ` selected. The firmware only permits `MIC_RESULT` (0x86) while its VFO is at standby, so the menu was blocking the mailbox read, **not a stuck transmitter**. Sent one safe virtual `EXIT` UI gesture; returned to standby with no reboot or radio/RF reconfiguration and successfully retrieved the existing result.
+
+The result is CRC-valid **MAB1 version10** / `gp0_dma_irq_8khz_pcm_stream`, saved at `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-irq-v1/tone-2khz-01.json`, SHA256 **`158dcc4928f3eb8b2e41c171275828b93c54adc5d05454bc5ef8c0cf37363259`**. Serial retrieval at **`2026-11-25T21:29:07.953786+00:00`** is not the hardware capture timestamp. A final live status showed standby idle, TX=false and battery 7.77 V, VFO A 443.500 MHz unchanged.
+
+| Physical ISR/PCM measurement | Recorded value |
+|---|---:|
+| GP0 selector | 12 (PB1) |
+| measured 64:1 bit-density stream | **84,810 samples/s** |
+| continuously produced 8kHz PCM samples | **5,150** |
+| consumed 8kHz samples | **5,120** |
+| full 80-sample PCM blocks consumed | **64** |
+| DMA1 half-buffer interrupt count | **6,826** |
+| peak ISR timer ticks (96MHz nominal) | **2,363** (24.61us) |
+| average ISR timer ticks | **2,222** (23.15us) |
+| estimated half-buffer deadline | **~94.3us** at recorded rate |
+| half-buffer interrupts missed | **0** |
+| PCM queue peak depth | **1/4 blocks** |
+| clipping | **0 PCM samples** |
+| IRQ error code | **0** |
+| PCM absolute peak | **16,632** |
+| PCM RMS approximately | **8,832** |
+| RFIC VOX peak | **437**, comfortably above generator-OFF ~169 |
+
+**Physical result:** the newly implemented real *module SRAM* Thumb IRQ9 DMA producer remains active while the foreground intentionally spends ~2ms per 10ms PCM block not consuming audio. The ~24.6us longest observed ISR is well below the ~94us physical DMA half period, and the four-block PCM ring never backed up by more than one block. The RFIC microphone gate is active as expected, and no RF PA was enabled. This validates the *continuous capture/mocked-concurrency* feasibility gate, stronger than the previous short foreground-busy PCM captures. It is not yet proof of real codec/FSK concurrency: actual Sotto codebook SPI read timing and critical sections could delay IRQs, and the sampled 2kHz signal's spectral content was not recorded in this version10 report (RMS/peak/VOX only). Do not claim intelligible digital voice or transmit a new Sotto module until the GP0 encoder runs in an isolated virtual qualification and passes a physical attended test.
+
+**Next engineering work:** integrate the `gp0_irq_audio_t` service into a **separate** Sotto GP0 TX source with common `sl_engine_t.mic` PCM ring and real Sotto codec resource API. Measure *true* module flash and scratch RAM budget (currently `SOTTO MIC` slot30 code ~9780B; new PIC IRQ component ~1000B, GP0 control and DSP further), ensure layout fits module arena without code/scratch collision. Also bound `sl_engine_tick()` + codebook SPI masking and ensure the encoder never holds PRIMASK globally for >~90us. Virtual Cortex-M0 RF IQ/FSK decoding and independent Sotto audio decode must pass before touching slot30 or making attended transmissions. A new diagnostic slot27 may be used only after verifying it is free/unmodified; preserve known-good slot25 and slot30.
