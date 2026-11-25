@@ -205,3 +205,36 @@ def test_fixture_status_is_local_only_and_never_radio_pass(monkeypatch,tmp_path)
     assert x["queue_publications"]==0
     assert x["passed_tests"]==12
     assert x["counts"]=={"PASS":1,"FAIL_TESTS":1}
+
+
+def test_submit_enqueues_branch_experiment_without_blocking(monkeypatch,tmp_path,capsys):
+    import k6_experiment_promotion as promo
+    import k6_experiment_review as rev
+    wt=tmp_path/"wt"
+    (wt/"tools").mkdir(parents=True)
+    script=wt/"tools"/"my_bench.py"
+    script.write_text("--preflight-only --run --verify-only\n")
+    gen=tmp_path/"generated.json"
+    perms=tmp_path/"standing.json"
+    rstate=tmp_path/"review.json"
+    mdir=tmp_path/"manifests"
+    gen.write_text(json.dumps({"schema":1,"repo":"tcarwash/flux_radio","queue_issue":11,
+                               "trusted_author":"tcarwash","manifests":{}}))
+    perms.write_text(json.dumps({"schema":1,"enabled":True,"trusted_operator":"AG7SU",
+                                 "environment":"dummy_load","approved":{}}))
+    rstate.write_text(json.dumps({"schema":1,"jobs":{}}))
+    monkeypatch.setattr(promo,"GENERATED",gen)
+    monkeypatch.setattr(promo,"PERMISSIONS",perms)
+    monkeypatch.setattr(promo,"MANIFEST_DIR",mdir)
+    monkeypatch.setattr(rev,"DEFAULT_STATE",rstate)
+    rc=q.main(["submit","--issue","42","--worktree",str(wt),
+               "--script","tools/my_bench.py","--min-api","3","--no-github"])
+    assert rc==0
+    out=json.loads(capsys.readouterr().out)
+    assert out["status"]=="QUEUED"
+    assert out["issue"]==42
+    assert out["clear_spi"] is True
+    saved_manifest=json.loads(Path(out["manifest_path"]).read_text())
+    assert "--clear-spi" in saved_manifest["session_preflight"]["argv"]
+    assert json.loads(perms.read_text())["approved"]["42"]["manifest_sha256"]==out["manifest_sha256"]
+

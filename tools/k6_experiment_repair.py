@@ -133,6 +133,11 @@ MANDATORY source interface: support literal flags --preflight-only,
 --run, --verify-only, --prefix, --dummy-load-confirmed,
 --operator-lease-confirmed, --queue-lease-acknowledged,
 --max-tx-ms, and --frequency-hz. Keep the bench module inert by default.
+CRITICAL: When --run is passed, your script MUST execute the real hardware
+experiment on /dev/ttyUSB0 (using LiveLink, mutate_library, run_module) and
+capture SDR IQ via Python rtlsdr / tools/k6_iq_capture.py (never require
+shutil.which("rtl_sdr") and NEVER stub --run to print "offline sandbox:
+/dev/ttyUSB0 not operable here").
 Independent supervisor must be able to call its stages exactly.
 Preserve and strengthen tests. Tests to run later:
 {tests}

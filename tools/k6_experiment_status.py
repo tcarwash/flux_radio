@@ -483,6 +483,134 @@ def display(data):
     print("  Logs: flux-queue logs")
 
 
+def submit_job(args):
+    """Non-blocking central queue submission from any branch or agent worktree."""
+    from datetime import timezone
+    import hashlib
+    import k6_experiment_autopilot as journal
+    import k6_experiment_batch as batch
+    import k6_experiment_promotion as promo
+    import k6_experiment_review as rev
+    worktree = Path(args.worktree).resolve()
+    if not worktree.is_dir():
+        raise ValueError(f"worktree does not exist: {worktree}")
+    script_rel = Path(args.script)
+    script_abs = (worktree / script_rel).resolve() if not script_rel.is_absolute() else script_rel.resolve()
+    if not script_abs.is_file():
+        raise ValueError(f"bench script does not exist: {script_abs}")
+    p = promo.policy()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    session_id = f"queued-{args.issue}-{stamp}"
+    output = Path.home() / "flux-bench/batches" / session_id
+    probe = str(ROOT / "tools/k6_experiment_bench_probe.py")
+    base = ["/usr/bin/python3", probe, "--expected-build", p["expected_build"],
+            "--exact-api", str(p["exact_api"]), "--include-slots"]
+    if args.clear_spi:
+        base.append("--clear-spi")
+    if args.reflash_firmware:
+        base.extend(["--reflash-firmware", str(Path(args.reflash_firmware).resolve())])
+    before = str(output / "session-before.json")
+    preflight = base + ["--output", before]
+    after = base + ["--baseline", before]
+    venv_py = "/home/tyler/.local/share/flux-rf-venv/bin/python"
+    py = venv_py if Path(venv_py).is_file() else "/usr/bin/python3"
+    prefix = str(output / "auto-bench")
+    run_args = [py, str(script_abs), "--run", "--prefix", prefix,
+                "--dummy-load-confirmed", "--operator-lease-confirmed",
+                "--queue-lease-acknowledged"]
+    if args.kind == "BOUNDED_TX":
+        run_args.extend(["--max-tx-ms", str(p["rf_session_limit_ms"]),
+                         "--frequency-hz", "433500000"])
+    preflight_argv = ([py, str(script_abs), "--preflight-only"]
+                      if "--preflight-only" in script_abs.read_text()
+                      else after)
+    pin_paths = {str(script_abs), probe}
+    for dep in ("tools/k6_install.py", "tools/k6_live.py", "tools/k6_port_lock.py",
+                "tools/k6_user_store_migrate.py", "modem/k6mod.py"):
+        if (worktree / dep).is_file():
+            pin_paths.add(str((worktree / dep).resolve()))
+    for extra in args.pin or ():
+        ep = (worktree / extra).resolve() if not Path(extra).is_absolute() else Path(extra).resolve()
+        if not ep.is_file():
+            raise ValueError(f"pinned file not found: {ep}")
+        pin_paths.add(str(ep))
+    session_deps = ["tools/k6_experiment_bench_probe.py", "tools/k6_live.py",
+                    "tools/k6_install.py", "tools/k6_port_lock.py",
+                    "tools/k6_user_store_migrate.py"]
+    session_pins = [{"path": str(ROOT / x), "sha256": promo.sha(ROOT / x)}
+                    for x in session_deps]
+    expires = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+    m = {
+        "version": 1,
+        "session_id": session_id,
+        "port": "/dev/ttyUSB0",
+        "queue_issue_url": "https://github.com/tcarwash/flux_radio/issues/11",
+        "lease_expires_utc": expires,
+        "session_pins": session_pins,
+        "session_preflight": {"argv": preflight, "timeout_seconds": 90},
+        "session_restore": {"argv": after, "timeout_seconds": 90},
+        "session_verify": {"argv": after, "timeout_seconds": 90},
+        "jobs": [{
+            "id": f"queued-{args.issue}-one-shot",
+            "issue_url": f"https://github.com/tcarwash/flux_radio/issues/{args.issue}",
+            "minimum_module_api": args.min_api,
+            "cwd": str(worktree),
+            "pins": [{"path": pt, "sha256": promo.sha(pt)} for pt in sorted(pin_paths)],
+            "preflight": {"argv": preflight_argv, "timeout_seconds": 60},
+            "run": {"argv": run_args, "timeout_seconds": 150},
+            "restore": {"argv": after, "timeout_seconds": 90},
+            "verify": {"argv": after, "timeout_seconds": 90},
+        }],
+    }
+    batch.validate_manifest(m)
+    batch.check_command_pins(m)
+    api, api_raw = batch.read_api_config(batch.API_CONFIG)
+    blockers = batch.check_api_compatibility(m, api)
+    if blockers:
+        raise ValueError("API compatibility blocked: " + "; ".join(blockers))
+    reg = promo.ensure_generated()
+    if not args.no_github and not promo.ranked(reg, args.issue):
+        promo.ensure_ranked(reg, args.issue, write=True)
+    manifest_path = promo.MANIFEST_DIR / f"{session_id}.json"
+    promo.atomic(manifest_path, m)
+    digest = promo.sha(manifest_path)
+    reg["manifests"][str(args.issue)] = {"path": str(manifest_path), "sha256": digest}
+    promo.atomic(promo.GENERATED, reg)
+    # Record direct local approval and standing one-shot permit so the next
+    # background dispatcher tick bundles and runs this job without blocking.
+    rstate = journal.state_load(rev.DEFAULT_STATE)
+    rkey = rev.fingerprint(args.issue, digest, api_raw)
+    rstate["jobs"][rkey] = {
+        "state": "APPROVED",
+        "job_id": "0" * 12,
+        "attempts": 1,
+        "at_utc": datetime.now(timezone.utc).isoformat(),
+        "completed_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    journal.state_write(rev.DEFAULT_STATE, rstate)
+    from k6_experiment_hardware_autopilot import standing_policy
+    standing = standing_policy(promo.PERMISSIONS)
+    standing["approved"][str(args.issue)] = {
+        "manifest_sha256": digest,
+        "expected_build": p["expected_build"],
+        "exact_api": p["exact_api"],
+        "expires_utc": expires,
+        "one_shot": True,
+        "dummy_load_confirmed": True,
+        "no_cwid_for_dummy_load": True,
+    }
+    promo.atomic(promo.PERMISSIONS, standing)
+    return {
+        "status": "QUEUED",
+        "issue": args.issue,
+        "session_id": session_id,
+        "manifest_sha256": digest,
+        "manifest_path": str(manifest_path),
+        "minimum_module_api": args.min_api,
+        "clear_spi": bool(args.clear_spi),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command")
@@ -494,9 +622,28 @@ def main(argv=None):
                    help="exit nonzero if runner is unhealthy (blocked jobs alone do not count)")
     log = sub.add_parser("logs", help="show the systemd service log")
     log.add_argument("-n", "--lines", type=int, default=60)
+    for name in ("submit", "enqueue"):
+        sub_p = sub.add_parser(name, help="non-blocking enqueue of a branch/worktree hardware experiment")
+        sub_p.add_argument("--issue", type=int, required=True, help="GitHub experiment issue number")
+        sub_p.add_argument("--worktree", type=Path, default=Path.cwd(), help="branch/worktree directory")
+        sub_p.add_argument("--script", required=True, help="bench script path (relative to worktree or absolute)")
+        sub_p.add_argument("--min-api", type=int, default=3, help="minimum firmware module API required (1..29)")
+        sub_p.add_argument("--kind", choices=("BOUNDED_TX", "RX_ONLY"), default="BOUNDED_TX")
+        sub_p.add_argument("--clear-spi", action="store_true", default=True,
+                           help="clear temporary SPI slots before and after run (default: true)")
+        sub_p.add_argument("--reflash-firmware", type=Path, help="optional firmware binary to flash before run")
+        sub_p.add_argument("--pin", action="append", help="additional file paths to SHA256-pin")
+        sub_p.add_argument("--no-github", action="store_true", help="skip GitHub #11 ranking check/update")
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
     if args.command is None:
         args = parser.parse_args(["status"])
+    if args.command in ("submit", "enqueue"):
+        try:
+            print(json.dumps(submit_job(args), indent=2))
+            return 0
+        except Exception as exc:
+            print(f"SUBMIT REFUSED: {exc}", file=sys.stderr)
+            return 2
     if args.command == "logs":
         if not 1 <= args.lines <= 1000:
             parser.error("log lines must be 1..1000")

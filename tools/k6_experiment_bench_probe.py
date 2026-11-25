@@ -41,16 +41,18 @@ def bench_lock(path):
         yield
 
 
-def _cleanup_live(link, baseline=None):
+def _cleanup_live(link, baseline=None, *, clear_spi=False):
     """Ensure temporary slot 30 and VFO state do not leak between bundled tests."""
     try:
         directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
-        if TEMP_SLOT in directory:
-            from modem import k6mod
-            serials=Serials()
-            serials.advance_after(link.serial_watermark())
-            erase=k6mod.image(b"K6ERASE",0,serials.next(),None,level=1,lib=TEMP_SLOT,remove=True)
-            link.mutate_library(erase)
+        from modem import k6mod
+        serials=Serials()
+        serials.advance_after(link.serial_watermark())
+        slots_to_clear=[TEMP_SLOT] if not clear_spi else [s for s in sorted(directory) if s>=TEMP_SLOT]
+        for slot in slots_to_clear:
+            if slot in directory:
+                erase=k6mod.image(b"K6ERASE",0,serials.next(),None,level=1,lib=slot,remove=True)
+                link.mutate_library(erase)
     except Exception:
         pass
     try:
@@ -65,12 +67,23 @@ def _cleanup_live(link, baseline=None):
         pass
 
 
-def snapshot(port=PORT, include_slots=False, *, cleanup=False, baseline=None):
+def reflash_firmware(port=PORT, firmware_path=None):
+    """Reflash the dedicated test radio with a known-good firmware image."""
+    fw=Path(firmware_path) if firmware_path else ROOT/"firmware/k6-aura/build/k6-aura.bin"
+    if not fw.is_file():
+        raise ValueError(f"firmware image not found: {fw}")
+    updater=ROOT/"tools/k6_update.py"
+    import subprocess
+    subprocess.run([sys.executable,str(updater),"--port",port,str(fw)],
+                   check=True,timeout=120)
+
+
+def snapshot(port=PORT, include_slots=False, *, cleanup=False, clear_spi=False, baseline=None):
     with serial_lock(port):
         with open_port(SimpleNamespace(port=port)) as p:
             link=LiveLink(p,timeout=2)
-            if cleanup:
-                _cleanup_live(link,baseline=baseline)
+            if cleanup or clear_spi:
+                _cleanup_live(link,baseline=baseline,clear_spi=clear_spi)
             caps=link.module_capabilities()
             status=link.status()
             data={"capabilities":caps,"status":status}
@@ -132,6 +145,8 @@ def main(argv=None):
     p.add_argument("--minimum-api",type=int,default=1)
     p.add_argument("--exact-api",type=int)
     p.add_argument("--include-slots",action="store_true")
+    p.add_argument("--clear-spi",action="store_true",help="clear temporary/scratch SPI slots before probing")
+    p.add_argument("--reflash-firmware",type=Path,help="optional firmware image to flash before probing")
     p.add_argument("--baseline",type=Path)
     p.add_argument("--output",type=Path)
     p.add_argument("--lock-bench",action="store_true",help="standalone: exclusive cooperative whole-bench flock")
@@ -147,9 +162,12 @@ def main(argv=None):
     from contextlib import nullcontext
     try:
         with bench_lock(DEFAULT_BENCH) if args.lock_bench else nullcontext():
+            if args.reflash_firmware:
+                reflash_firmware(args.port,args.reflash_firmware)
             baseline=json.loads(args.baseline.read_text()) if args.baseline else None
             data=snapshot(args.port,include_slots=args.include_slots,
-                          cleanup=bool(args.output or args.baseline),
+                          cleanup=bool(args.output or args.baseline or args.clear_spi),
+                          clear_spi=args.clear_spi,
                           baseline=baseline)
             check(data,expected_build=args.expected_build,minimum_api=args.minimum_api,
                   exact_api=args.exact_api,baseline=baseline)

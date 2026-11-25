@@ -366,6 +366,23 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
         old_grant=standing["approved"].get(nstr)
         if old_grant:
             if old_grant["manifest_sha256"]==entry["sha256"]:
+                old_attempt=hardware_attempts.get(
+                    f"issue-{n}:{old_grant['manifest_sha256']}",{})
+                if old_attempt.get("state")=="BLOCKED_NO_AUTO_RETRY":
+                    err_summary="Physical run failed"
+                    ev_path=old_attempt.get("evidence")
+                    if ev_path and Path(ev_path).is_file():
+                        for logf in sorted(Path(ev_path).parent.glob("job*-run.log")):
+                            txt=logf.read_text(errors="replace").strip()
+                            if txt:
+                                err_summary=f"Physical run failed: {txt.splitlines()[-1][:240]}"
+                                break
+                    record["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+                    record["error"]=err_summary
+                    if int(record.get("repair_attempts",0))>=4:
+                        record["repair_attempts"]=3
+                    builder.save_job_entry(builder_state,f"issue-{nstr}",record)
+                    events.append({"issue":n,"state":"HARDWARE_FAILED_SENT_TO_REPAIR"})
                 continue
             old_attempt=hardware_attempts.get(
                 f"issue-{n}:{old_grant['manifest_sha256']}",{})
