@@ -17,7 +17,10 @@ import sys
 from types import SimpleNamespace
 
 import hashlib
-from k6_install import open_port, LIB_BASE, Serials
+import shutil
+import subprocess
+import time
+from k6_install import open_port, LIB_BASE, Serials, Cable, CABLE_HANDSHAKE
 from k6_user_store_migrate import locations
 from k6_live import LiveLink
 from k6_port_lock import serial_lock
@@ -41,8 +44,68 @@ def bench_lock(path):
         yield
 
 
-def _cleanup_live(link, baseline=None, *, clear_spi=False):
-    """Ensure temporary slot 30 and VFO state do not leak between bundled tests."""
+def _power_cycle_radio(port_handle, *, wait_fn=time.sleep):
+    """Attempt MCU reboot via CPS cable session and optional external power cycle."""
+    rebooted=False
+    try:
+        cable=Cable(port_handle,log=lambda *_:None,timeout=2.0)
+        if cable.handshake(CABLE_HANDSHAKE,wait=3.5,gap=0.35):
+            cable.end()
+            wait_fn(2.5)
+            rebooted=True
+    except Exception:
+        pass
+    cmd=os.environ.get("FLUX_RADIO_POWER_CYCLE_CMD")
+    if cmd:
+        try:
+            subprocess.run(cmd,shell=True,check=False,timeout=30)
+            wait_fn(3.0)
+            rebooted=True
+        except Exception:
+            pass
+    elif not rebooted and shutil.which("uhubctl"):
+        try:
+            subprocess.run(["uhubctl","-a","cycle"],check=False,
+                           capture_output=True,timeout=20)
+            wait_fn(3.0)
+            rebooted=True
+        except Exception:
+            pass
+    return rebooted
+
+
+def _ensure_ptt_off(port_handle, link, *, wait_fn=time.sleep):
+    """Detect a hung PTT or wedged foreground module and reboot/power-cycle to dekey."""
+    st=None
+    try:
+        st=link.status()
+    except Exception:
+        st=None
+    if st is not None and st.get("transmitting") is False:
+        return st,False
+    # Give firmware PTT lease (800ms) or module TX watchdog (1900ms) a moment to expire.
+    wait_fn(2.0)
+    try:
+        st=link.status()
+    except Exception:
+        st=None
+    if st is not None and st.get("transmitting") is False:
+        return st,False
+    # Still transmitting or unresponsive: trigger MCU reboot / power cycle.
+    _power_cycle_radio(port_handle,wait_fn=wait_fn)
+    try:
+        st=link.status()
+    except Exception:
+        st=None
+    if st is None or st.get("transmitting") is not False:
+        raise ValueError("HUNG PTT: radio still transmitting or unresponsive after reboot/power-cycle attempt")
+    return st,True
+
+
+def _cleanup_live(link, baseline=None, *, clear_spi=False, port_handle=None):
+    """Ensure hung PTT is recovered and temporary slot 30 / VFO state do not leak."""
+    if port_handle is not None:
+        _ensure_ptt_off(port_handle,link)
     try:
         directory=locations(link.read(LIB_BASE,8192)+bytes(512*1024-8192))
         from modem import k6mod
@@ -73,7 +136,6 @@ def reflash_firmware(port=PORT, firmware_path=None):
     if not fw.is_file():
         raise ValueError(f"firmware image not found: {fw}")
     updater=ROOT/"tools/k6_update.py"
-    import subprocess
     subprocess.run([sys.executable,str(updater),"--port",port,str(fw)],
                    check=True,timeout=120)
 
@@ -83,7 +145,7 @@ def snapshot(port=PORT, include_slots=False, *, cleanup=False, clear_spi=False, 
         with open_port(SimpleNamespace(port=port)) as p:
             link=LiveLink(p,timeout=2)
             if cleanup or clear_spi:
-                _cleanup_live(link,baseline=baseline,clear_spi=clear_spi)
+                _cleanup_live(link,baseline=baseline,clear_spi=clear_spi,port_handle=p)
             caps=link.module_capabilities()
             status=link.status()
             data={"capabilities":caps,"status":status}

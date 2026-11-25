@@ -63,3 +63,30 @@ def test_snapshot_baseline_requires_slot_data():
     a=sample()
     with pytest.raises(ValueError,match="missing full"):
         b.check(a,baseline=a)
+
+
+def test_hung_ptt_triggers_power_cycle_and_recovers(monkeypatch):
+    states=[
+        {"transmitting":True,"standby_idle":False},
+        {"transmitting":True,"standby_idle":False},
+        {"transmitting":False,"standby_idle":True},
+    ]
+    class FakeLink:
+        def status(self):
+            return states.pop(0)
+    cycled=[]
+    monkeypatch.setattr(b,"_power_cycle_radio",lambda port,wait_fn=None:cycled.append(True) or True)
+    st,recovered=b._ensure_ptt_off(object(),FakeLink(),wait_fn=lambda _:None)
+    assert recovered is True
+    assert cycled==[True]
+    assert st["transmitting"] is False
+
+
+def test_unrecoverable_hung_ptt_fails_closed(monkeypatch):
+    class StuckLink:
+        def status(self):
+            return {"transmitting":True,"standby_idle":False}
+    monkeypatch.setattr(b,"_power_cycle_radio",lambda port,wait_fn=None:True)
+    with pytest.raises(ValueError,match="HUNG PTT"):
+        b._ensure_ptt_off(object(),StuckLink(),wait_fn=lambda _:None)
+
