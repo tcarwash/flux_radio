@@ -59,3 +59,28 @@ The correction in commit `e6c0c48a` passed 41 focused tests and was installed on
 Cable-connected `run-coop 25` loaded exactly 2416B and returned expected `-4` due to shared UART/mic exclusion, emitting `MAB1:CLR` without transmitting or freezing. Live `status` after preflight reported standby idle, TX=false, 7.76V; `mic-result` reported empty as expected until an attended physical test. Library status verified slot25 new image and slot30 unchanged. The bench lock was released after installation.
 
 **Next attended run must be re-done**: previous tone-on attempt generated no saved measurements and cannot be reconstructed. With generator ON at 1kHz/0.1V and dummy load connected, launch `CATALOG → MIC ROUTES`, hold physical PTT at least ~3 seconds until `MIC ROUTES SAVED` (success) or `MIC ROUTES ABORT` (error stored). Reconnect cable WITHOUT restarting, and read `mic-result --save .../routes-v1/mic-routes-tone-on-02.json` (avoid overwriting `tone-on-01.json`, which contains `available=false`). If version5 returns, use error code and completed stage count to identify hardware guard or runtime issue. If version4 returns with all nine stages, proceed to generator-OFF control as planned. The user does not need a scope or PCB access for either test.
+
+### Corrected v2 physical tone-on result retrieved, 2026-11-25 20:22 UTC
+
+After the operator ran the 1 kHz/nominal 0.1 V tone-on test with PTT and reconnected without power cycling, the radio was idle/standby, TX=false, battery 7.75V and VFO A 443.500MHz. The new `MIC ROUTES` module completed **all nine stages** and returned a CRC-valid version4 mailbox. Saved host JSON `/home/tyler/flux-bench/sotto-mic-calibration-20261125/routes-v1/mic-routes-tone-on-02.json`, SHA256 `fb8d680df5b3d612a97608f9446862ea33d72f95458b24ced0529f389cc6fd15`. UTC timestamp `2026-11-25T20:22:21.637559+00:00` is retrieval, not physical capture, time.
+
+| AF selection (speaker AF path) | Steady mean abs PCM | Steady 1kHz peak PCM | PA11 HIGH fraction |
+|---|---:|---:|---:|
+| 4 BASEBAND1/raw | 1 | 0 | 1.0 |
+| 9 BYP | 1 | 0 | 1.0 |
+| 5 BASEBAND2 | 1 | 0 | 1.0 |
+| 1 FM AF | 1 | 0 | 1.0 |
+
+| GP0 output select → PB1 | PB1 HIGH fraction | PB1 asynchronous bit-transition fraction | approximate per-stage VOX max |
+|---|---:|---:|---:|
+| 9 | 0.0 | 0.0 | 184 |
+| 11 | 0.0 | 0.0 | 184 |
+| 12 | 0.5020 | 0.5725 | 180 |
+| 13 | 1.0 | 0.0 | 180 |
+| 14 | 0.0 | 0.0 | 180 |
+
+The overall maximum RFIC VOX was **197**, noticeably lower than the original physically injected tone-on MIC RAW run VOX **660** and prior tone-off control VOX **315**. This may reflect configuration differences, route-specific VOX behavior, generator output/amplitude differences, or environmental state; it prevents treating this run as an independently **verified analog tone at the RFIC**. Do not infer a clean mic signal or assert that the tone was actually present in every stage solely from the operator's setting. The *exact* codec, AF, GPIO results are real and useful even if there is no validated tone correlation.
+
+**Result:** all AF selections tested leave the existing PA11 raw sampler at 100% HIGH with near-zero PCM and 1kHz amplitude; no observed sustained microphone PCM at PA11. GP0 selection 12 displays robust asynchronous PB1 bit activity, but this was previously known as a possible alternate high-rate digital signal and is **not demonstrated TX microphone samples**. The modes 9/11 were low, 13 high, 14 low in this TX state, which is distinctly different from previously characterized receive IF in GP0=13. The coarse 256 reads per 10ms are not high-rate enough to demodulate signal content, and aliasing/route switching are alternative explanations.
+
+**Next control, not yet performed:** keep precisely same connector setup, VFO, module, PTT duration but set signal-generator output OFF; collect `routes-v1/mic-routes-tone-off-01.json`. Look for repeatable VOX difference to confirm whether tone-on stimulus was effective, and especially any change in GP0 selector12 bit statistics. If the tone OFF and ON runs match, do not claim the selector12 activity is microphone-driven. If they differ, design a time-resolved, oversampled GP0 selector12 route-specific experiment with independently verified 1kHz spectral content, rather than concluding from sampled bit-transition fractions alone. No additional firmware flash is needed for the OFF control.
