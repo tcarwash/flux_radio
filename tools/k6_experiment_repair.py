@@ -163,7 +163,16 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
                 continue
             # Check existing uncommitted/generated source remains strictly
             # within the local trusted recipe before invoking an editor.
-            current=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
+            try:
+                current=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
+            except builder.Refused as exc:
+                old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
+                           repair_attempts=MAX_REPAIRS,
+                           error=f"unsafe or unexpected repair file: {exc}"[:400])
+                journal.state_write(state_path,data)
+                return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
+                        "events":[{"issue":issue,"result":"REPAIR_SCOPE_REFUSED",
+                                   "reason":str(exc)[:150]}],"hardware_operations":0}
             stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             target=out_root/f"repair-{issue}-{attempts+1}-{stamp}"
             target.mkdir(parents=True,mode=0o700)
@@ -244,7 +253,7 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
                         "events":[{"issue":issue,"result":"READY_FOR_PROMOTION",
                                    "tests":"PASS","frozen_commit":head}],
                         "hardware_operations":0}
-            except (Refused,ValueError,OSError,subprocess.SubprocessError) as exc:
+            except (Refused,builder.Refused,ValueError,OSError,subprocess.SubprocessError) as exc:
                 old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
                            error=f"{type(exc).__name__}: {exc}"[:400],
                            last_repair_finished=datetime.now(timezone.utc).isoformat())

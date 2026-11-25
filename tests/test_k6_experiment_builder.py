@@ -87,3 +87,20 @@ def test_no_triage_avoids_delegate_and_hardware(tmp_path,monkeypatch):
 def test_imports_do_not_require_radio():
     assert b.STATE.name=="builder.json"
     assert b.INTAKE.name=="intake.json"
+
+
+
+def test_tracked_file_porcelain_leading_space_is_preserved(tmp_path):
+    import subprocess
+    repo=tmp_path/"repo"
+    repo.mkdir()
+    subprocess.run(["git","init","-q",str(repo)],check=True)
+    (repo/"tools").mkdir()
+    file=repo/"tools"/"candidate.py"
+    file.write_text("old")
+    subprocess.run(["git","-C",str(repo),"add","tools/candidate.py"],check=True)
+    subprocess.run(["git","-C",str(repo),"-c","user.name=Test",
+                    "-c","user.email=test@localhost",
+                    "commit","-qm","baseline"],check=True)
+    file.write_text("new")
+    assert b.candidate_files(repo,{"tools/candidate.py"})==["tools/candidate.py"]

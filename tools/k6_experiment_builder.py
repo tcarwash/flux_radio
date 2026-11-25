@@ -39,7 +39,9 @@ class Refused(RuntimeError):pass
 def run(*argv,timeout=40,cwd=None):
     p=subprocess.run(list(argv),cwd=cwd,capture_output=True,text=True,
                      timeout=timeout,check=True)
-    return p.stdout.strip()
+    # Preserve leading porcelain-status whitespace: " M path" is
+    # significant. strip() turns it into "M path" and truncates paths.
+    return p.stdout.rstrip("\n")
 
 
 def config_load(path=CONFIG):
