@@ -37,7 +37,8 @@ from pathlib import Path
 from tools.k6_sotto_module import build,FIXED
 from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 d=Path(sys.argv[1])
-code,entry=build(host_resources=True,live_tx=True)
+is_tone=len(sys.argv)>3 and sys.argv[3]=='tone'
+code,entry=build(host_resources=True,live_tx=not is_tone,tone_tx=is_tone)
 (d/'module.bin').write_bytes(code)
 (d/'entry').write_text(str(entry))
 so=d/'ref.so'
@@ -68,8 +69,10 @@ struct.pack_into('<I',h,28,zlib.crc32(h[:28]))
 (d/'deck.bin').write_bytes(build_deck(SLIM_CELLS.read_text()))
 """
 
-def prepare(tree,d,pcm=None):
+def prepare(tree,d,pcm=None,*,tone=False):
     tree=Path(tree).resolve()
+    if tone and pcm is None:
+        raise ValueError("Tone module requires deterministic reference PCM")
     args=[sys.executable,"-c",PREPARE,str(d)]
     if pcm is not None:
         pcm=np.asarray(pcm,dtype="<i2")
@@ -78,6 +81,7 @@ def prepare(tree,d,pcm=None):
         audio_path=d/"input.pcm"
         audio_path.write_bytes(pcm.tobytes())
         args.append(str(audio_path))
+    if tone:args.append('tone')
     subprocess.run(args,cwd=tree,check=True)
     h=(tree/"c/k6/k6_mod.h").read_text().split("typedef struct k6_api {")[1].split("} k6_api_t;")[0]
     names=re.findall(r"\(\*(\w+)\)\(",re.sub(r"/\*.*?\*/","",h,flags=re.S))
@@ -258,12 +262,18 @@ class LiveTx(Emu):
             else:self.keyed=True;self.lease_end=self.cyc+r0*96000
         elif name=="tx_off":
             self.cleanup();self.keyed=False;self.capture=None
+        elif name=="tx_pa":
+            if not self.keyed:ret=-1
+            # The model already handles PA as part of FSK enable/cleanup;
+            # mute between payloads is allowed with live UART connected.
+        elif name=="cancel_poll":
+            ret=-1 # No cooperative cancellation token in offline model.
         elif name=="lcd_flush":us=30000
         elif name=="delay_us":
             self.wall_delay=True
             try:return super().on_stub(uc,addr,size,data)
             finally:self.wall_delay=False
-        elif name in ("say","ticks","fd_read","ms","key_down","scratch","lcd_text"):
+        elif name in ("say","ticks","fd_read","ms","key_down","scratch","lcd_text","rx_hz"):
             return super().on_stub(uc,addr,size,data)
         else:raise RuntimeError("unexpected API "+name)
         self.tick(us*96)
