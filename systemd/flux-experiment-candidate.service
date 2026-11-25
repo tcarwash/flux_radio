@@ -5,8 +5,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/storage5/dev/flux-batch-api-config
-ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_builder.py --once
 ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_repair.py --once
+ExecStart=/usr/bin/python3 /storage5/dev/flux-batch-api-config/tools/k6_experiment_builder.py --once
 TimeoutStartSec=850
 NoNewPrivileges=yes
 UMask=0077

@@ -130,3 +130,13 @@ Candidates with the fewest attempts are selected first, so an easy new
 REG51 harness cannot be starved by multiple longer Sotto iterations.
 The limit is for software-only retries, NEVER on-radio retransmissions:
 physical grants remain exact-SHA one-shot with independent KUL2 restore.
+
+
+The next eligible new physical research candidate is #29 Whisper8.
+Its source branch contains a synthetic encoder and IQ decoder but explicitly
+lacks an actual compiled Cortex-M0 Unicorn run. The candidate recipe
+requires that target-firmware emulator evidence before any physical
+RF session manifest can be qualified, followed by real independent SDR
+sync and eight held-out tones. Offline/synthetic wins remain local only.
+To keep blocked experiments flowing, candidate timer runs the bounded
+repair stage BEFORE attempting another new builder.
