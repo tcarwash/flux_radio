@@ -20,6 +20,8 @@ def test_pic_module_contract():
     assert 'raw[0]=4' in s
     assert '{4,9,5,1}' in s and '{9,11,12,13,14}' in s
     assert 'a->say("MAB1:CLR")' in s
+    assert s.index('saved33=a->fd_read(0x33)')>s.index('a->mic_stream(0,r,sizeof(*r))')
+    assert 'raw[0]=5' in s
     assert s.index('a->tx_off()')<s.index('save(a,raw)')
     assert 'if(!MIC_ROUTES_PB1_INPUT())return -15' in s
     assert not re.search(r'\ba->(?:tx_pa|fl_prog|fl_erase|cal_write)\(',s)
@@ -70,9 +72,15 @@ def test_uart_exclusion_no_rf(host_executable):
     assert 'UART EXCLUSION PASS' in p.stdout
 
 
-def test_failed_register_write_does_not_save_stale_result(host_executable):
+def test_failed_register_write_preserves_error_and_restores_gpio(host_executable):
     p=subprocess.run([str(host_executable),'error'],capture_output=True,text=True,check=True,timeout=15)
     assert 'FAILED WRITE CLEANUP PASS' in p.stdout
+    encoded=next(line.removeprefix('encoded=') for line in p.stdout.splitlines()
+                 if line.startswith('encoded='))
+    doc=decode_mic_result(b'\x01'+encoded[5:].encode())
+    assert doc['version']==5 and doc['completed'] is False
+    assert doc['error_code']==20
+    assert doc['completed_stages']==4
 
 
 def test_tampered_crc_rejected(host_executable):

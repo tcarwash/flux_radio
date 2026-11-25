@@ -42,11 +42,27 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2,3,4):
+    if len(data)!=33 or data[0] not in (1,2,3,4,5):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==5:
+        error,completed=data[1],data[2]
+        if error not in (4,5,6,9,10,11,17,18,19,20,21,22,23,24) or completed>9:
+            raise ValueError("MIC ROUTES failure code/stage count invalid")
+        reason={4:"physical PTT unavailable or UART attached",
+                5:"PA-muted TX lease refused",6:"microphone stream start failed",
+                9:"PTT released or capture interrupted",10:"PCM block timeout",
+                11:"PCM ring overrun",17:"AF output select write/readback refused",
+                18:"AF4 restoration refused before GP0",
+                19:"GP0 output enable refused",20:"GP0 select write/readback refused",
+                21:"raw PA11 counter reset unexpectedly",22:"capture time limit exceeded",
+                23:"GP0 select restoration failed",24:"GP0 output restoration failed"}[error]
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":5,"measurement":"af_bypass_and_gp0_tx_mic_probe",
+                "completed":False,"error_code":error,"reason":reason,
+                "completed_stages":completed,"expected_stages":9}
     if data[0]==4:
         max_vox=struct.unpack_from("<H",data,28)[0]
         completed=data[30]

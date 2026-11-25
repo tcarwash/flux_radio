@@ -44,8 +44,15 @@ static uint32_t ms(void){clock_ms++;advance(clock_ms);return clock_ms;}
 static void delay_us(uint32_t us){clock_ms+=(us+999)/1000;advance(clock_ms);}
 static int key(void){return 0;}
 static void*scratch(uint32_t *n){static uint32_t buf[400];*n=sizeof(buf);return buf;}
-static int tx_on(uint32_t n){if(n!=4500||tx_on_count)return -1;tx_on_count++;return 0;}
-static void tx_off(void){tx_off_count++;}
+static int tx_on(uint32_t n){
+ if(n!=4500||tx_on_count)return -1;
+ tx_on_count++;
+ /* Hardware TX mode changes non-GP0 control outputs (e.g. LED), so
+  * reading REG_33 before entering TX gives a stale restore image. */
+ regs[0x33]=0xd320;
+ return 0;
+}
+static void tx_off(void){tx_off_count++;regs[0x33]=0xd300;}
 static uint16_t fd_read(uint8_t r){return regs[r];}
 static int fd_write(uint8_t r,uint16_t v){
  if(r==0x34&&fail_switch)return -1;
@@ -88,7 +95,9 @@ int main(int argc,char**argv){
   puts("UART EXCLUSION PASS");return 0;
  }
  if(fail_switch){
-  if(rc>=0||result_count||!tx_off_count||!stream_off_count)return 12;
+  if(rc>=0||result_count!=1||!tx_off_count||!stream_off_count||
+     regs[0x33]!=0xd300||regs[0x34]!=0||regs[0x47]!=0x6140)return 12;
+  printf("encoded=%s\n",output);
   puts("FAILED WRITE CLEANUP PASS");return 0;
  }
  if(rc!=9||!tx_on_count||!tx_off_count||!stream_on_count||!stream_off_count||

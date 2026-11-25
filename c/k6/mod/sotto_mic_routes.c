@@ -109,13 +109,18 @@ int k6_main(const k6_api_t*a){
  if(ptt!=1)return -4;
  a->delay_us(30000);
  if(a->mic_stream(3,0,0)!=1)return -4;
- uint16_t saved33=a->fd_read(0x33),saved34=a->fd_read(0x34);
+ /* Capture GPIO restore values in the TX configuration, not before it:
+  * tx_on() changes non-GP0 GPIO outputs (e.g. TX LED / band lines).
+  * The register guard forbids changes to ANY bits outside GP0. */
+ uint16_t saved33=0,saved34=0;
+ uint8_t raw[33];for(unsigned j=0;j<33;j++)raw[j]=0;raw[0]=4;
  for(unsigned i=0;i<sizeof(*r);i++)mem[i]=0;
  if(a->tx_on(4500u)!=0)return -5; // API30 keeps PA muted
  int started=0,gp0_enabled=0,ret=0;
+ unsigned completed=0;
  if(a->mic_stream(0,r,sizeof(*r))!=0){ret=-6;goto done;}
  started=1;
- uint8_t raw[33];for(unsigned j=0;j<33;j++)raw[j]=0;raw[0]=4;
+ saved33=a->fd_read(0x33);saved34=a->fd_read(0x34);
  uint32_t start=a->ms();unsigned discard=0;
  while(discard<12){
   unsigned b=discard;uint32_t zero=0;volatile int32_t p[8];for(unsigned k=0;k<8;k++)p[k]=0;
@@ -164,17 +169,28 @@ int k6_main(const k6_api_t*a){
   }
   if(vox>total_vox)total_vox=vox;
   if(a->ms()-start>3900u){ret=-22;goto done;}
-  raw[30]=(uint8_t)(stage+1);
+  completed=stage+1;raw[30]=(uint8_t)completed;
  }
  raw[28]=(uint8_t)total_vox;raw[29]=(uint8_t)(total_vox>>8);
 done:
  if(gp0_enabled){
-  if(a->fd_write(0x34,saved34)!=0)ret=-23;
-  if(a->fd_write(0x33,saved33)!=0)ret=-24;
+  if(a->fd_write(0x34,saved34)!=0 && !ret)ret=-23;
+  if(a->fd_write(0x33,saved33)!=0 && !ret)ret=-24;
  }
  if(started)a->mic_stream(1,0,0);
  a->tx_off();
- if(ret)return ret;
+ if(ret){
+  /* Persist a *failure*, not an apparent valid 9-stage report, so an
+   * unattended cable swap can still explain why a completed report is
+   * absent. V5: positive error code, completed stages, exact status. */
+  raw[0]=5;raw[1]=(uint8_t)(-ret);raw[2]=(uint8_t)completed;
+  save(a,raw);
+  a->lcd_text(0,"MIC ROUTES ABORT");
+  a->lcd_text(1,"Error saved for serial");
+  a->lcd_text(2,"Reconnect / no reboot");
+  a->lcd_flush();
+  return ret;
+ }
  save(a,raw);
  a->lcd_text(0,"MIC ROUTES SAVED");
  a->lcd_text(1,"AF4/9/5/1 complete");
