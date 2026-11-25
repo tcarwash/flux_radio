@@ -124,3 +124,18 @@ def test_old_github_cli_paginated_history(monkeypatch):
     assert h.gh_api("repos/test/repo/issues/11/comments?per_page=100",paginate=True)==[
         [{"id":1}],[{"id":2},{"id":3}]]
 
+
+def test_ack_comment_accepts_bundled_issues(tmp_path,monkeypatch):
+    cfgpath,path,m,approval,url=setup(tmp_path,monkeypatch)
+    now=dt.datetime.now(dt.timezone.utc).isoformat()
+    body=h.ack_line([20,26],m["session_id"],approval,"AG7SU")
+    assert "issues=20,26" in body
+    ack={"id":12345,"issue_url":"https://api.github.com/repos/tcarwash/flux_radio/issues/11",
+         "user":{"login":"tcarwash"},"created_at":now,"body":body}
+    monkeypatch.setattr(h,"gh_api",lambda route,paginate=False:[[ack]] if paginate else ack)
+    cfg=h.load_config(cfgpath)
+    assert h.ack_comment(cfg,[20,26],m,approval,url,"AG7SU")["id"]==12345
+    with pytest.raises(h.batch.Refused,match="exact issue"):
+        h.ack_comment(cfg,[20,30],m,approval,url,"AG7SU")
+
+

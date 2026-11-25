@@ -69,3 +69,36 @@ def test_delegates_once_and_never_hardware(tmp_path,monkeypatch):
     assert p.submit_once(hw,state,prompts)["events"][0]["action"]=="POSTMORTEM_PENDING"
     assert len(list(prompts.iterdir()))==1
     assert p.journal.state_load(state)["jobs"][key]["state"]=="DELEGATED"
+
+
+def test_collect_supports_bundled_session_and_rejects_drift(tmp_path,monkeypatch):
+    batch=tmp_path/"bundle-20-26"
+    batch.mkdir()
+    monkeypatch.setattr(p,"BATCHES",tmp_path.resolve())
+    m={"session_id":"bundle-20-26","jobs":[
+        {"id":"j20","cwd":"/wt/20","issue_url":"https://github.com/tcarwash/flux_radio/issues/20",
+         "run":{"argv":["/usr/bin/python3","/p20.py","--prefix",str(batch/"issue-20-j20")]}},
+        {"id":"j26","cwd":"/wt/26","issue_url":"https://github.com/tcarwash/flux_radio/issues/26",
+         "run":{"argv":["/usr/bin/python3","/p26.py","--prefix",str(batch/"issue-26-j26")]}},
+    ]}
+    raw=json.dumps(m).encode()
+    (batch/"manifest.json").write_bytes(raw)
+    (batch/"result.json").write_text(json.dumps({"session_id":"bundle-20-26","result":"PASS",
+        "events":[{"kind":"STEP","name":"job02-j26-run","status":"PASS"}]}))
+    (batch/"issue-26-j26.json").write_text(json.dumps({"hardware_lab_transaction":{
+        "tx_module_requests":2,"module_completion":{"result":0},
+        "original_module_restored":True,"original_radio_frequency_restored":True}}))
+    bundle_sha=hashlib.sha256(raw).hexdigest()
+    key=f"issue-26:{'b'*64}"
+    attempt={"state":"PASS","session_id":"bundle-20-26",
+             "bundle_manifest_sha256":bundle_sha,
+             "evidence":str(batch/"result.json")}
+    out=p.collect(key,attempt)
+    assert out["issue"]==26
+    assert out["reviewed_worktrees"]==["/wt/26"]
+    assert out["metrics"][0]["job"]=="j26"
+    assert out["metrics"][0]["tx_attempts"]==2
+    (batch/"manifest.json").write_text("{}")
+    with pytest.raises(ValueError,match="drift"):
+        p.collect(key,attempt)
+

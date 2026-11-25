@@ -328,7 +328,6 @@ def _register_locked(policy_path,builder_state,hardware_config):
         journal.state_write(builder_state,b)
         events.append({"issue":n,"state":"MANIFEST_REGISTERED_FOR_REVIEW",
                        "digest":digest})
-        break
     return {"mode":"PINNED_HARDWARE_CANDIDATES","events":events,
             "registered":len(reg["manifests"]),"radio_access":False}
 
@@ -394,9 +393,9 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
           "no_cwid_for_dummy_load":True
         }
         atomic(standing_config,standing)
+        used+=1
         events.append({"issue":n,"state":"ONE_SHOT_PERMIT_ISSUED",
                        "digest":manifest_sha,"profile":recipe["kind"]})
-        break
     return {"mode":"EXACT_REVIEWED_ONE_SHOT_GRANTS",
             "events":events,"operator":"AG7SU",
             "dummy_load":True,"implied_further_permissions":False}

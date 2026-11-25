@@ -38,7 +38,9 @@ def collect(key,attempt):
     if path.parent.parent!=BATCHES or path.name!="result.json" or path.parent.name!=attempt.get("session_id"):
         raise ValueError("hardware evidence path outside private batch directory")
     manifest=(path.parent/"manifest.json").read_bytes()
-    if hashlib.sha256(manifest).hexdigest()!=digest:
+    bundle_sha=attempt.get("bundle_manifest_sha256")
+    expected_sha=bundle_sha or digest
+    if hashlib.sha256(manifest).hexdigest()!=expected_sha:
         raise ValueError("hardware evidence manifest drift")
     m=json.loads(manifest)
     event=json.loads(path.read_text())
@@ -46,9 +48,15 @@ def collect(key,attempt):
         raise ValueError("session evidence mismatch")
     statuses=[{"step":e.get("name"),"status":e.get("status")}
               for e in event.get("events",[]) if e.get("kind")=="STEP"]
-    jobs=m["jobs"]
-    if not jobs or any(j["issue_url"]!=f"https://github.com/tcarwash/flux_radio/issues/{issue}" for j in jobs):
-        raise ValueError("mismatched trusted issue in manifest")
+    issue_url=f"https://github.com/tcarwash/flux_radio/issues/{issue}"
+    if bundle_sha:
+        jobs=[j for j in m["jobs"] if j["issue_url"]==issue_url]
+        if not jobs:
+            raise ValueError("mismatched trusted issue in manifest")
+    else:
+        jobs=m["jobs"]
+        if not jobs or any(j["issue_url"]!=issue_url for j in jobs):
+            raise ValueError("mismatched trusted issue in manifest")
     metrics=[]
     for j in jobs:
         argv=j["run"]["argv"]

@@ -174,3 +174,47 @@ def test_promotion_skips_during_concurrent_candidate_edit(tmp_path):
     finally:
         holder.terminate()
         holder.wait(timeout=3)
+
+
+def test_grant_once_issues_multiple_permits_up_to_daily_limit(tmp_path,monkeypatch):
+    builder_state=tmp_path/"builder.json"
+    hw_state=tmp_path/"hardware.json"
+    rev_state=tmp_path/"review.json"
+    standing=tmp_path/"standing.json"
+    hw_cfg=tmp_path/"hardware-generated.json"
+    p.journal.state_write(hw_state,{"schema":1,"jobs":{}})
+    p.atomic(standing,{"schema":1,"enabled":True,"trusted_operator":"AG7SU",
+                       "environment":"dummy_load","approved":{}})
+    reg={"schema":1,"repo":"tcarwash/flux_radio","queue_issue":11,
+         "trusted_author":"tcarwash","manifests":{}}
+    bjobs={}
+    rjobs={}
+    _,api_raw=p.batch.read_api_config(p.batch.API_CONFIG)
+    from k6_experiment_review import fingerprint
+    future="2099-01-01T00:00:00+00:00"
+    for n in (20,26,30):
+        sha=f"{n:064x}"
+        reg["manifests"][str(n)]={"path":str(tmp_path/f"m{n}.json"),"sha256":sha}
+        bjobs[f"issue-{n}"]={"state":"MANIFEST_REGISTERED_FOR_REVIEW","manifest_sha256":sha}
+        rjobs[fingerprint(n,sha,api_raw)]={"state":"APPROVED","job_id":"a"*12}
+    p.journal.state_write(builder_state,{"schema":1,"jobs":bjobs})
+    p.journal.state_write(rev_state,{"schema":1,"jobs":rjobs})
+    monkeypatch.setattr(p,"policy",lambda *_:{"schema":1,"enabled":True,"operator":"AG7SU",
+        "dummy_load":True,"expected_build":"339e08a2b77c7679","exact_api":29,
+        "permitted_kinds":["RX_ONLY","BOUNDED_TX"],"max_sessions_per_day":2,"rf_session_limit_ms":1900})
+    monkeypatch.setattr(p,"ensure_generated",lambda:reg)
+    monkeypatch.setattr(b,"config_load",lambda:{"recipes":{
+        "20":{"kind":"BOUNDED_TX"},"26":{"kind":"BOUNDED_TX"},"30":{"kind":"BOUNDED_TX"}}})
+    monkeypatch.setattr(p.hardware,"load_registered_manifest",
+        lambda r,n:({"lease_expires_utc":future},r["manifests"][str(n)]["sha256"],b"{}"))
+    monkeypatch.setattr(p,"ranked",lambda *_:True)
+    import k6_experiment_review as revmod
+    monkeypatch.setattr(revmod,"result_status",lambda *_: "APPROVED")
+    out=p.grant_once(builder_state=builder_state,hardware_config=hw_cfg,
+                     standing_config=standing,review_state_path=rev_state,
+                     hardware_state_path=hw_state)
+    issued=[e["issue"] for e in out["events"] if e["state"]=="ONE_SHOT_PERMIT_ISSUED"]
+    assert issued==[20,26]
+    approved=json.loads(standing.read_text())["approved"]
+    assert set(approved)=={"20","26"}
+

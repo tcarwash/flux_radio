@@ -85,6 +85,16 @@ def load_registered_manifest(config,issue):
 def digest_for(raw,api_bytes):
     return hashlib.sha256(raw+b"\nAPI-CONFIG\n"+api_bytes).hexdigest()
 
+def ack_line(issue, session_id, approval, operator):
+    if isinstance(issue, int):
+        target = f"issue={issue}"
+    else:
+        issues = [int(x) for x in issue]
+        if not issues:
+            raise batch.Refused("ACK requires at least one issue")
+        target = f"issue={issues[0]}" if len(issues) == 1 else "issues=" + ",".join(str(x) for x in issues)
+    return f"BENCH ACK | {target} | session={session_id} | approval_sha256={approval} | operator={operator} | scope=whole-bench"
+
 def ack_comment(config, issue, m, approval, url, operator):
     match=ACK_URL.fullmatch(url or "")
     if not match or match.group(1)!=config["repo"] or int(match.group(2))!=config["queue_issue"]:
@@ -93,7 +103,7 @@ def ack_comment(config, issue, m, approval, url, operator):
     c=gh_api(f"repos/{config['repo']}/issues/comments/{comment_id}")
     if c.get("id")!=comment_id or c.get("user",{}).get("login")!=config["trusted_author"] or c.get("issue_url")!=f"https://api.github.com/repos/{config['repo']}/issues/{config['queue_issue']}":
         raise batch.Refused("ACK not a genuine comment by the trusted operator on this queue")
-    line=f"BENCH ACK | issue={issue} | session={m['session_id']} | approval_sha256={approval} | operator={operator} | scope=whole-bench"
+    line=ack_line(issue,m["session_id"],approval,operator)
     if line not in c.get("body","").splitlines():
         raise batch.Refused("ACK does not bind the exact issue, session, approval, operator and entire bench")
     try:

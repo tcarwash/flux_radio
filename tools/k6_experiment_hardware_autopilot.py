@@ -10,8 +10,10 @@ session is journaled BEFORE posting a bench claim; never retry automatically.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -156,6 +158,101 @@ def postflight_verified(result):
     )
 
 
+def _rewrite_flag(argv,flag,value):
+    out=list(argv)
+    if flag in out:
+        idx=out.index(flag)
+        if idx+1<len(out):
+            out[idx+1]=value
+    return out
+
+
+def _parse_utc(stamp):
+    return dt.datetime.fromisoformat(stamp.replace("Z","+00:00"))
+
+
+def bundle_manifests(eligible,*,output_root,api_raw):
+    """Combine multiple independently approved manifests into one batch session.
+
+    A single-issue list is returned verbatim so single-experiment runs keep
+    their exact original manifest, approval digest, and session ID.
+    """
+    if len(eligible)==1:
+        n,grant,m,raw,approval=eligible[0]
+        return m,raw,approval,eligible,None
+    first_n,first_grant,first_m,_,_=eligible[0]
+    selected=[]
+    total_jobs=0
+    for item in eligible:
+        n,grant,m,raw,approval=item
+        if (m["port"]!=first_m["port"]
+                or m["queue_issue_url"]!=first_m["queue_issue_url"]
+                or grant["expected_build"]!=first_grant["expected_build"]
+                or grant["exact_api"]!=first_grant["exact_api"]):
+            continue
+        if total_jobs+len(m["jobs"])>batch.MAX_JOBS:
+            break
+        selected.append(item)
+        total_jobs+=len(m["jobs"])
+    if len(selected)==1:
+        n,grant,m,raw,approval=selected[0]
+        return m,raw,approval,selected,None
+    stamp=dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    issues_tag="-".join(str(x[0]) for x in selected)
+    session_id=f"bundle-{issues_tag}-{stamp}"
+    if len(session_id)>80:
+        tag_hash=hashlib.sha256(issues_tag.encode()).hexdigest()[:8]
+        session_id=f"bundle-{len(selected)}x-{tag_hash}-{stamp}"
+    bundle_dir=output_root/session_id
+    before=str(bundle_dir/"session-before.json")
+    session_preflight=copy.deepcopy(first_m["session_preflight"])
+    session_preflight["argv"]=_rewrite_flag(session_preflight["argv"],"--output",before)
+    session_restore=copy.deepcopy(first_m["session_restore"])
+    session_restore["argv"]=_rewrite_flag(session_restore["argv"],"--baseline",before)
+    session_verify=copy.deepcopy(first_m["session_verify"])
+    session_verify["argv"]=_rewrite_flag(session_verify["argv"],"--baseline",before)
+    pin_map={}
+    for _,_,m_i,_,_ in selected:
+        for pin in m_i["session_pins"]:
+            prev=pin_map.get(pin["path"])
+            if prev is not None and prev!=pin["sha256"]:
+                raise batch.Refused(f"conflicting session pin for {pin['path']}")
+            pin_map[pin["path"]]=pin["sha256"]
+    session_pins=[{"path":path,"sha256":digest} for path,digest in sorted(pin_map.items())]
+    jobs=[]
+    seen_ids=set()
+    for n,_,m_i,_,_ in selected:
+        for orig in m_i["jobs"]:
+            j=copy.deepcopy(orig)
+            job_id=j["id"]
+            if job_id in seen_ids:
+                job_id=f"i{n}-{job_id}"[:80]
+                j["id"]=job_id
+            seen_ids.add(job_id)
+            prefix=str(bundle_dir/f"issue-{n}-{job_id}")
+            for step_name in ("run","restore","verify"):
+                j[step_name]["argv"]=_rewrite_flag(j[step_name]["argv"],"--prefix",prefix)
+            jobs.append(j)
+    earliest_lease=min((m_i["lease_expires_utc"] for _,_,m_i,_,_ in selected),key=_parse_utc)
+    bundle_m={
+        "version":first_m["version"],
+        "session_id":session_id,
+        "port":first_m["port"],
+        "queue_issue_url":first_m["queue_issue_url"],
+        "lease_expires_utc":earliest_lease,
+        "session_pins":session_pins,
+        "session_preflight":session_preflight,
+        "session_restore":session_restore,
+        "session_verify":session_verify,
+        "jobs":jobs,
+    }
+    batch.validate_manifest(bundle_m)
+    bundle_raw=(json.dumps(bundle_m,indent=2)+"\n").encode()
+    bundle_sha=hashlib.sha256(bundle_raw).hexdigest()
+    bundle_approval=hw.digest_for(bundle_raw,api_raw)
+    return bundle_m,bundle_raw,bundle_approval,selected,bundle_sha
+
+
 def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_path=REVIEW,
               bench_lock=BENCH_LOCK,output_root=None):
     cfg=hw.load_config(config_path)
@@ -177,6 +274,7 @@ def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_p
         order=queue.check_github({"repo":cfg["repo"],"queue_issue":cfg["queue_issue"],
                                   "trusted_author":cfg["trusted_author"]},issues)
         events=[]
+        ready=[]
         for n in sorted(issues,key=order.index):
             grant=policy["approved"][str(n)]
             key=f"issue-{n}:{grant['manifest_sha256']}"
@@ -190,55 +288,125 @@ def one_cycle(config_path=hw.CONFIG,policy_path=POLICY,state_path=STATE,review_p
             except batch.Refused as exc:
                 events.append({"issue":n,"action":"WAITING_FOR_LOCAL_APPROVAL","reason":str(exc)})
                 continue
-            github_identity(cfg)
-            bench_lock.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-            with bench_lock.open("a+b") as bench:
-                try:fcntl.flock(bench.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
-                except BlockingIOError as exc:
-                    events.append({"issue":n,"action":"BENCH_BUSY"});break
-                require_unclaimed_bench(cfg)
-                # Reconfirm trustworthy queue and local pins within whole-bench lock.
-                queue.check_github({"repo":cfg["repo"],"queue_issue":cfg["queue_issue"],
-                                    "trusted_author":cfg["trusted_author"]},[n])
-                m,raw,approval=secure_approval(cfg,n,grant,journal.state_load(review_path))
-                stamp=dt.datetime.now(dt.timezone.utc).isoformat()
-                state["jobs"][key]={"state":"STARTED_NO_AUTO_RETRY","when":stamp,
-                                    "session_id":m["session_id"],"approval_sha256":approval}
-                journal.state_write(state_path,state)
-                ack=None
+            ready.append((n,grant,m,raw,approval))
+        if not ready:
+            return {"mode":"AUTONOMOUS_APPROVED_PHYSICAL_ONLY","events":events,
+                    "journal":str(state_path)}
+        github_identity(cfg)
+        bench_lock.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+        with bench_lock.open("a+b") as bench:
+            try:fcntl.flock(bench.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                events.append({"issue":ready[0][0],"action":"BENCH_BUSY"})
+                return {"mode":"AUTONOMOUS_APPROVED_PHYSICAL_ONLY","events":events,
+                        "journal":str(state_path)}
+            require_unclaimed_bench(cfg)
+            ready_issues=[item[0] for item in ready]
+            # Reconfirm trustworthy queue and local pins within whole-bench lock.
+            queue.check_github({"repo":cfg["repo"],"queue_issue":cfg["queue_issue"],
+                                "trusted_author":cfg["trusted_author"]},ready_issues)
+            fresh_reviews=journal.state_load(review_path)
+            confirmed=[]
+            for n,grant,_,_,_ in ready:
                 try:
-                    line=f"BENCH ACK | issue={n} | session={m['session_id']} | approval_sha256={approval} | operator={OPERATOR} | scope=whole-bench"
-                    ack=queue_comment(cfg,line+"\nAUTONOMOUS ONE-SHOT | local trusted permit, dummy load, independently validated harness; no automatic retry.\n")
+                    m_i,raw_i,approval_i=secure_approval(cfg,n,grant,fresh_reviews)
+                except batch.Refused as exc:
+                    events.append({"issue":n,"action":"WAITING_FOR_LOCAL_APPROVAL","reason":str(exc)})
+                    continue
+                confirmed.append((n,grant,m_i,raw_i,approval_i))
+            if not confirmed:
+                return {"mode":"AUTONOMOUS_APPROVED_PHYSICAL_ONLY","events":events,
+                        "journal":str(state_path)}
+            out_root=output_root or Path.home()/"flux-bench/batches"
+            api_cfg,api_raw=batch.read_api_config(batch.API_CONFIG)
+            m,raw,approval,selected,bundle_sha=bundle_manifests(
+                confirmed,output_root=out_root,api_raw=api_raw)
+            sel_issues=[item[0] for item in selected]
+            bundled=bundle_sha is not None
+            stamp=dt.datetime.now(dt.timezone.utc).isoformat()
+            keys=[]
+            for n,grant,_,_,_ in selected:
+                key=f"issue-{n}:{grant['manifest_sha256']}"
+                entry={"state":"STARTED_NO_AUTO_RETRY","when":stamp,
+                       "session_id":m["session_id"],"approval_sha256":approval}
+                if bundled:
+                    entry["bundle_manifest_sha256"]=bundle_sha
+                    entry["bundled_issues"]=sel_issues
+                state["jobs"][key]=entry
+                keys.append((n,key))
+            journal.state_write(state_path,state)
+            ack=None
+            issue_label=(f"issue #{sel_issues[0]}" if len(sel_issues)==1
+                         else "issues "+", ".join(f"#{n}" for n in sel_issues))
+            ack_target=sel_issues[0] if len(sel_issues)==1 else sel_issues
+            try:
+                line=hw.ack_line(ack_target,m["session_id"],approval,OPERATOR)
+                mode_note=("AUTONOMOUS BUNDLED ONE-SHOT" if bundled else "AUTONOMOUS ONE-SHOT")
+                ack=queue_comment(cfg,line+f"\n{mode_note} | local trusted permit, dummy load, independently validated harness; no automatic retry.\n")
+                for _,key in keys:
                     state["jobs"][key]["ack_url"]=ack
-                    journal.state_write(state_path,state)
-                    hw.ack_comment(cfg,n,m,approval,ack,OPERATOR)
-                    result=batch.run_session(m,raw,approval,output_root=output_root or Path.home()/"flux-bench/batches",
-                        lock_root=Path.home()/".cache/flux/batch-locks",
-                        approved_digest=approval,ack_url=ack,operator=OPERATOR,dummy_load_confirmed=True,
-                        api_config=batch.read_api_config(batch.API_CONFIG)[0])
-                    passed=result["result"]=="PASS"
+                journal.state_write(state_path,state)
+                hw.ack_comment(cfg,ack_target,m,approval,ack,OPERATOR)
+                result=batch.run_session(m,raw,approval,output_root=out_root,
+                    lock_root=Path.home()/".cache/flux/batch-locks",
+                    approved_digest=approval,ack_url=ack,operator=OPERATOR,dummy_load_confirmed=True,
+                    api_config=api_cfg)
+                passed=result["result"]=="PASS"
+                verified=passed or postflight_verified(result)
+                evidence=str(out_root/m["session_id"]/"result.json")
+                if not bundled:
+                    n,key=keys[0]
                     state["jobs"][key]["state"]="PASS" if passed else "BLOCKED_NO_AUTO_RETRY"
-                    state["jobs"][key]["evidence"]=str((output_root or Path.home()/"flux-bench/batches")/m["session_id"]/"result.json")
+                    state["jobs"][key]["evidence"]=evidence
                     journal.state_write(state_path,state)
                     if passed:
-                        queue_comment(cfg,f"PASS / RELEASE | Flux autonomous bench | issue #{n} session {m['session_id']} | full original packed slot hashes and VFO restored, session status PASS. Whole bench released.\n")
+                        queue_comment(cfg,f"PASS / RELEASE | Flux autonomous bench | {issue_label} session {m['session_id']} | full original packed slot hashes and VFO restored, session status PASS. Whole bench released.\n")
                         hw.publish(cfg,n,result,approval)
-                    elif postflight_verified(result):
+                    elif verified:
                         # Do not leave a stale GH claim after the exact
                         # independent whole-bench baseline was restored.
-                        queue_comment(cfg,f"BLOCKED / RELEASE | Flux autonomous bench | issue #{n} session {m['session_id']} | experiment failed but independent session restore + verify PASS (full slot hashes/VFO/idle). This manifest is consumed, no auto-retry.\n")
+                        queue_comment(cfg,f"BLOCKED / RELEASE | Flux autonomous bench | {issue_label} session {m['session_id']} | experiment failed but independent session restore + verify PASS (full slot hashes/VFO/idle). This manifest is consumed, no auto-retry.\n")
                     else:
-                        queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | issue #{n} session {m['session_id']} | physical state may be unverified. No repeat without operator inspection.\n")
+                        queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | {issue_label} session {m['session_id']} | physical state may be unverified. No repeat without operator inspection.\n")
                     events.append({"issue":n,"action":"PHYSICAL_ONE_SHOT","result":result["result"]})
-                    break
-                except BaseException as exc:
-                    state["jobs"][key]["state"]="BLOCKED_NO_AUTO_RETRY"
-                    state["jobs"][key]["error"]=f"{type(exc).__name__}: {exc}"
+                else:
+                    to_publish=[]
+                    for n,key in keys:
+                        issue_url=f"https://github.com/{cfg['repo']}/issues/{n}"
+                        issue_jobs=[j for j in result.get("jobs",[]) if j.get("issue_url")==issue_url]
+                        if passed or (verified and issue_jobs and all(j.get("result")=="PASS" for j in issue_jobs)):
+                            state["jobs"][key]["state"]="PASS"
+                            state["jobs"][key]["evidence"]=evidence
+                            to_publish.append(n)
+                            events.append({"issue":n,"action":"PHYSICAL_ONE_SHOT","result":"PASS","bundled":True})
+                        elif verified and not issue_jobs:
+                            # Earlier job fail-stopped before this job touched hardware,
+                            # and independent session restore + verify passed cleanly.
+                            state["jobs"].pop(key,None)
+                            events.append({"issue":n,"action":"SKIPPED_AFTER_EARLIER_FAILURE","result":"NOT_STARTED","bundled":True})
+                        else:
+                            state["jobs"][key]["state"]="BLOCKED_NO_AUTO_RETRY"
+                            state["jobs"][key]["evidence"]=evidence
+                            events.append({"issue":n,"action":"PHYSICAL_ONE_SHOT","result":"BLOCKED","bundled":True})
                     journal.state_write(state_path,state)
-                    if ack:
-                        try:queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | issue #{n} session {m['session_id']} | abort, operator inspection required.\n")
-                        except (OSError,subprocess.SubprocessError):pass
-                    raise
+                    if passed:
+                        queue_comment(cfg,f"PASS / RELEASE | Flux autonomous bench | {issue_label} session {m['session_id']} | full original packed slot hashes and VFO restored, session status PASS. Whole bench released.\n")
+                    elif verified:
+                        queue_comment(cfg,f"BLOCKED / RELEASE | Flux autonomous bench | {issue_label} session {m['session_id']} | bundled session stopped on failure but independent session restore + verify PASS (full slot hashes/VFO/idle). Attempted manifests consumed, no auto-retry.\n")
+                    else:
+                        queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | {issue_label} session {m['session_id']} | physical state may be unverified. No repeat without operator inspection.\n")
+                    for n in to_publish:
+                        hw.publish(cfg,n,{**result,"result":"PASS"},approval)
+            except BaseException as exc:
+                for _,key in keys:
+                    if key in state["jobs"]:
+                        state["jobs"][key]["state"]="BLOCKED_NO_AUTO_RETRY"
+                        state["jobs"][key]["error"]=f"{type(exc).__name__}: {exc}"
+                journal.state_write(state_path,state)
+                if ack:
+                    try:queue_comment(cfg,f"BLOCKED / HOLD | Flux autonomous bench | {issue_label} session {m['session_id']} | abort, operator inspection required.\n")
+                    except (OSError,subprocess.SubprocessError):pass
+                raise
         return {"mode":"AUTONOMOUS_APPROVED_PHYSICAL_ONLY","events":events,
                 "journal":str(state_path)}
 
