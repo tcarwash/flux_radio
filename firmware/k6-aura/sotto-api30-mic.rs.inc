@@ -45,10 +45,14 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
     if op==6{return if SOTTO_MIC_ROUTE{crate::hal::pcm_capture::raw_variation() as i32}else{-1};}
     #[cfg(all(k6_live_serial,feature="spilib"))]
     if LIVE_ACTIVE.is_some(){return -1;}
-    if op!=0 || SOTTO_MIC_ROUTE || !c.tx
-        || n!=644 || ptr.is_null() || (ptr as usize)&3!=0
+    // Op7 grants only the RFIC microphone route, not the PA11 sampler.
+    // This is required when the module needs TIM17 + DMA1 for a GP0/PB1
+    // experiment. Stop/abort remains the standard op1/tx_off cleanup.
+    let route_only=op==7;
+    if (op!=0 && !route_only) || SOTTO_MIC_ROUTE || !c.tx
+        || (!route_only && (n!=644 || ptr.is_null() || (ptr as usize)&3!=0
         || (ptr as usize)<c.scratch
-        || (ptr as usize).saturating_add(n as usize)>scratch_end()
+        || (ptr as usize).saturating_add(n as usize)>scratch_end()))
         || mod_fd_read(0)!=0x4829 || mod_tx_pa(0)!=0
         || !crate::hal::txdog::ready() {
         return -1;
@@ -64,7 +68,7 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
     if fd.reg_read(syst,0x30)!=(SOTTO_MIC_SAVED[0]|0x0204) {
         sotto_mic_stop();return -3; // RF route did not stick
     }
-    if !crate::hal::pcm_capture::start(ptr) {
+    if !route_only && !crate::hal::pcm_capture::start(ptr) {
         sotto_mic_stop();return -2; // TIM17/vector or GPIO resource unavailable
     }
     0

@@ -42,11 +42,47 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2,3,4,5):
+    if len(data)!=33 or data[0] not in (1,2,3,4,5,6,7):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==7:
+        error,completed=data[1],data[2]
+        if error not in (5,6,9,11,12,17,18,19,20,21,22,23) or completed>4:
+            raise ValueError("MIC GP0 DMA failure code/windows invalid")
+        reason={5:"PA-muted TX lease refused",6:"RFIC mic route-only service missing or refused",
+                9:"physical PTT released or interrupted",11:"DMA ring overrun",
+                12:"DMA capture time limit",17:"GP0 output enable refused",
+                18:"GP0 selector 12 write/readback refused",
+                19:"TIM17 already owned",20:"DMA1 channel1 already owned",
+                21:"DMA sample rate outside expected hardware bounds",
+                22:"GP0 selector restoration failed",23:"GP0 output restoration failed"}[error]
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":7,"measurement":"gp0_dma_tx_mic_spectrum",
+                "completed":False,"error_code":error,"reason":reason,
+                "completed_windows":completed,"expected_windows":4}
+    if data[0]==6:
+        vox,fs10,rawks=struct.unpack_from("<HHH",data,1)
+        if vox>1023 or not 3500<=fs10<=13000 or not 2200<=rawks<=8500:
+            raise ValueError("MIC GP0 DMA VOX/sample-rate out of bounds")
+        windows=[]
+        for i in range(4):
+            a1,a2,rms,high,diff,voxq=data[7+i*6:13+i*6]
+            windows.append({"index":i,"nominal_duration_ms":round(4096/(fs10*10)*1000,2),
+                            "amplitude_1khz_q":a1,"amplitude_2khz_q":a2,
+                            "rms_raw_density":rms,
+                            "gp0_raw_high_fraction":round(high/255,4),
+                            "mean_density_change":diff,
+                            "approx_vox":voxq*4})
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":6,"measurement":"gp0_dma_tx_mic_spectrum",
+                "capture":"PA-muted TX; RFIC mic ADC enabled; no PA11 sampler",
+                "gp0_selector":12,"raw_dma_ksamples_per_second":rawks,
+                "decimated_samples_per_second":fs10*10,
+                "vox_max":vox,"windows":windows,
+                "scale":"amplitude bins are relative 8-bit normalized DFT scores, not calibrated PCM",
+                "note":"1k/2k generator contrast required; detected digital activity alone is not recovered voice"}
     if data[0]==5:
         error,completed=data[1],data[2]
         if error not in (4,5,6,9,10,11,17,18,19,20,21,22,23,24) or completed>9:
