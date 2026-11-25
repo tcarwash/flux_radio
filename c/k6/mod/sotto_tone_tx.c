@@ -1,7 +1,6 @@
-/* Cable-launched on-radio 1 kHz Sotto PCM test.
- * Explicitly armed build only; installation never transmits.
- * No microphone, headset PTT, ADC, or serial PCM ingress.
- * Native codec -> FDV1 session -> API29 33-word guarded FSK.
+/* Cable-launched, deterministic 1 kHz Sotto PCM-to-FSK test.
+ * Uses the real encoder and FDV1 scheduler with no microphone ISR/ring.
+ * Never transmits on installation; only explicit foreground RUN.
  * SPDX-License-Identifier: MIT */
 #define K6_MODULE_LEVEL 29
 #define K6_MODULE_OPT z
@@ -17,124 +16,121 @@ K6_MODULE_NAME("SOTTO TONE");
 #include "sotto_tx_codec_io.h"
 #include "sotto_slim_context.inc"
 #include "../../fixed/fx_tables.c"
-#include "sotto_live_engine.h"
+#include "sotto_live_session.h"
 #include "sotto_tone_pcm.h"
+
+/* 80-sample on-chip synthesis eliminates the 4x80 microphone PCM ring
+ * and its ISR state, preserving scratch for the Sotto encoder. */
 typedef struct {
-    const k6_api_t *api;
-    slim_enc_t *encoder;
-    sotto_io_t *resources;
+    sotto_live_t session;
+    int16_t pcm[ST_TONE_SAMPLES];
+    uint8_t six[6];
+    uint8_t inflight, reserved;
     uint32_t last_poll_ms;
-} st_ctx_t;
-static int st_encode(void *v,const int16_t *pcm,uint8_t *six){
-    st_ctx_t *c=(st_ctx_t*)v;
-    int r=slim_encode10(c->encoder,pcm,six);
-    return c->resources->fault?-1:r;
-}
-static int st_flush(void *v,uint8_t *six){
-    st_ctx_t *c=(st_ctx_t*)v;
-    int r=slim_flush(c->encoder,six);
-    return c->resources->fault?-1:r;
-}
-static int st_start(void *v,const uint16_t *frame){
-    st_ctx_t *c=(st_ctx_t*)v;
-    return c->api->fsk_async(0,frame,33);
-}
-static int st_poll(void *v){
-    st_ctx_t *c=(st_ctx_t*)v;
-    uint32_t now=c->api->ms();
-    if(now-c->last_poll_ms<5u)return 0;
-    c->last_poll_ms=now;
-    return c->api->fsk_async(1,0,0);
-}
-static void st_stop_capture(void *v){(void)v;} /* no microphone ISR */
-static void st_end(void *v){
-    st_ctx_t *c=(st_ctx_t*)v;
-    c->api->tx_off();
-}
+} st_state_t;
+
 static int st_cancelled(const k6_api_t *a){
-    return a->key_down() ||
-        (a->cancel_poll && a->cancel_poll()==1);
+    return a->key_down() || (a->cancel_poll && a->cancel_poll()==1);
 }
-#endif
+
+/* Foreground starts and acknowledges only actual API29 frames; no fake ACK. */
+static int st_service(const k6_api_t *a,st_state_t *s){
+    const uint16_t *w;
+    uint32_t now=a->ms();
+    int r;
+    if(s->inflight && now-s->last_poll_ms>=5u){
+        s->last_poll_ms=now;
+        r=a->fsk_async(1,0,0);
+        if(r<0 || r>1)return -1;
+        if(r){
+            if(sl_ack(&s->session,1))return -1;
+            s->inflight=0;
+        }
+    }
+    if(!s->inflight && (w=sl_peek(&s->session))){
+        if(a->fsk_async(0,w,33))return -1;
+        s->inflight=1;
+        s->last_poll_ms=a->ms();
+    }
+    return 0;
+}
+
+static int st_room(const k6_api_t *a,st_state_t *s,uint32_t started){
+    while(s->session.count==SL_QUEUE){
+        if(st_cancelled(a) || a->ms()-started>=8500u ||
+           st_service(a,s))return -1;
+        a->delay_us(300u);
+    }
+    return 0;
+}
 
 int k6_main(const k6_api_t *a){
-    if(!a||a->abi!=1||a->level<K6_MODULE_LEVEL)return -3;
-#if !SOTTO_TONE_TX_ARMED
-    a->say("SOTTO TONE inert");
-    return -9;
-#else
-    unsigned room=0,block,i;
+    if(!a || a->abi!=1 || a->level<K6_MODULE_LEVEL)return -3;
+    unsigned room=0,block,i,flushes;
     uint8_t *scratch;
-    sl_engine_t *engine;
-    slim_enc_t *encoder;
+    st_state_t *s;
+    slim_enc_t *enc;
     sotto_io_t io;
-    st_ctx_t ctx;
-    sl_ops_t ops;
     uint32_t started;
-    int rc=0,cancelled=0;
-    /* A deliberate lab-frequency gate makes accidental run commands inert. */
-    if(a->rx_hz()!=433500000u || st_cancelled(a)){
-        a->say("SOTTO TONE freq/key");
-        return -4;
-    }
+    int r;
+    if(a->rx_hz()!=433500000u || st_cancelled(a))return -4;
     scratch=a->scratch(&room);
     if(!scratch || ((uintptr_t)scratch&3u) ||
-       room<sizeof(*engine)+slim_enc_bytes()){
+       room<sizeof(*s)+slim_enc_bytes()){
         a->say("SOTTO TONE no RAM");
         return -8;
     }
-    engine=(sl_engine_t*)scratch;
-    encoder=(slim_enc_t*)(scratch+sizeof(*engine));
-    if(a->fd_read(0)!=0x4829 || sio_init(&io,a)){
-        a->say("SOTTO TONE resources");
-        return -10;
-    }
-    slim_enc_init(encoder);
-    encoder->io=&io;
-    ctx.api=a;ctx.encoder=encoder;ctx.resources=&io;ctx.last_poll_ms=0;
-    ops.encode=st_encode;ops.flush=st_flush;
-    ops.start=st_start;ops.poll=st_poll;
-    ops.stop_capture=st_stop_capture;
-    ops.abort=st_end;ops.end=st_end;
-    if(sl_engine_begin(engine,0x5354544fu,0x4e453132u)){
-        return -11;
-    }
-    /* Only an explicit RUN/RUN_COOP of this opt-in module reaches TX.
-     * tx_on allocates a finite lease; mute analog PA until API29 FSK starts.
-     */
+    s=(st_state_t*)scratch;
+    enc=(slim_enc_t*)(scratch+sizeof(*s));
+    if(a->fd_read(0)!=0x4829 || sio_init(&io,a))return -10;
+    slim_enc_init(enc);enc->io=&io;
+    if(sl_begin(&s->session,0x5354544fu,0x4e453132u))return -11;
+    s->inflight=0;s->last_poll_ms=0;
     if(a->tx_on(9000u))return -5;
     if(a->tx_pa(0)!=0){a->tx_off();return -6;}
     started=a->ms();
     for(block=0;block<ST_TONE_BLOCKS;block++){
-        for(i=0;i<ST_TONE_SAMPLES;i++){
-            if(sl_pcm_sample(&engine->mic,st_tone_sample(block*ST_TONE_SAMPLES+i))){
-                goto failure;
-            }
+        for(i=0;i<ST_TONE_SAMPLES;i++)
+            s->pcm[i]=st_tone_sample(block*ST_TONE_SAMPLES+i);
+        r=slim_encode10(enc,s->pcm,s->six);
+        if(r<0 || r>1 || io.fault)goto fail;
+        if(r){
+            if(st_room(a,s,started))goto fail;
+            if(sl_push(&s->session,s->six))goto fail;
         }
-        /* Consume this one block before producing another; bounded queue. */
-        while(engine->mic.consumed!=engine->mic.produced || engine->pending){
-            if(st_cancelled(a)){cancelled=1;goto failure;}
-            if(a->ms()-started>=8500u)goto failure;
-            rc=sl_engine_tick(engine,&ops,&ctx);
-            if(rc<0)goto failure;
-            a->delay_us(300);
-        }
+        if(st_cancelled(a) || a->ms()-started>=8500u ||
+           st_service(a,s))goto fail;
     }
-    if(sl_engine_release(engine,&ops,&ctx))goto failure;
-    while(a->ms()-started<8500u){
-        if(st_cancelled(a)){cancelled=1;goto failure;}
-        rc=sl_engine_tick(engine,&ops,&ctx);
-        if(rc<0)goto failure;
-        if(rc==1){
-            a->say("SOTTO TONE sent");
-            return (int)engine->tx.encoded;
-        }
-        a->delay_us(500);
+    for(flushes=0;flushes<4u;flushes++){
+        r=slim_flush(enc,s->six);
+        if(r<0 || r>1 || io.fault)goto fail;
+        if(!r)break;
+        if(st_room(a,s,started) || sl_push(&s->session,s->six))goto fail;
     }
-failure:
-    /* Both paths idempotently dekey; fail closed if anything is uncertain. */
-    st_end(&ctx);
-    a->say(cancelled?"SOTTO TONE cancel":"SOTTO TONE abort");
-    return cancelled?-125:-12;
-#endif
+    if(flushes==4u)goto fail;
+    while(sl_finish(&s->session)==SL_FULL){
+        if(st_cancelled(a) || a->ms()-started>=8500u ||
+           st_service(a,s))goto fail;
+        a->delay_us(500u);
+    }
+    while(s->inflight || sl_peek(&s->session)){
+        if(st_cancelled(a) || a->ms()-started>=8500u ||
+           st_service(a,s))goto fail;
+        a->delay_us(500u);
+    }
+    r=(int)s->session.encoded;
+    a->tx_off();
+    a->say("SOTTO TONE sent");
+    return r;
+fail:
+    a->tx_off();
+    a->say("SOTTO TONE abort");
+    return -12;
 }
+#else
+int k6_main(const k6_api_t *a){
+    if(!a||a->abi!=1||a->level<K6_MODULE_LEVEL)return -3;
+    a->say("SOTTO TONE inert");
+    return -9;
+}
+#endif
