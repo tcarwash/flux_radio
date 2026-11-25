@@ -7,6 +7,12 @@
 #define K6_MODULE_LEVEL 31
 #endif
 #define K6_MODULE_OPT z
+#ifndef SOTTO_STARTUP_SETTLE_MS
+#define SOTTO_STARTUP_SETTLE_MS 0u
+#endif
+#if SOTTO_STARTUP_SETTLE_MS > 200u
+#error "Limit startup settle to 200 ms"
+#endif
 #include "../k6_mod.h"
 K6_MODULE_NAME("SOTTO 1K FX");
 #ifndef SOTTO_1K_FIXTURE_ARMED
@@ -46,6 +52,13 @@ int k6_main(const k6_api_t *a){
         return -50+r;
     }
     if(a->tx_pa(0)!=0)goto fail;
+#if SOTTO_STARTUP_SETTLE_MS
+    begun=a->ms();
+    while(a->ms()-begun<SOTTO_STARTUP_SETTLE_MS){
+        if(cancel(a))goto fail;
+        a->delay_us(1000u);
+    }
+#endif
     while((words=sl_peek(s))!=0){
         if(cancel(a) || a->fsk_async(0,words,33))goto fail;
         begun=a->ms();
