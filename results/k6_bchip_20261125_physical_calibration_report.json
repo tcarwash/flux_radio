@@ -1,0 +1,288 @@
+{
+  "gp0_dma": {
+    "1khz": {
+      "average_1khz_score": 5.0,
+      "average_2khz_score": 0.0,
+      "average_rms": 5.0,
+      "density_fs_hz": 84960,
+      "measurement": "dma",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5437440,
+      "sha256": "7e27fca6df4df42d1e21cc4a74694e82c57b31061418baf793d4f4c0366784b5",
+      "source": "sotto-mic-calibration-20261125/gp0-dma-v1/tone-1khz-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "1khz",
+      "vox_max": 517,
+      "window_count": 4
+    },
+    "2khz": {
+      "average_1khz_score": 0.0,
+      "average_2khz_score": 25.0,
+      "average_rms": 5.0,
+      "density_fs_hz": 87770,
+      "measurement": "dma",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5617280,
+      "sha256": "a9cdae6b66a3332bd5a8482bc9e3171d9acfa199697d1f8ba5ba384a78eaf758",
+      "source": "sotto-mic-calibration-20261125/gp0-dma-v1/tone-2khz-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "2khz",
+      "vox_max": 435,
+      "window_count": 4
+    },
+    "off": {
+      "average_1khz_score": 0.0,
+      "average_2khz_score": 0.0,
+      "average_rms": 3.0,
+      "density_fs_hz": 87770,
+      "measurement": "dma",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5617280,
+      "sha256": "4938e5a8552dd5938c3e44e95ed60e079901d809f9c30dd6ea41d6652bfdd4a9",
+      "source": "sotto-mic-calibration-20261125/gp0-dma-v1/tone-off-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "off",
+      "vox_max": 171,
+      "window_count": 4
+    }
+  },
+  "gp0_dma_ring": {
+    "dma": {
+      "fastest_wrap_us": 182.29463370172041,
+      "measurement": "dma",
+      "ring_bytes": 1024,
+      "sample_count": 3,
+      "slowest_wrap_us": 188.32391713747646,
+      "warning": "Observed conditions only; no CPU contention or decoder timing modeled."
+    },
+    "pcm": {
+      "fastest_wrap_us": 183.36007334402933,
+      "measurement": "pcm",
+      "ring_bytes": 1024,
+      "sample_count": 3,
+      "slowest_wrap_us": 188.6569979955194,
+      "warning": "Observed conditions only; no CPU contention or decoder timing modeled."
+    }
+  },
+  "gp0_pcm": {
+    "1khz": {
+      "average_1khz_score": 2195.0,
+      "average_2khz_score": 339.5,
+      "average_rms": 9616.0,
+      "density_fs_hz": 84810,
+      "measurement": "pcm",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5427840,
+      "sha256": "16178dbf1798b1896ac3ec7898eff647d5fc7f0ccbc3a2b1aafc7e9469f603f0",
+      "source": "sotto-mic-calibration-20261125/gp0-pcm-v1/tone-1khz-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "1khz",
+      "vox_max": 515,
+      "window_count": 4
+    },
+    "2khz": {
+      "average_1khz_score": 431.75,
+      "average_2khz_score": 23867.0,
+      "average_rms": 8704.0,
+      "density_fs_hz": 87260,
+      "measurement": "pcm",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5584640,
+      "sha256": "bc2ec8cc48c1b055e9f7e47234db34057fba2ecad259544e7f922c3e63351191",
+      "source": "sotto-mic-calibration-20261125/gp0-pcm-v1/tone-2khz-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "2khz",
+      "vox_max": 434,
+      "window_count": 4
+    },
+    "off": {
+      "average_1khz_score": 380.0,
+      "average_2khz_score": 473.25,
+      "average_rms": 1872.0,
+      "density_fs_hz": 87260,
+      "measurement": "pcm",
+      "note": "not_calibrated; scores have different scales across DMA and PCM formats",
+      "raw_dma_hz": 5584640,
+      "sha256": "d87fbb970f98fa997a91fc1bdb45dbb56907066e1981a31141c025a63ba6524b",
+      "source": "sotto-mic-calibration-20261125/gp0-pcm-v1/tone-off-01.json",
+      "status": "measured_narrowband_summary_only",
+      "stimulus": "off",
+      "vox_max": 169,
+      "window_count": 4
+    }
+  },
+  "holdouts": [
+    {
+      "held_out": "api31-direct-pa20-gap60-prefetch-run5",
+      "matched_conditions_only": true,
+      "observed_complete": true,
+      "train_status": "repeatably_observed",
+      "training_cases": 4
+    },
+    {
+      "held_out": "api31-onradio-pcm-pa20-gap0-run6",
+      "matched_conditions_only": true,
+      "observed_complete": true,
+      "train_status": "repeatably_observed",
+      "training_cases": 5
+    }
+  ],
+  "is_validated_silicon_model": false,
+  "limits": [
+    "No absolute TX startup guard threshold inferred: a 0-ms trial succeeded once.",
+    "USB monitor failures belong to acquisition, not transmitter corruption.",
+    "GPIO/PB1 GP0 capture frequency response not calibrated; only three stimuli measured.",
+    "PCM artifacts contain only 32-ms window summaries, not raw 8-kHz waveforms.",
+    "Calibration annotations never silently modify the IQ or force CRC outcomes.",
+    "This report does not model Sotto codec execution or concurrent DMA ownership."
+  ],
+  "measurement_only": true,
+  "physical_runs": {
+    "microphone": 6,
+    "transmit": 21
+  },
+  "schema": 1,
+  "source_fixture": "k6_bchip_20261125_calibration",
+  "tx_profiles": {
+    "direct_pa20_gap60": {
+      "cases": 5,
+      "complete_sessions": 5,
+      "crc_rejected_packets": 0,
+      "crc_valid_packets": 15,
+      "expected_packets": 15,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 1.0,
+      "sources": [
+        "api31-direct-pa20-gap60-prefetch-run1",
+        "api31-direct-pa20-gap60-prefetch-run2",
+        "api31-direct-pa20-gap60-prefetch-run3",
+        "api31-direct-pa20-gap60-prefetch-run4",
+        "api31-direct-pa20-gap60-prefetch-run5"
+      ],
+      "status": "repeatably_observed",
+      "unobserved_packets": 0
+    },
+    "legacy_sdr_reader": {
+      "cases": 1,
+      "complete_sessions": 0,
+      "crc_rejected_packets": 4,
+      "crc_valid_packets": 0,
+      "expected_packets": 8,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 0.0,
+      "sources": [
+        "frozen-fsk13-current-fw-run1"
+      ],
+      "status": "measurement_chain_only",
+      "unobserved_packets": 4
+    },
+    "onradio_pa0_gap0": {
+      "cases": 4,
+      "complete_sessions": 3,
+      "crc_rejected_packets": 1,
+      "crc_valid_packets": 11,
+      "expected_packets": 12,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 0.75,
+      "sources": [
+        "api31-onradio-pcm-direct-run1",
+        "api31-onradio-pcm-direct-run2",
+        "api31-onradio-pcm-direct-run3",
+        "api31-onradio-pcm-direct-run4"
+      ],
+      "status": "mixed_or_sparse_evidence",
+      "unobserved_packets": 0
+    },
+    "onradio_pa20_gap0": {
+      "cases": 6,
+      "complete_sessions": 6,
+      "crc_rejected_packets": 0,
+      "crc_valid_packets": 18,
+      "expected_packets": 18,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 1.0,
+      "sources": [
+        "api31-onradio-pcm-pa20-gap0-run1",
+        "api31-onradio-pcm-pa20-gap0-run2",
+        "api31-onradio-pcm-pa20-gap0-run3",
+        "api31-onradio-pcm-pa20-gap0-run4",
+        "api31-onradio-pcm-pa20-gap0-run5",
+        "api31-onradio-pcm-pa20-gap0-run6"
+      ],
+      "status": "repeatably_observed",
+      "unobserved_packets": 0
+    },
+    "pa_enabled_zero_guard": {
+      "cases": 1,
+      "complete_sessions": 1,
+      "crc_rejected_packets": 0,
+      "crc_valid_packets": 3,
+      "expected_packets": 3,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 1.0,
+      "sources": [
+        "api31-pa1-settle0-gap0-run1"
+      ],
+      "status": "mixed_or_sparse_evidence",
+      "unobserved_packets": 0
+    },
+    "pa_muted_preload": {
+      "cases": 1,
+      "complete_sessions": 0,
+      "crc_rejected_packets": 0,
+      "crc_valid_packets": 0,
+      "expected_packets": 3,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 0.0,
+      "sources": [
+        "api31-pa0-settle20-prefetch-control1"
+      ],
+      "status": "no_complete_sessions_observed",
+      "unobserved_packets": 3
+    },
+    "rekey_each_packet": {
+      "cases": 2,
+      "complete_sessions": 0,
+      "crc_rejected_packets": 1,
+      "crc_valid_packets": 4,
+      "expected_packets": 6,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 0.0,
+      "sources": [
+        "api31-rekey-each-prefill-run1",
+        "api31-rekey-once-prefill-run1"
+      ],
+      "status": "no_complete_sessions_observed",
+      "unobserved_packets": 1
+    },
+    "rekey_once": {
+      "cases": 2,
+      "complete_sessions": 0,
+      "crc_rejected_packets": 1,
+      "crc_valid_packets": 4,
+      "expected_packets": 6,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 0.0,
+      "sources": [
+        "api31-rekey-each-prefill-run1",
+        "api31-rekey-once-prefill-run1"
+      ],
+      "status": "no_complete_sessions_observed",
+      "unobserved_packets": 1
+    },
+    "threaded_sdr_reader": {
+      "cases": 1,
+      "complete_sessions": 1,
+      "crc_rejected_packets": 0,
+      "crc_valid_packets": 8,
+      "expected_packets": 8,
+      "note": "Empirical condition match, NOT predicted silicon error rate or proof of untested timing.",
+      "observed_complete_fraction": 1.0,
+      "sources": [
+        "fsk13-prefetch-usb-fix-run1"
+      ],
+      "status": "measurement_chain_only",
+      "unobserved_packets": 0
+    }
+  }
+}

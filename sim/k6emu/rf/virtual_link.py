@@ -102,8 +102,15 @@ class AirSource(IqSource):
 
 class VirtualTxBackend(RFBackend):
     """Opt-in register-level TX endpoint. Ordinary RX backends cannot emit."""
-    def __init__(self, air, rate, center_hz):
+    def __init__(self, air, rate, center_hz, *, startup_observer=None,
+                 startup_calibration=None, configured_settle_ms=None,
+                 interframe_gap_ms=None):
         super().__init__(AirSource(air, rate, center_hz))
+        self.startup_observer = startup_observer
+        self.startup_calibration = startup_calibration
+        self.configured_settle_ms = configured_settle_ms
+        self.interframe_gap_ms = interframe_gap_ms
+        self.startup_reports = []
         self.air = air
         self.fifo = []
         self.fifo_fault = False
@@ -112,6 +119,14 @@ class VirtualTxBackend(RFBackend):
         self.completed = self.aborted = self.rejected = self.overflows = 0
         self.reason = None
         self.last_seconds = 0.0
+
+    def note_pa_state(self, enabled: bool, seconds: float):
+        """Explicitly annotate PA power; 0x59 FSK mode is NOT PA enable."""
+        if self.startup_observer is None:
+            raise RuntimeError("opt-in PA observer required")
+        if seconds < self.last_seconds:
+            raise ValueError("nonmonotonic explicit PA observation")
+        self.startup_observer.note_pa(enabled, seconds)
 
     def advance_tx(self, seconds):
         if not math.isfinite(seconds) or seconds < self.last_seconds:
@@ -139,6 +154,8 @@ class VirtualTxBackend(RFBackend):
                 self.overflows += 1
                 self.fifo_fault = True
             else:
+                if self.startup_observer is not None:
+                    self.startup_observer.note_fifo_preload(seconds)
                 self.fifo.append(value&0xffff)
             return
         if address == 0x3F and not value&0x8000:
@@ -166,6 +183,12 @@ class VirtualTxBackend(RFBackend):
                     data = b"".join(w.to_bytes(2,"little") for w in self.fifo)
                     self.fifo.clear()
                     self.reason = None
+                    if self.startup_observer is not None:
+                        from .physical_calibration import PhysicalTxCalibration
+                        self.startup_reports.append(self.startup_observer.note_tx_start(
+                            seconds, self.startup_calibration or PhysicalTxCalibration(),
+                            interframe_gap_ms=self.interframe_gap_ms,
+                            configured_settle_ms=self.configured_settle_ms))
                     self.active = self.air.emit(seconds,hz,marker,data)
         super().write(address,value,regs,seconds)
 
@@ -184,9 +207,13 @@ class VirtualTxBackend(RFBackend):
         return {**super().status(), "virtual_tx_only": True, "fsk_tx": self.tx_status()}
 
     def tx_status(self):
-        return dict(completed=self.completed, aborted=self.aborted, rejected=self.rejected,
-                    overflows=self.overflows, active=self.active is not None,
-                    fifo_words=len(self.fifo), reason=self.reason)
+        result = dict(completed=self.completed, aborted=self.aborted, rejected=self.rejected,
+                      overflows=self.overflows, active=self.active is not None,
+                      fifo_words=len(self.fifo), reason=self.reason)
+        if self.startup_observer is not None:
+            # Pure measurement annotation, never silently corrupt RF packets.
+            result["startup_evidence"] = list(self.startup_reports)
+        return result
 
     def close(self):
         if self.active is not None:

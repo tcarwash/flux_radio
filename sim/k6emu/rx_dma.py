@@ -32,6 +32,24 @@ class GpioRxDma:
         """Use measured unpaced DMA throughput; NOT an APRS sample clock."""
         return cls(write_byte, samples, MEASURED_FREE_RUNNING_HZ, cpu_hz)
 
+    @classmethod
+    def measured_tx_microphone(cls, write_byte, samples=(), *,
+                               measurement="pcm", stimulus="1khz",
+                               cpu_hz=96_000_000, calibration=None):
+        """Opt-in B-chip TX GP0/PB1 transfer rate from measured MIC GP0 runs.
+
+        Different source than the legacy RX path's 5.71MS/s nominal value;
+        this is a measured *single-run* sample clock, not a new global chip
+        constant. The caller must supply actual one-bit waveform samples.
+        """
+        from .rf.physical_calibration import Gp0MicCalibration
+        observed = (calibration or Gp0MicCalibration()).evidence(measurement,stimulus)
+        result = cls(write_byte,samples,observed["raw_dma_hz"],cpu_hz=cpu_hz)
+        result.measured_provenance = observed["source"]
+        result.measured_sha256 = observed["sha256"]
+        result.measurement_only = True
+        return result
+
     def write(self, address, value):
         offset = address - DMA_BASE
         if offset == 0x08:
