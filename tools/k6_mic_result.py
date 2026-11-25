@@ -1,4 +1,4 @@
-"""Decode the boot-local MIC A/B result mailbox (MAB1, 3-stage PCM metrics).
+"""Decode boot-local microphone result mailbox (MAB1 transport, v1/v2/v3).
 
 This format is emitted via the module API say callback after TX key-up and
 queried through live serial command 0x86. Reading never invokes a module.
@@ -12,6 +12,7 @@ STAGES=("B31", "W31", "W08")
 # v2 captures time windows relative to first *valid* ISR PCM sample; the
 # sampler's first three warm-up ISR ticks are not represented in the windows.
 TIME_BIN_END_MS=(20,40,60,80,100,120,200,320,480,640,800,1000)
+RAW_BIN_END_MS=(20,40,80,120,200,1000)
 
 
 def decompress_pcm(code: int)->int:
@@ -41,11 +42,33 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2):
+    if len(data)!=33 or data[0] not in (1,2,3):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==3:
+        isr_peak,vox,n=struct.unpack_from("<HHH",data,25)
+        if n!=8000 or vox>1023 or not 100<=isr_peak<=12000:
+            raise ValueError("MIC RAW sample/VOX/ISR totals invalid")
+        bins=[]
+        begin=0
+        for i,end in enumerate(RAW_BIN_END_MS):
+            ones,edges,variation,pcm=data[1+i*4:5+i*4]
+            bins.append({"start_ms":begin,"end_ms":end,
+                         "raw_one_bit_fraction":round(ones/255,4),
+                         "raw_transition_fraction":round(edges/255,4),
+                         "raw_density_variation":round(variation/255,4),
+                         "mean_abs_pcm":decompress_pcm(pcm),
+                         "encoded_raw":list(data[1+i*4:5+i*4])})
+            begin=end
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":3,"measurement":"pa11_raw_bit_density_and_pcm",
+                "sampling_rate_hz_nominal":8000,"raw_bits_per_tick":48,
+                "quantization":"raw counts mapped 0..255 per 48 raw samples; PCM approximate logarithmic",
+                "window_origin":"first valid PCM after three warm-up ISR ticks",
+                "isr_peak_cycles":isr_peak,"isr_deadline_cycles":12000,
+                "vox_max":vox,"samples":n,"windows":bins}
     if data[0]==2:
         clipped,vox,n=struct.unpack_from("<HHH",data,25)
         if n<7600 or n>8100 or clipped>n or vox>1023:

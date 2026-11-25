@@ -29,6 +29,21 @@ static mut DC:i32=0;
 static mut WARM:u8=3;
 static mut OLD_PRIO:u8=0;
 static mut PEAK:u32=0;
+// Debug-only raw PA11 sigma-delta diagnostics, cumulative across the active
+// PCM session; read-only snapshots via API30 mic_stream ops 4/5/6.
+// Count 1-bits, 0/1 edges, and frame-to-frame density changes, *before*
+// the existing CIC and DC rejector. All counts stay below u32 in a run.
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut RAW_ONES:u32=0;
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut RAW_EDGES:u32=0;
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut RAW_VARIATION:u32=0;
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut RAW_LAST_ONES:u32=0xffff_ffff;
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut RAW_LAST_BIT:u32=2;
+
 #[inline(always)]
 fn rd(a:u32)->u32{unsafe{rdv(a as *const u32)}}
 #[inline(always)]
@@ -43,7 +58,7 @@ pub fn start(ptr:*mut u8)->bool{
         OLD_PRIO=rdv(IPR as *const u8);
         wrv(IPR as *mut u8,0xc0);
         wr(B+24,1<<(2+16));mask(A,MODE,0);mask(A+12,MODE,0);mask(A+8,MODE,MODE);
-        CIC=[0;4];DC=0;WARM=3;PEAK=0;
+        CIC=[0;4];DC=0;WARM=3;PEAK=0;RAW_ONES=0;RAW_EDGES=0;RAW_VARIATION=0;RAW_LAST_ONES=0xffff_ffff;RAW_LAST_BIT=2;
         let p=ptr.cast::<Ring>();
         // Caller provides an empty initialized ring. Never clear live samples.
         RING=p;
@@ -69,6 +84,10 @@ pub fn stop(){
     })
 }
 pub fn peak()->u32{unsafe{rdv(core::ptr::addr_of!(PEAK))}}
+pub fn raw_ones()->u32{unsafe{rdv(core::ptr::addr_of!(RAW_ONES))}}
+pub fn raw_edges()->u32{unsafe{rdv(core::ptr::addr_of!(RAW_EDGES))}}
+pub fn raw_variation()->u32{unsafe{rdv(core::ptr::addr_of!(RAW_VARIATION))}}
+
 unsafe extern "C" fn isr(){
     let t0=rd(T+0x24);
     wr(T+0x10,0);
@@ -76,12 +95,16 @@ unsafe extern "C" fn isr(){
     if p.is_null(){return;}
     let base=rd(A)&!MODE;
     let mut i1=CIC[0];let mut i2=CIC[1];
+    let mut ones=0u32;let mut edges=0u32;let mut prev=RAW_LAST_BIT;
     for _ in 0..TURNS{
         wr(A+24,PIN);wr(A,base|(1<<22));
         core::arch::asm!("nop","nop","nop","nop",options(nomem,nostack,preserves_flags));
         wr(A,base);
         core::arch::asm!("nop","nop","nop","nop","nop","nop","nop","nop",options(nomem,nostack,preserves_flags));
         let b=(rd(A+16)>>11)&1;
+        ones+=b;
+        if prev<2{edges+=(prev^b)&1;}
+        prev=b;
         wr(A+24,PIN<<16);wr(A,base|(b<<22));
         core::arch::asm!("nop","nop","nop",options(nomem,nostack,preserves_flags));
         wr(A,base);
@@ -97,6 +120,13 @@ unsafe extern "C" fn isr(){
     // deadline was missed. Latch failure; foreground will dekey.
     if rd(T+0x10)&1!=0 {wrv(lost,1);return;}
     if WARM!=0{WARM-=1;if WARM==0{DC=(y<<8) as i32;}return;}
+    RAW_ONES=RAW_ONES.wrapping_add(ones);
+    RAW_EDGES=RAW_EDGES.wrapping_add(edges);
+    if RAW_LAST_ONES<=TURNS{
+        let d=if ones>RAW_LAST_ONES{ones-RAW_LAST_ONES}else{RAW_LAST_ONES-ones};
+        RAW_VARIATION=RAW_VARIATION.wrapping_add(d);
+    }
+    RAW_LAST_ONES=ones;RAW_LAST_BIT=prev;
     let delta=((y<<8) as i32).wrapping_sub(DC);
     DC=DC.wrapping_add(delta>>3);
     let sample=(delta>>2).clamp(-32768,32767) as i16;

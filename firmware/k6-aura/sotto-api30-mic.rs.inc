@@ -38,6 +38,11 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
     mod_tx_guard();
     if op==1{sotto_mic_stop();return 0;}
     if op==2{return crate::hal::pcm_capture::peak() as i32;}
+    // Cumulative raw 1-bit sampler counters. Read-only while the microphone
+    // lease is live; stop/reset uses the existing audited cleanup path.
+    if op==4{return if SOTTO_MIC_ROUTE{crate::hal::pcm_capture::raw_ones() as i32}else{-1};}
+    if op==5{return if SOTTO_MIC_ROUTE{crate::hal::pcm_capture::raw_edges() as i32}else{-1};}
+    if op==6{return if SOTTO_MIC_ROUTE{crate::hal::pcm_capture::raw_variation() as i32}else{-1};}
     #[cfg(all(k6_live_serial,feature="spilib"))]
     if LIVE_ACTIVE.is_some(){return -1;}
     if op!=0 || SOTTO_MIC_ROUTE || !c.tx

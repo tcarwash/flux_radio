@@ -102,7 +102,7 @@ class LiveLink(CpsLink):
         return decode_status(self.request(STATUS))
 
     def mic_result(self):
-        """Fetch last completed MIC A/B measurement without running a module."""
+        """Fetch last completed MIC diagnostic without running a module."""
         from k6_mic_result import decode_mic_result
         try:
             return decode_mic_result(self.request(MIC_RESULT))
@@ -775,7 +775,7 @@ def main():
     p.add_argument("--port", required=True)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
-    mic_result=sub.add_parser("mic-result",help="read latest completed MIC A/B measurements (RAM only)")
+    mic_result=sub.add_parser("mic-result",help="read latest completed MIC diagnostic measurements (RAM only)")
     mic_result.add_argument("--save",type=Path,help="write retrieved JSON to a NEW local file")
     sub.add_parser("caps")
     sub.add_parser("health")
