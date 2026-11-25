@@ -314,3 +314,26 @@ Committed source as `916302ed`, built/tested as a standalone API30 K6 ARM PIC mo
 The standalone `MIC TIME` module (source `c/k6/mod/sotto_mic_time.c`) is now **installed in slot25**. Signed envelope serial `1795634295`, code 1992 bytes, envelope 2016 bytes, SHA256 `e0d68f45d8b9258c6d9bab9aa43afacb9032fc65634a29e33945af69f45026b1`, with exact SPI readback against the staged envelope and unchanged slot30 `SOTTO MIC` SHA256 `791de524e9640967f047f855d92e107405dbe765814f372b6003da5b375386a0`. The radio's base firmware was not reflashed. Staging/backups and reports: `/home/tyler/flux-bench/sotto-mic-calibration-20261125/mailbox-v1/mic-time-v2/` (`slot25-mic-time-v2.k6m`, `install-report.json`, preflight logs). Cable-connected `run-coop 25` loaded the 1992B module, sent `MAB1:CLR`, returned expected `-4` because UART occupies the mic connector; subsequent status remained standby idle/TX false and mailbox read returned valid empty. The true on-radio 1kHz time-series still requires the physical cable-swap and generator run.
 
 Operator instructions: with dummy load attached, remove programming cable, connect generator at nominal 0.1 V, 1kHz output ON, select `CATALOG → MIC TIME`, hold physical PTT for **at least 1.5 seconds** and watch for `MIC TIME SAVED`; then reconnect programming cable **without rebooting**. The assistant can query `mic-result --save /home/tyler/flux-bench/sotto-mic-calibration-20261125/mailbox-v1/mic-time-live-01.json` and interpret 12 time windows. The known-good `SOTTO MIC` slot30 remains untouched, and the bench lock is released for the user test.
+
+### MIC TIME first physical result: transient ends by ~100ms (retrieved 2026-11-25 19:46Z)
+
+Operator completed the attended constant 1kHz/nominal 0.1V signal-generator test, then reconnected the programming cable without cycling radio power. The radio initially reported UI not in standby (but TX off), so a short remote EXIT returned it to idle. `python3 tools/k6_live.py --port /dev/ttyUSB0 mic-result --save /home/tyler/flux-bench/sotto-mic-calibration-20261125/mailbox-v1/mic-time-live-01.json` decoded the CRC-valid **v2 time-resolved mailbox** from real radio RAM. The permanently saved host JSON SHA256 is `340ef23930eb7400df6f787fcc5100a6241091e796919a155965a81f49452d04`; its retrieval timestamp is `2026-11-25T19:46:32.238012+00:00`, which is **not** the time of capture. `n=8000` produced i16 reconstructed PCM samples in 12 bins; total 92 clipped samples; max RFIC `REG_64` VOX **893**. The quantized per-bin numbers are:
+
+| Time since first valid PCM | Mean abs PCM | Coherent 1kHz peak |
+|---|---:|---:|
+| 0–20ms | 14848 | 22528 |
+| 20–40ms | 23552 | 32768 |
+| 40–60ms | 12800 | 17408 |
+| 60–80ms | 3968 | 5120 |
+| 80–100ms | 160 | 152 |
+| 100–120ms | 1 | 0 |
+| 120–200ms | 1 | 0 |
+| 200–320ms | 1 | 0 |
+| 320–480ms | 1 | 0 |
+| 480–640ms | 1 | 0 |
+| 640–800ms | 1 | 0 |
+| 800–1000ms | 1 | 0 |
+
+This **confirms actual startup-only reconstructed PCM** with strong early measurements and digital saturation, then near-perfect steady-state silence by ~100ms, notwithstanding tone-present RFIC VOX. It also reconciles the previous MIC CAL nominal one-second mean and tone estimator with the MIC A/B gain sweep after a 120ms discarded setup window. `tone_1khz_pcm_peak` is a coherent 8-phase estimate, not proof of a clean, sustained microphone waveform; high transient energy may project onto it during a short 20ms window. The PA11 sigma-delta implementation explicitly drives and reads GPIOA11 each ISR turn; RFIC `REG_47` currently selects AF=4 (`BASEBAND1`/raw), whereas `docs/k6-afsweep.md` documents this register as **speaker/receive AF output selection**, not a confirmed microphone-monitor DAC route. PA11 also is the MCU speaker PWM/RC net (`docs/k6-stock-firmware.md`). A reasonable leading *hypothesis* is a speaker-output or routing/capacitor transient with no sustained transmit microphone feed to PA11. Another possible cause is ISR-driven GPIO charge/drive dynamics that settle to constant density. Neither is fully distinguished by this dataset. **Do not conclude we have proven continuous mic->PA11 audio**, despite proven RFIC mic-to-FM TX and VOX paths.
+
+Next investigation should prioritize read-only verification of PA11 analog/logic waveform with a scope **at start and after 200ms**, with the same fixed tone input, and/or an instrumented raw PA11 bit-density/transition-counter in the ISR (requires audited, opt-in base firmware change); correlate it with RFIC AF route register values. Do not just increase mic gain: that was already gain31 and A/B no-write gain31 produced silence after 120ms. If PA11 never carries sustained mic audio, examine whether any documented RFIC TX-to-MCU digital/analog path exists or whether an isolated analog coupling hardware change is needed. Prefer isolated PA-muted bench diagnostics, and keep SOTTO MIC slot30 unchanged. The prior `MIC A/B` report is preserved separately as `mic-ab-live-01.json` and old slot25 signed envelope staged.
