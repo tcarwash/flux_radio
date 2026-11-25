@@ -28,6 +28,15 @@
   `~/.local/state/flux-experiments/offline-results.sqlite3`; the `flux-offline-results`
   host CLI is accessible to other connected agent threads.
 
+## Closeout and archived experiment discovery
+
+- GitHub issues are for physical/hardware coordination and historical research; new offline software experiments belong ONLY in the shared ledger (`flux-offline-results`), not GitHub issues.
+- Before beginning an experiment, search BOTH open and closed history: `flux-issues search --state all --query "REG40"` and `flux-offline-results list --query "REG40"`. Closed issues remain searchable and evidence-linked.
+- When the original issue's full scoped goal is resolved, report findings and close it with `flux-issues close --issue N --disposition completed --summary "..." --evidence https://github.com/tcarwash/flux_radio/commit/... --apply` after reading its acceptance criteria. A fixture PASS or bounded hardware step alone is **not** enough.
+- To retire a legacy OFFLINE ticket that still needs software investigation, first migrate it using `--disposition migrated` and preserve its remaining work in the shared ledger. This closes the GitHub ticket as *not planned* (for GitHub issue tracking), **not** as a successful experiment.
+- The archive command defaults to a no-side-effects preview and refuses to close an issue with enrolled hardware candidates or coordination issue #11. Hardware closeout is explicit: supply `--scope hardware --disposition completed --acceptance-reviewed --restoration-evidence ISSUE_COMMENT_URL`, result evidence and conclusion. Keep physical issues open until all intended RF/SDR outcomes and independent restoration are verified; do not conflate a single session PASS with experiment completion.
+- See `docs/k6-experiment-closeout.md` for examples, scope rules and limitations.
+
 ## Prompt-time experiment result check
 
 - If the current agent prompt relates to K6 experiments, RF/modem work,
