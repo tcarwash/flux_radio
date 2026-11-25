@@ -103,6 +103,22 @@ slot30, verify original VFO/mode and all packed KUL2 slots.
 Reject zero-dimension or prepacked-fixture SDR evidence as RF PASS.
 Do not accept reordered codec frames. This is finite voice/test
 session, not a claim of functioning live DV.
+For #20: tx27_reg51_signed_probe.c must snapshot AND restore
+R_DCS_WORD REG08 (existing source writes 0x0FFF/0x87FF without old08
+save). Keep on-disk default inert TX27_BENCH_ENABLE=0 and other ACK
+macros=0; for explicit supervised armed compilation use -D flags for
+TX27_BENCH_ENABLE=1, TX27_RF_ENABLE=1, TX27_FIXTURE_ACK=1 and
+TX27_WATCHDOG_ACK=1. Use real code entry from k6mod.build; radio has
+protocol5, cable_only CRC signing (key=None), API29, empty slot30,
+31 original system/user module hashes, VFO A433.500/B144.390 FM wide.
+Module returns exactly 22 with report prefix tx27 ok on success;
+inert return -9 or busy/restore errors must FAIL. Capture RTL-SDR IQ
+and independently measure 9-step signed REG51 staircase via FM
+instantaneous-frequency derivative, not simply spectrum peak. Detect
+correct +/- tone sign and ordering; unknown IQ = RF not qualified.
+Erase slot30, verify all original hashes, VFO/mode and TX off. KUL2
+directory generation changes legitimately on install/erase; compare
+per-original-slot blobs, not entire raw bank SHA.
 For #26: FIFO initial fill is required,
 but no register-40 writes *after* PA activation; fix tests without
 removing this safety property.
