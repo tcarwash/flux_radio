@@ -30,3 +30,17 @@
 - Confirm no PA/FSK ownership after PTT release, normal RX and VFO/library restoration. On failure, preserve failure trace and **do not automatically retry**.
 
 Issue #30's originally proposed six fixed FDV1 packets are a *separate* physical framing qualification (not live microphone voice). Do not silently substitute this new live-mic test for #30. Record outcomes on issue #10 and hardware experiment issue chosen for this run, with a fresh #11 lease.
+
+## Offline SDR capture scoring (available now)
+
+The independent scorer `tools/k6_sotto_live_capture_score.py` reads a **saved** interleaved uint8 RTL-SDR `.npy` capture (`npy-u8:`) or complex-IQ `.npy` (`npy:`). It cannot open an SDR, serial port, or transmitter. It runs the compiled Cortex-M0 FSK receiver on recorded IQ, then requires a complete, unambiguous CRC-correct FDV1 BEGIN/VOICE/END epoch before optionally decoding local host PCM. Use the **actual calibrated center frequency** (the receiver offset is not automatically corrected). Example, with placeholders for an authorized recorded session:
+
+```sh
+~/.local/share/flux-rf-venv/bin/python tools/k6_sotto_live_capture_score.py \
+  --source "npy-u8:/private/captures/live-sotto.npy" \
+  --rate 1024000 --center 440600000 --tune 440850000 --duration 4 \
+  --json "/private/captures/live-sotto-score.json" \
+  --wav "/private/captures/live-sotto-decoded.wav"
+```
+
+**Example numbers above are not a recording instruction or assurance of an SDR offset/frequency.** Do not put private microphone WAV/PCM captures in a public issue. The scorer's output validates framing and native IQ reception, not speaker HAL, true microphone fidelity, antenna/load safety, or permission to TX. The three tests in `tests/test_k6_sotto_live_capture_score.py` check a pinned six-frame public control+voice session and fail closed on corrupted, truncated and missing-END input; 3/3 passed offline.
