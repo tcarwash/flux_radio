@@ -40,7 +40,7 @@ insert_once('''    publish_rx: mod_mb_publish_rx,''',
             '''    publish_rx: mod_mb_publish_rx,
 '''+initializers)
 insert_once('level: if cfg!(k6_packet_mailbox) { 27 }',
-            'level: if cfg!(k6_fsk4800_rx) { 31 } else if cfg!(k6_packet_mailbox) { 27 }')
+            'level: if cfg!(k6_fsk4800_rx) { 31 } else if cfg!(k6_sotto_mic) { 30 } else if cfg!(k6_sotto_async_fsk) { 29 } else if cfg!(k6_sotto_resources) { 28 } else if cfg!(k6_packet_mailbox) { 27 }')
 # Preserve the only TX-less invariant even if a module forgets to stop RX:
 # always restore RX registers on module return or before TX switch.
 insert_once('unsafe extern "C" fn mod_tx_off() {',

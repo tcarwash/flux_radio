@@ -8,6 +8,7 @@ const SOTTO_CB_LEN: u32 = 32 + 30720;
 #[cfg(k6_sotto_resources)]
 const SOTTO_K6SC_LEN: u32 = 4182;
 #[cfg(k6_sotto_resources)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_RESOURCE_DECK: (u32,u32) = (0,0);
 
 #[cfg(k6_sotto_resources)]

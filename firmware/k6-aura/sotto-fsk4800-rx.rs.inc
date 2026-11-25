@@ -155,6 +155,8 @@ unsafe extern "C" fn mod_fsk4800_rx(op:u32,words:*mut u16,cfg:u32)->i32 {
 }
 #[cfg(not(k6_fsk4800_rx))]
 unsafe extern "C" fn mod_fsk4800_rx(_:u32,_:*mut u16,_:u32)->i32 {-1}
+#[cfg(not(k6_fsk4800_rx))]
+unsafe fn rx4800_stop() {}
 
 // The experimental API31 host currently implements RX only. API28-30
 // callback slots are explicit stubs, never NULL pointers or misaligned tails.

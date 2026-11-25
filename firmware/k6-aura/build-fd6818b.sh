@@ -122,7 +122,12 @@ python3 "$HERE/apply-action-beep.py"
 python3 "$HERE/apply-aprs-position-api.py"
 python3 "$HERE/apply-boot-app-stack.py"
 python3 "$HERE/apply-cable-stack.py"
-python3 "$HERE/apply-capability-query.py"
+K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" \
+  K6_OTA_SERVICE="${K6_OTA_SERVICE:-0}" K6_DESIGNER_SERVICE="${K6_DESIGNER_SERVICE:-0}" K6_SOTTO_SERVICE="${K6_SOTTO_SERVICE:-0}" \
+  K6_MODE_REGISTRY="${K6_MODE_REGISTRY:-0}" K6_PACKET_MAILBOX="${K6_PACKET_MAILBOX:-0}" K6_FSK4800_RX="${K6_FSK4800_RX:-0}" \
+  K6_LIVE_SERIAL="${K6_LIVE_SERIAL:-0}" K6_SOTTO_RESOURCES="${K6_SOTTO_RESOURCES:-0}" \
+  K6_SOTTO_ASYNC_FSK="${K6_SOTTO_ASYNC_FSK:-0}" K6_SOTTO_MIC="${K6_SOTTO_MIC:-0}" \
+  python3 "$HERE/apply-capability-query.py"
 python3 "$HERE/apply-ota-service.py"
 python3 "$HERE/trim-generated-host.py"
 python3 "$HERE/apply-pack-service-gates.py"
@@ -197,16 +202,18 @@ case "$K6_SOTTO_ASYNC_FSK" in
   *) echo "K6_SOTTO_ASYNC_FSK must be 0 or 1" >&2; exit 1 ;;
 esac
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_RESOURCES" != 1 ]; then
-  echo "API29 requires the opt-in API28 resources and API31 RX host" >&2
+  echo "API29 requires the opt-in API28 resources and API31 host tail" >&2
   exit 1
 fi
 case "$K6_SOTTO_RESOURCES" in
   0|1) ;;
   *) echo "K6_SOTTO_RESOURCES must be 0 or 1" >&2; exit 1 ;;
 esac
-if [ "$K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_FSK4800_RX" != 1 ]; then
-  echo "Sotto resources require experimental API31 RX and API27 KISS tail" >&2
-  exit 1
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
+  [ "$K6_MODE_REGISTRY" = 1 ] && [ "$K6_PACKET_MAILBOX" = 1 ] || {
+    echo "Sotto resources require the API31 host tail and API26/27 (mode registry + packet mailbox)" >&2
+    exit 1
+  }
 fi
 case "$K6_FSK4800_RX" in
   0|1) ;;
@@ -229,7 +236,9 @@ if [ "$K6_PACKET_MAILBOX" = 1 ]; then
   python3 "$HERE/apply-packet-mailbox.py"
   python3 "$HERE/apply-packet-dispatch.py"
 fi
-if [ "$K6_FSK4800_RX" = 1 ]; then
+# API31 defines the stable API28-31 host tail; the optional RX4800 receiver
+# itself remains separately gated by K6_FSK4800_RX.
+if [ "$K6_FSK4800_RX" = 1 ] || [ "$K6_SOTTO_RESOURCES" = 1 ]; then
   python3 "$HERE/apply-sotto-rx4800.py"
 fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
@@ -268,6 +277,7 @@ if [ "$K6_SOTTO_SERVICE" = 1 ]; then
 fi
 K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PKT_YIELD=0 K6_VOICE="$K6_VOICE" K6_CB=spi \
   K6_MODE_REGISTRY="$K6_MODE_REGISTRY" K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX" K6_FSK4800_RX="$K6_FSK4800_RX" \
+  K6_SOTTO_RESOURCES="$K6_SOTTO_RESOURCES" K6_SOTTO_ASYNC_FSK="$K6_SOTTO_ASYNC_FSK" K6_SOTTO_MIC="$K6_SOTTO_MIC" \
   K6_OUT="$OUT/c-build" sh "$ROOT/tools/k6_build.sh"
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
@@ -286,8 +296,13 @@ fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi
-if [ "${K6_USER_STORE:-0}" = 1 ]; then
+# API28 Sotto resources resolve logical module-library slots through the
+# same read-only location helper as User Store. Install that helper whenever
+# resources are enabled, without enabling the optional write-capable store.
+if [ "${K6_USER_STORE:-0}" = 1 ] || [ "$K6_SOTTO_RESOURCES" = 1 ]; then
   python3 "$HERE/apply-user-store.py"
+fi
+if [ "${K6_USER_STORE:-0}" = 1 ]; then
   python3 "$HERE/apply-user-restore.py"
   PACK_CFG="$PACK_CFG --cfg k6_user_store"
 fi

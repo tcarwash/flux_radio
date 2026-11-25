@@ -53,7 +53,7 @@ unsafe extern "C" fn mod_tx_on(max_ms:u32) -> i32 {
     out=run()
     assert out.returncode==0,out.stderr
     first=pager.read_text()
-    assert 'level: if cfg!(k6_fsk4800_rx) { 31 } else if cfg!(k6_packet_mailbox) { 27 }' in first
+    assert 'level: if cfg!(k6_fsk4800_rx) { 31 } else if cfg!(k6_sotto_mic) { 30 } else if cfg!(k6_sotto_async_fsk) { 29 } else if cfg!(k6_sotto_resources) { 28 } else if cfg!(k6_packet_mailbox) { 27 }' in first
     assert first.index('pub publish_rx')<first.index('pub resource_open')<first.index('pub resource_read')<first.index('pub fsk_async')<first.index('pub mic_stream')<first.index('pub fsk4800_rx')
     assert first.index('publish_rx: mod_mb_publish_rx')<first.index('resource_open: mod_sotto_resource_unavailable')<first.index('fsk4800_rx: mod_fsk4800_rx')
     assert 'return -1;' in first
@@ -90,15 +90,23 @@ def test_build_requires_api27_and_data_with_watchdog():
     assert 'git -C "$WORK" clean -fd' in shell
     assert 'mod_tx_pa(' not in rx and 'pa_enable(' not in rx
     assert 'async_fsk' not in rx
-    # The Rust advertised API31 MUST match the C loader's envelope ceiling.
-    # Older KISS/API27 builds retain their own ceiling.
+    # Rust, Python C builder, shell C builder and k6_mod.h must agree on
+    # the highest enabled append-only API tail (28/29/30/31).
     builder=(ROOT/'tools/k6_build.py').read_text()
-    assert "flags.append('-DKM_LEVEL=31')" in builder
-    assert "if env.get('K6_FSK4800_RX', '0') == '1'" in builder
+    header=(ROOT/'c/k6/k6_mod.h').read_text()
+    assert "gates = ('K6_MODE_REGISTRY', 'K6_PACKET_MAILBOX', 'K6_SOTTO_RESOURCES'" in builder
+    assert 'K6_SOTTO_MIC' in builder and 'K6_FSK4800_RX' in builder
+    assert 'defined(K6_SOTTO_RESOURCES)' in header
+    assert 'defined(K6_SOTTO_ASYNC_FSK)' in header
+    assert 'defined(K6_SOTTO_MIC)' in header
+    assert 'defined(K6_FSK4800_RX)' in header
     assert 'K6_FSK4800_RX="$K6_FSK4800_RX"' in shell
+    assert 'K6_SOTTO_MIC="$K6_SOTTO_MIC"' in shell
+    assert 'K6_SOTTO_RESOURCES="$K6_SOTTO_RESOURCES"' in shell
     legacy=(ROOT/'tools/k6_build.sh').read_text()
     assert 'if [ "${K6_FSK4800_RX:-0}" = 1 ]; then' in legacy
-    assert 'CFLAGS="$CFLAGS -DKM_LEVEL=31"' in legacy
+    assert 'CFLAGS="$CFLAGS -DK6_FSK4800_RX=1"' in legacy
+    assert 'CFLAGS="$CFLAGS -DK6_SOTTO_MIC=1"' in legacy
     assert 'K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX"' in shell
     assert 'RX4800_DEADLINE' in rx
     assert 'RX4800_FRAME_READY' in rx

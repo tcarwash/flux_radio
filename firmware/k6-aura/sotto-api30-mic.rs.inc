@@ -5,6 +5,12 @@
 static mut SOTTO_MIC_ROUTE: bool=false;
 #[cfg(k6_sotto_mic)]
 #[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut SOTTO_GP0_ROUTE: bool=false;
+#[cfg(k6_sotto_mic)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut SOTTO_GP0_SAVED:[u16;2]=[0;2];
+#[cfg(k6_sotto_mic)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_MIC_SAVED:[u16;4]=[0;4];
 #[cfg(k6_sotto_mic)]
 const SOTTO_MIC_REGS:[u8;4]=[0x30,0x47,0x48,0x7d];
@@ -13,7 +19,17 @@ const SOTTO_MIC_REGS:[u8;4]=[0x30,0x47,0x48,0x7d];
 // recursion while the transmitter's watchdog is dekeying the radio.
 #[cfg(k6_sotto_mic)]
 unsafe fn sotto_mic_stop(){
+    crate::hal::gp0_capture::stop();
     crate::hal::pcm_capture::stop();
+    if SOTTO_GP0_ROUTE {
+        SOTTO_GP0_ROUTE=false;
+        let c=&*addr_of!(MOD_CTX);
+        if !c.app.is_null() && c.tx {
+            let (app,syst)=mod_ctx();
+            app.radio.fd6818.reg_write(syst,0x34,SOTTO_GP0_SAVED[1]);
+            app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]);
+        }
+    }
     if !SOTTO_MIC_ROUTE{return;}
     SOTTO_MIC_ROUTE=false;
     let c=&*addr_of!(MOD_CTX);
@@ -38,6 +54,36 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
     mod_tx_guard();
     if op==1{sotto_mic_stop();return 0;}
     if op==2{return crate::hal::pcm_capture::peak() as i32;}
+    // Op8 starts the firmware-owned GP0/PB1 DMA1 IRQ9 producer. The module
+    // supplies only its normal 644-byte PCM queue and the measured sample
+    // density rate; DMA ring, IRQ vector and decimator live in firmware RAM0.
+    if op==8 {
+        #[cfg(all(k6_live_serial,feature="spilib"))]
+        if LIVE_ACTIVE.is_some(){return -1;}
+        let start=ptr as usize;
+        if !SOTTO_MIC_ROUTE || SOTTO_GP0_ROUTE || !c.tx || n!=87260
+            || c.stack_from_arena || c.tlm_cap!=0
+            || ptr.is_null() || start&3!=0 || start<c.scratch
+            || start.saturating_add(644)>scratch_end()
+            || mod_fd_read(0)!=0x4829 || mod_tx_pa(0)!=0
+            || !crate::hal::txdog::ready() {return -1;}
+        SOTTO_GP0_SAVED=[mod_fd_read(0x33),mod_fd_read(0x34)];
+        let (app,syst)=mod_ctx();
+        app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]&!0x0100);
+        app.radio.fd6818.reg_write(syst,0x34,(SOTTO_GP0_SAVED[1]&!0x000f)|12);
+        if mod_fd_read(0x34)&0x000f!=12 {
+            app.radio.fd6818.reg_write(syst,0x34,SOTTO_GP0_SAVED[1]);
+            app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]);
+            return -3;
+        }
+        if !crate::hal::gp0_capture::start(ptr,n) {
+            app.radio.fd6818.reg_write(syst,0x34,SOTTO_GP0_SAVED[1]);
+            app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]);
+            return -2;
+        }
+        SOTTO_GP0_ROUTE=true;
+        return 0;
+    }
     // Cumulative raw 1-bit sampler counters. Read-only while the microphone
     // lease is live; stop/reset uses the existing audited cleanup path.
     if op==4{return if SOTTO_MIC_ROUTE{crate::hal::pcm_capture::raw_ones() as i32}else{-1};}

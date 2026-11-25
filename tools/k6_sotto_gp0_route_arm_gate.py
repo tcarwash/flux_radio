@@ -23,8 +23,11 @@ def run(elf:Path,image:Path,tree:Path)->dict:
         tmp=Path(d)
         sha,size=matching_image(elf,image,tmp)
         art=prepare(tree,tmp,pcm=mixed_pcm())
-        code,entry=k6mod.build(str(SRC))
-        fw=Dispatcher(elf,image,art['names'])
+        nm=subprocess.check_output(['llvm-nm','--demangle',str(elf)],text=True)
+        has_rx='aura::app::pager::mod_fsk4800_rx' in nm
+        source=SRC if has_rx else ROOT/'tests/data/k6/sotto_mic_gp0_route_call_api30_emu.c'
+        code,entry=k6mod.build(str(source))
+        fw=Dispatcher(elf,image,art['names'],require_rx=has_rx)
         try:
             b=fw.board
             before_pa=b.fd_regs.get(0x36)
@@ -66,7 +69,8 @@ def run(elf:Path,image:Path,tree:Path)->dict:
                     'no_TIM17_irq_or_pcm_ring':True,
                     'pa_restored':True,'module_return':fw.module_ret[0],
                     'observation_before_route_release':o,
-                    'physical_gp0_tested':False,'simulated_only':True}
+                    'physical_gp0_tested':False,'simulated_only':True,
+                    'api_level':31 if has_rx else 30}
         finally:fw.close()
 
 if __name__=='__main__':

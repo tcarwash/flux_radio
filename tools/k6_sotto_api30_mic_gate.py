@@ -32,8 +32,11 @@ def run(elf:Path,image:Path,tree:Path,*,leave_active:bool=False):
         tmp=Path(td)
         sha,size=matching_image(elf,image,tmp)
         art=prepare(tree,tmp,pcm=mixed_pcm())
-        code,entry=k6mod.build(str(SRC),cflags=[*k6mod.CFLAGS,*(['-DLEAVE_ACTIVE'] if leave_active else [])])
-        fw=Dispatcher(elf,image,art["names"])
+        nm=subprocess.check_output(['llvm-nm','--demangle',str(elf)],text=True)
+        has_rx='aura::app::pager::mod_fsk4800_rx' in nm
+        source=SRC if has_rx else ROOT/'tests/data/k6/sotto_mic30_call_api30_emu.c'
+        code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,*(['-DLEAVE_ACTIVE'] if leave_active else [])])
+        fw=Dispatcher(elf,image,art["names"],require_rx=has_rx)
         try:
             b=fw.board
             # K6Board snapshots the zero-page alias at MEM_MODE changes,
@@ -152,6 +155,7 @@ def run(elf:Path,image:Path,tree:Path,*,leave_active:bool=False):
                         arm_tim17_isr_invoked=fired[0],
                         modeled_8khz_samples=ring_stats,
                         real_audio_8khz_tested=False,
+                        api_level=31 if has_rx else 30,
                         physical_pa11_tested=False,simulated_only=True)
         finally:fw.close()
 

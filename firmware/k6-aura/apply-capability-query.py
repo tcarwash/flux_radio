@@ -38,6 +38,12 @@ mask = (32 if designer == "1" else 0) | (8 if ota == "1" else 16) | 1 | (2 if sc
 # These flags are already validated by build-fd6818b.sh before linking.
 if os.environ.get("K6_FSK4800_RX") == "1":
     level = 31
+elif os.environ.get("K6_SOTTO_MIC") == "1":
+    level = 30
+elif os.environ.get("K6_SOTTO_ASYNC_FSK") == "1":
+    level = 29
+elif os.environ.get("K6_SOTTO_RESOURCES") == "1":
+    level = 28
 elif os.environ.get("K6_PACKET_MAILBOX") == "1":
     level = 27
 elif os.environ.get("K6_MODE_REGISTRY") == "1":

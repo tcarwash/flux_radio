@@ -44,8 +44,8 @@ ENTER_TX_PA="<aura::device::radio::Radio>::enter_tx_with_pa"
 SRC=ROOT/"tests/data/k6/sotto_rx31_call_emu.c"
 
 
-def linked_symbols(elf:Path):
-    names=(CALLBACK,ENTRY,CABLE,STACK,RUN)
+def linked_symbols(elf:Path, *, require_rx:bool=True):
+    names=(CALLBACK,ENTRY,CABLE,STACK,RUN) if require_rx else (ENTRY,CABLE,STACK,RUN)
     rows=subprocess.check_output(["llvm-nm","--demangle",str(elf)],
                                  text=True,timeout=20).splitlines()
     found={}
@@ -75,11 +75,12 @@ def linked_symbols(elf:Path):
 
 
 class Dispatcher:
-    def __init__(self,elf:Path,image:Path,api_names:list[str]):
+    def __init__(self,elf:Path,image:Path,api_names:list[str],*,require_rx:bool=True):
         from unicorn import UC_HOOK_CODE
         from unicorn.arm_const import UC_ARM_REG_R0
-        self.syms=symbols(elf)
-        self.linked=linked_symbols(elf)
+        self.syms=symbols(elf,require_rx=require_rx)
+        self.linked=linked_symbols(elf,require_rx=require_rx)
+        self.require_rx=require_rx
         self.board=K6Board(image,collect_mmio=False,capture_tx_events=True)
         self.board.flash_data[0xB000:0xB004]=b"AURA"  # virtual flash-map sentinel
         self.board.run(6_000_000,1024)
@@ -103,8 +104,9 @@ class Dispatcher:
             def record(*args):
                 self.trace[key]+=1
             return record
-        for symbol,key in ((ENTRY,"run_module"),(STACK,"km_run_on_stack"),
-                           (RUN,"km_run"),(CALLBACK,"api31")):
+        hooks=[(ENTRY,"run_module"),(STACK,"km_run_on_stack"),(RUN,"km_run")]
+        if require_rx:hooks.append((CALLBACK,"api31"))
+        for symbol,key in hooks:
             addr=self.linked[symbol]
             self.board.uc.hook_add(UC_HOOK_CODE,on_entry(key),begin=addr,end=addr)
         for symbol in (ENTER_TX,ENTER_TX_PA):
@@ -124,14 +126,18 @@ class Dispatcher:
         self.board.uc.hook_add(UC_HOOK_CODE,on_module_result,
                                begin=km_return,end=km_return)
         api=int.from_bytes(self.board.uc.mem_read(self.syms["api"],4),"little")
-        if (api&0xffff,api>>16)!=(1,31):
-            raise RuntimeError("Compiled Rust host does not expose API31")
+        expected_level=31 if require_rx else 30
+        if (api&0xffff,api>>16)!=(1,expected_level):
+            raise RuntimeError(f"Compiled Rust host API must be 1/{expected_level}; got {api:#x}")
         if not api_names or api_names[-1]!="fsk4800_rx" or api_names.count("mb_version")!=1:
             raise RuntimeError("Wrong level-31 C API layout")
         fn=int.from_bytes(self.board.uc.mem_read(
             self.syms["api"]+4+4*(len(api_names)-1),4),"little")
-        if fn!=self.linked[CALLBACK]|1:
-            raise RuntimeError("Rust API31 table does not point at compiled callback")
+        if require_rx:
+            if fn!=self.linked[CALLBACK]|1:
+                raise RuntimeError("Rust API31 table does not point at compiled callback")
+        elif fn==0 or (fn&1)==0:
+            raise RuntimeError("Transmit-only API31 must still contain an aligned Thumb receiver stub")
         self.rf=None
 
     def call(self,address:int,*args:int,limit:int=500):
@@ -161,7 +167,7 @@ class Dispatcher:
 
     def verified_cable_stage(self,code:bytes,entry:int,expected_chunks:int|None=None,*,max_call_quanta:int=500):
         from unicorn import UC_HOOK_CODE
-        envelope=k6mod.image(code,entry,serial=42,key=None,level=31)
+        envelope=k6mod.image(code,entry,serial=42,key=None,level=31 if self.require_rx else 30)
         # CPU-side byte input to the real C cable ingress (CRC + replay checks).
         packets=k6mod.packets(envelope,xfer=91,length=64)
         if expected_chunks is not None and len(packets)!=expected_chunks:

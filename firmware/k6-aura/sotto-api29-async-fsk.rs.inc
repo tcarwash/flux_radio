@@ -9,6 +9,7 @@ static mut SOTTO_TX29_ACTIVE: bool = false;
 #[cfg(k6_sotto_async_fsk)]
 static mut SOTTO_TX29_STARTED: bool = false;
 #[cfg(k6_sotto_async_fsk)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_START_AT: u32 = 0;
 #[cfg(k6_sotto_async_fsk)]
 static mut SOTTO_TX29_SNAPSHOT: bool = false;
@@ -16,6 +17,7 @@ static mut SOTTO_TX29_SNAPSHOT: bool = false;
 #[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_SAVED: [u16;9] = [0;9];
 #[cfg(k6_sotto_async_fsk)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_UNTIL: u32 = 0;
 #[cfg(k6_sotto_async_fsk)]
 const SOTTO_TX29_REGS:[u8;9] = [0x3f,0x59,0x58,0x70,0x72,0x5a,0x5b,0x5c,0x5d];

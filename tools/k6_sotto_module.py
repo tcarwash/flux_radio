@@ -21,6 +21,10 @@ from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 FIXED=ROOT/"c/fixed"
 SRC=ROOT/"c/k6/mod/sotto_tx_selftest.c"
 PIN="598f1bce87c22ebada2b9d0d1fcfd89107b33a09"
+SOTTO_LIVE_SCRATCH_REQUIRED=4080
+SOTTO_ARENA_BYTES=14976
+SOTTO_SCRATCH_RESERVE=1040
+SOTTO_MODULE_OVERHEAD=24
 
 def adapt(text):
     def once(old,new):
@@ -73,10 +77,11 @@ struct slim_enc {
          "      /* skip swapping two known-zero imaginary samples */")
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False):
-    if live_tx and tone_tx:
-        raise ValueError("Select either live microphone TX or generated tone TX")
-    if (live_tx or tone_tx) and not host_resources:
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False):
+    selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx))
+    if selected>1:
+        raise ValueError("Select exactly one Sotto TX input implementation")
+    if selected and not host_resources:
         raise ValueError("Sotto TX requires typed host resources")
     import subprocess
     rev=subprocess.check_output(["git","-C",str(ROOT/"sotto"),"rev-parse","HEAD"],text=True).strip()
@@ -84,7 +89,8 @@ def build(host_resources=False,live_tx=False,tone_tx=False):
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
         inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text()))
-        source=SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c") if (live_tx or tone_tx) else SRC
+        source=(SRC.with_name("sotto_gp0_irq_tx.c") if gp0_irq_tx else
+                SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c")) if selected else SRC
         code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
@@ -98,21 +104,31 @@ def main():
     p.add_argument("--host-resources",action="store_true",help="read only typed K6CB/K6SC resource API")
     p.add_argument("--live-tx",action="store_true",help="EXPERIMENTAL live Sotto TX level30, no RF on install")
     p.add_argument("--tone-tx",action="store_true",help="OPT-IN 1 kHz Sotto PCM TX; only a deliberate RUN transmits")
+    p.add_argument("--gp0-irq-tx",action="store_true",help="EXPERIMENTAL Sotto TX using physical GP0 DMA IRQ9 microphone capture")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
     for f,b in files.items():(a.out/f).write_bytes(b)
-    manifest={"format":1,"build":"Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
+    selected=a.live_tx or a.tone_tx or a.gp0_irq_tx
+    scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
+    if selected and scratch_available<SOTTO_LIVE_SCRATCH_REQUIRED:
+        raise ValueError(f"Sotto live TX needs {SOTTO_LIVE_SCRATCH_REQUIRED} scratch bytes; arena provides {scratch_available}")
+    manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
               "build_id":"0000000000000000",
-              "library":[{"id":"sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
-                          "file":"module.bin","level":30 if a.live_tx else 31 if a.tone_tx else 5}],
+              "scratch_required":SOTTO_LIVE_SCRATCH_REQUIRED if selected else 0,
+              "arena_14976_scratch_upper":scratch_available,
+              "scratch_margin":scratch_available-SOTTO_LIVE_SCRATCH_REQUIRED if selected else None,
+              "library":[{"id":"sotto-gp0-irq" if a.gp0_irq_tx else "sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO GP0" if a.gp0_irq_tx else "SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
+                          "file":"module.bin","level":30 if (a.live_tx or a.gp0_irq_tx) else 31 if a.tone_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),
-                      "arena_11776_scratch_upper":11776-len(code)-24,
-                      "arena_15408_scratch_upper":15408-len(code)-24,
-                      "sha256":manifest["sha256"],"rf_enabled":a.live_tx or a.tone_tx},indent=2))
+                      "arena_11776_scratch_upper":11776-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD,
+                      "arena_14976_scratch_upper":scratch_available,
+                      "scratch_required":manifest["scratch_required"],
+                      "scratch_margin":manifest["scratch_margin"],
+                      "sha256":manifest["sha256"],"rf_enabled":selected},indent=2))
 
 if __name__=="__main__":main()

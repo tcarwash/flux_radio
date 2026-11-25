@@ -21,6 +21,7 @@
 #define GPIRQ_NVIC_ISER 0xe000e100u
 #define GPIRQ_NVIC_ICER 0xe000e180u
 #define GPIRQ_NVIC_ICPR 0xe000e280u
+#define GPIRQ_NVIC_ISPR 0xe000e200u
 #define GPIRQ_NVIC_IPR9 0xe000e409u
 #define GPIRQ_RCC_AHB 0x40021014u
 #define GPIRQ_TIM17 0x40014800u
@@ -62,6 +63,7 @@ typedef struct {
  uint8_t error;                /* 1=DMA transfer, 2=flags/order, 3=PCM overflow */
  uint8_t previous_active;
  uint8_t prior_priority;
+ uint32_t prior_dma_ccr,prior_dma_cndtr,prior_dma_cpar,prior_dma_cmar;
 } gp0_irq_audio_t;
 
 /* On the K6 all loadable modules are SRAM-only PIC and may not have .bss.
@@ -172,16 +174,23 @@ fail:
 static int gp0_irq_arm(gp0_irq_audio_t*s,sl_pcm_t*p,uint8_t*raw,uint32_t fs){
  if(!s||!p||!raw||((uintptr_t)raw&3u)||
     fs<35000u||fs>130000u)return -1;
+ uint32_t old_ccr=gpirq_rd(GPIRQ_DMA_CCR1);
+ uint32_t old_cndtr=gpirq_rd(GPIRQ_DMA_CNDTR1);
+ uint32_t old_cpar=gpirq_rd(GPIRQ_DMA_CPAR1);
+ uint32_t old_cmar=gpirq_rd(GPIRQ_DMA_CMAR1);
  if((gpirq_rd(GPIRQ_CFGR1)&3u)!=3u ||
     gpirq_rd(GPIRQ_VECTOR)!=gpirq_rd(0x00000064u) ||
-    (gpirq_rd(GPIRQ_DMA_CCR1)&GPIRQ_CHEN) ||
+    (old_ccr&GPIRQ_CHEN) || (gpirq_rd(GPIRQ_DMA_ISR)&15u) ||
     (gpirq_rd(GPIRQ_NVIC_ISER)&GPIRQ_NVIC_MASK) ||
+    (gpirq_rd(GPIRQ_NVIC_ISPR)&GPIRQ_NVIC_MASK) ||
     gp0_irq_load_context()) return -2;
  for(unsigned i=0;i<sizeof(*s);i++)((uint8_t*)s)[i]=0;
  s->pcm=p;s->raw=raw;
  gp0_pcm_init(&s->dec,fs);
  s->old_vector=gpirq_rd(GPIRQ_VECTOR);
  s->prior_priority=gpirq_rd8(GPIRQ_NVIC_IPR9);
+ s->prior_dma_ccr=old_ccr;s->prior_dma_cndtr=old_cndtr;
+ s->prior_dma_cpar=old_cpar;s->prior_dma_cmar=old_cmar;
  s->active=1;
  /* All IRQ setup runs in main context with interrupts masked. IRQ9 isn't
   * enabled until the handler code and its data pointer are published. */
@@ -220,6 +229,10 @@ static void gp0_irq_disarm(gp0_irq_audio_t*s){
  gpirq_wr(GPIRQ_NVIC_ICER,GPIRQ_NVIC_MASK);
  gpirq_wr(GPIRQ_DMA_IFCR,15u);
  gpirq_wr(GPIRQ_NVIC_ICPR,GPIRQ_NVIC_MASK);
+ gpirq_wr(GPIRQ_DMA_CNDTR1,s->prior_dma_cndtr);
+ gpirq_wr(GPIRQ_DMA_CPAR1,s->prior_dma_cpar);
+ gpirq_wr(GPIRQ_DMA_CMAR1,s->prior_dma_cmar);
+ gpirq_wr(GPIRQ_DMA_CCR1,s->prior_dma_ccr);
  gpirq_wr(GPIRQ_VECTOR,s->old_vector);
  gpirq_wr8(GPIRQ_NVIC_IPR9,s->prior_priority);
  gp0_irq_store_context(0);

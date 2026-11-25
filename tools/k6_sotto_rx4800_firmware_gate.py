@@ -38,7 +38,7 @@ FCPU=96_000_000
 STOP=0x08001f00
 
 
-def symbols(elf:Path):
+def symbols(elf:Path, *, require_rx:bool=True):
     lines=subprocess.check_output(["llvm-nm","--demangle",str(elf)],
                                   text=True,timeout=20).splitlines()
     values={}
@@ -58,6 +58,10 @@ def symbols(elf:Path):
         "ctx_scratch":"aura::app::pager::MOD_CTX (.4)",
         "arena":"aura::hal::arena::ARENA",
     }
+    if not require_rx:
+        # API31 always exposes the stable tail, but smaller TX-only images
+        # can compile out the optional 4800-baud receiver implementation.
+        names.pop("fn")
     missing=[name for name in names.values() if name not in values]
     if missing:
         raise RuntimeError(f"ELF missing exact debug symbols: {missing}")

@@ -85,6 +85,9 @@ def test_api31_cable_capabilities_match_rust_and_c_module_ceiling():
     # C loader, or live API30 Sotto modules cannot be installed legally.
     caps=(ROOT/"firmware/k6-aura/apply-capability-query.py").read_text()
     assert 'if os.environ.get("K6_FSK4800_RX") == "1":\n    level = 31' in caps
+    assert 'elif os.environ.get("K6_SOTTO_MIC") == "1":\n    level = 30' in caps
+    assert 'elif os.environ.get("K6_SOTTO_ASYNC_FSK") == "1":\n    level = 29' in caps
+    assert 'elif os.environ.get("K6_SOTTO_RESOURCES") == "1":\n    level = 28' in caps
     assert 'elif os.environ.get("K6_PACKET_MAILBOX") == "1":\n    level = 27' in caps
     assert 'elif os.environ.get("K6_MODE_REGISTRY") == "1":\n    level = 26' in caps
     assert 'K6_FSK4800_RX' in (ROOT/"tools/k6_build.sh").read_text()
