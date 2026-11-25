@@ -22,7 +22,7 @@ if str(ROOT/"tools") not in sys.path:sys.path.insert(0,str(ROOT/"tools"))
 from tools.k6_sotto_module import build
 from modem import k6mod
 
-LEVEL=29
+LEVEL=31
 HZ=433_500_000
 VALID_SLOTS=set(range(9))|set(range(16,32))
 

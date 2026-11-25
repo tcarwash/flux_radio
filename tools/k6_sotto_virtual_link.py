@@ -118,7 +118,7 @@ class LiveTx(Emu):
         self.tx_backend=backend;self.deadline=0
         room=arena-len(artifact["code"])-24
         if room<=0:raise ValueError("module exceeds arena")
-        self.api_level=30 if "mb_version" in artifact["names"] else 29
+        self.api_level=31 if "mb_version" in artifact["names"] else 29
         super().__init__(artifact["code"],artifact["entry"],np.zeros(1,np.uint8),0,1,
                          cpi=cpi,max_s=35,rf_backend=backend,rf_hz=HZ,level=self.api_level,
                          scratch=room,fd_us=fd_us,stack_win=704)

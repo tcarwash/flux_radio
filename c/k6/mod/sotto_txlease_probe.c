@@ -1,7 +1,9 @@
 /* Explicitly-launched module transmit lease diagnostic (no codec or microphone).
  * This is only a 250ms FM carrier test into an operator-confirmed dummy load.
  * Never transmit on installation; default build is inert. SPDX-License-Identifier: MIT */
-#define K6_MODULE_LEVEL 29
+#ifndef K6_MODULE_LEVEL
+#define K6_MODULE_LEVEL 31
+#endif
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 K6_MODULE_NAME("TXLEASE PROB");
@@ -9,7 +11,7 @@ K6_MODULE_NAME("TXLEASE PROB");
 #define K6_TXLEASE_ARMED 0
 #endif
 int k6_main(const k6_api_t *a){
-    if(!a || a->abi!=1 || a->level<29)return -3;
+    if(!a || a->abi!=1 || a->level<K6_MODULE_LEVEL)return -3;
 #if !K6_TXLEASE_ARMED
     a->say("TXLEASE inert");
     return -9;

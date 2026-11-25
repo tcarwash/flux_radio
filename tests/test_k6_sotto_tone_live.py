@@ -47,7 +47,7 @@ def test_builds_tone_binary_and_manifest_without_radio(tmp_path,monkeypatch):
                      capture_output=True,text=True,timeout=60)
     assert p.returncode==0,p.stdout+p.stderr
     d=json.loads((out/"manifest.json").read_text())
-    assert d["name"]=="SOTTO TONE" and d["level"]==29
+    assert d["name"]=="SOTTO TONE" and d["level"]==31
     assert d["module_bytes"]==(out/"module.bin").stat().st_size
     assert d["module_bytes"]>5000
     assert "433.500 MHz" in d["tx_policy"]

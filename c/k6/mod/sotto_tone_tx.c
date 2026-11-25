@@ -2,7 +2,9 @@
  * Uses the real encoder and FDV1 scheduler with no microphone ISR/ring.
  * Never transmits on installation; only explicit foreground RUN.
  * SPDX-License-Identifier: MIT */
-#define K6_MODULE_LEVEL 29
+#ifndef K6_MODULE_LEVEL
+#define K6_MODULE_LEVEL 31
+#endif
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 K6_MODULE_NAME("SOTTO TONE");

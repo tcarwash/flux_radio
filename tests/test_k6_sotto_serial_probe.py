@@ -48,14 +48,14 @@ def test_opt_in_tone_fixture_compiled_arm_virtual_rf_crc():
     assert received["wire_decoder_agrees"]
 
 
-def test_txlease_default_is_inert_and_api_29_needs_no_codec():
+def test_txlease_default_is_inert_and_api31_needs_no_codec():
     default,_=k6mod.build(str(LEASE))
     armed,entry=k6mod.build(str(LEASE),cflags=[
         *k6mod.CFLAGS,"-DK6_TXLEASE_ARMED=1"])
     assert k6mod.module_name(default)==k6mod.module_name(armed)=="TXLEASE PROB"
     assert len(default)<100 and len(armed)<400 and entry==16
     source=LEASE.read_text()
-    assert "#define K6_MODULE_LEVEL 29" in source
+    assert "#define K6_MODULE_LEVEL 31" in source
     assert "#define K6_TXLEASE_ARMED 0" in source
     assert "tx_on(1200u)" in source
     assert "delay_us(250000u)" in source

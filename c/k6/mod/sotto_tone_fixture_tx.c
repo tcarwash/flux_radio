@@ -3,7 +3,9 @@
  * This isolates API29 RF FIFO from microphone, encoder, and SPI codebooks.
  * Explicitly armed build: only a manual module RUN transmits.
  * SPDX-License-Identifier: MIT */
-#define K6_MODULE_LEVEL 29
+#ifndef K6_MODULE_LEVEL
+#define K6_MODULE_LEVEL 31
+#endif
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 K6_MODULE_NAME("SOTTO 1K FX");
@@ -18,7 +20,7 @@ static int cancel(const k6_api_t *a){
 }
 #endif
 int k6_main(const k6_api_t *a){
-    if(!a || a->abi!=1 || a->level<29)return -3;
+    if(!a || a->abi!=1 || a->level<K6_MODULE_LEVEL)return -3;
 #if !SOTTO_1K_FIXTURE_ARMED
     a->say("SOTTO 1K inert");
     return -9;
