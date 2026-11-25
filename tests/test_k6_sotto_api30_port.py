@@ -55,10 +55,11 @@ def test_real_module_emits_api30_and_size(tmp_path):
         build(live_tx=True)
 
 
-def test_attended_catalog_entry_distinct_from_legacy_and_early_preflight_visible():
+def test_attended_catalog_entry_distinct_and_screen_flushed_before_ptt():
     src=SRC.read_text()
     assert 'K6_MODULE_NAME("SOTTO MIC")' in src
-    assert src.index('a->lcd_text(0,"SOTTO MIC")') < src.index('a->scratch(&room)')
-    assert 'CODEC DATA ERROR' in src
-    assert 'a->delay_us(1000000)' in src
     assert 'SOTTO MIC BENCH' in src
+    assert 'SOTTO MIC codec' in src
+    assert src.index('a->lcd_text(2,"Hold PTT to speak")') < src.index('a->lcd_flush()') < src.index('r=a->mic_stream(3,0,0)')
+    # Avoid a second display path: scratch availability is close to its 4K boundary.
+    assert src.count('a->lcd_flush()')==1

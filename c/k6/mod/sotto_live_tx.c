@@ -47,15 +47,13 @@ int k6_main(const k6_api_t*a){
     uint8_t last_produced;
     int r;
     if(!a||a->level<30||a->abi!=1)return -3;
-    a->lcd_text(0,"SOTTO MIC"); // visible before SPI/codec preflight
     scratch=a->scratch(&room);
     if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(*s)+slim_enc_bytes()){
         a->say("SOTTO no RAM");return -8;
     }
     s=(sl_engine_t*)scratch;e=(slim_enc_t*)(scratch+sizeof(*s));
     if(a->fd_read(0)!=0x4829||sio_init(&io,a)){
-        a->lcd_text(1,"CODEC DATA ERROR");
-        a->delay_us(1000000); // allow operator to read before Catalog reopens
+        a->say("SOTTO MIC codec");
         return -10;
     }
     slim_enc_init(e);e->io=&io;
@@ -68,6 +66,7 @@ int k6_main(const k6_api_t*a){
     a->lcd_text(0,"SOTTO MIC BENCH");
     a->lcd_text(1,"Dummy load / cable out");
     a->lcd_text(2,"Hold PTT to speak");
+    a->lcd_flush();
     /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
     t0=a->ms();pressed=0;
     r=a->mic_stream(3,0,0);

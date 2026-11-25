@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -39,6 +40,33 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
         fw=Dispatcher(elf,image,artifacts['names'])
         try:
             b=fw.board
+            # This gate jumps directly into the compiled pager from a booted
+            # firmware, without constructing main.rs's LCD display closure.
+            # Execute the real module LCD callback and separate-stack
+            # trampoline, but terminate at the physical display backend;
+            # otherwise its uninitialized SPI/GPIO closure faults at
+            # 0xA5A5A5xx. Capture the actual MOD_SCREEN framebuffer at that
+            # boundary to verify the startup and PTT UI was *flushed*.
+            nm=subprocess.check_output(['llvm-nm','--demangle',str(elf)],text=True,timeout=20)
+            lcd_addresses=[]
+            for line in nm.splitlines():
+                f=line.split(maxsplit=2)
+                if len(f)==3 and f[2].startswith('aura::ui::mod_flush::'):
+                    lcd_addresses.append(int(f[0],16))
+            if len(lcd_addresses)!=1:
+                raise RuntimeError(f'Expected one linked LCD hardware flush boundary: {lcd_addresses}')
+            lcd_frames=[]
+            screen=next((int(f[0],16) for line in nm.splitlines()
+                         if (f:=line.split(maxsplit=2)) and len(f)==3
+                         and f[2]=='aura::app::pager::MOD_SCREEN'),None)
+            if screen is None:
+                raise RuntimeError('No linked MOD_SCREEN buffer')
+            def virtual_lcd(uc,addr,size,user):
+                lcd_frames.append(bytes(uc.mem_read(screen,126)))
+                uc.reg_write(UC_ARM_REG_R0,0) # successful physical LCD write
+                uc.reg_write(UC_ARM_REG_PC,uc.reg_read(UC_ARM_REG_LR)|1)
+            b.uc.hook_add(UC_HOOK_CODE,virtual_lcd,
+                          begin=lcd_addresses[0],end=lcd_addresses[0])
             # Install exact read-only codec resources in virtual packed KUL2
             # storage, not a substitute data oracle for the module's sio_init.
             cb=artifacts['cb']
@@ -68,7 +96,6 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
             isr=syms.get('pcm_isr')
             ring_symbol=syms.get('pcm_ring')
             if isr is None or ring_symbol is None:
-                import subprocess
                 for line in subprocess.check_output(['llvm-nm','--demangle',str(elf)],text=True).splitlines():
                     fields=line.split(maxsplit=2)
                     if len(fields)!=3:continue
@@ -137,6 +164,8 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
             if b.fault:raise RuntimeError(f'Compiled ARM live encoder fault: {b.fault}')
             if not fw.returned:
                 raise RuntimeError(f'ARM live module did not finish; quantum={quantum}; stats={stats}; RF={rf.tx_status()}')
+            if len(lcd_frames)<1:
+                raise RuntimeError('Live module did not invoke the physical LCD flush callback')
             status=rf.tx_status()
             if not fw.module_ret or fw.module_ret[0]<=0:
                 raise RuntimeError(f'ARM live encoder failed: trace={fw.trace} module={fw.module_ret}; stats={stats}; RF={status}; UART={bytes(b.uart_tx)[-500:]!r} boardcycles={b.cycles} quantum={quantum}')
@@ -221,7 +250,8 @@ def run(elf:Path,image:Path,tree:Path,blocks:int=12,max_quanta:int=24000):
                         compiled_module_return=fw.module_ret[0],
                         pcm=stats,rf=status,frames=len(frames),session=session,
                         virtual_iq=decoder['fsk'],compiled_arm_receiver=arm_rx,playback=playback,
-                        pa_restored=True,resources_read_only=True)
+                        pa_restored=True,resources_read_only=True,
+                        lcd_flushed_frames=len(lcd_frames),lcd_virtual_bus=True)
         finally:fw.close()
 
 if __name__=='__main__':
