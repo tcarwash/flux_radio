@@ -170,149 +170,161 @@ def one_cycle(config=CONFIG,state_path=STATE,out_root=OUT):
     cfg=builder.config_load(config)
     if not cfg["enabled"]:
         return {"mode":"REPAIR_DISABLED","events":[]}
+    state_path=Path(state_path)
     state_path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    with state_path.with_suffix(".lock").open("a+b") as lock:
+    with builder.worker_lock_path(state_path).open("a+b") as wlock:
         try:
-            fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            fcntl.flock(wlock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:
             return {"mode":"REPAIR_BUSY_SKIP","events":[],"hardware_operations":0}
-        data=journal.state_load(state_path)
-        # Fair scheduling: a candidate with fewer repair attempts runs
-        # first. A complex two-round Sotto candidate must not starve an
-        # untried REG51 task. Physical jobs are unaffected.
-        order=sorted(PRIORITY,key=lambda n:(
-            int(data["jobs"].get(f"issue-{n}",{}).get("repair_attempts",0)),
-            PRIORITY.index(n)))
-        for issue in order:
-            key=f"issue-{issue}"
-            old=data["jobs"].get(key)
-            if not old or old.get("state") not in BLOCKED:
-                continue
-            attempts=int(old.get("repair_attempts",0))
-            if attempts>=MAX_REPAIRS:
-                continue
-            recipe=cfg["recipes"].get(str(issue))
-            if recipe is None:continue
-            worktree=Path(old.get("worktree","/nonexistent"))
-            if not worktree.is_dir() or worktree.is_symlink():
-                old["error"]="repair refused: source worktree unavailable"
-                old["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
-                journal.state_write(state_path,data)
-                continue
-            # Check existing uncommitted/generated source remains strictly
-            # within the local trusted recipe before invoking an editor.
+        selected=None
+        with state_path.with_suffix(".lock").open("a+b") as lock:
             try:
-                current=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
-            except builder.Refused as exc:
-                old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
-                           repair_attempts=MAX_REPAIRS,
-                           error=f"unsafe or unexpected repair file: {exc}"[:400])
+                fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                return {"mode":"REPAIR_BUSY_SKIP","events":[],"hardware_operations":0}
+            data=journal.state_load(state_path)
+            # Fair scheduling: a candidate with fewer repair attempts runs
+            # first. A complex two-round Sotto candidate must not starve an
+            # untried REG51 task. Physical jobs are unaffected.
+            candidates=list(PRIORITY)+[int(k) for k in cfg["recipes"] if int(k) not in PRIORITY]
+            order=sorted(candidates,key=lambda n:(
+                int(data["jobs"].get(f"issue-{n}",{}).get("repair_attempts",0)),
+                candidates.index(n)))
+            for issue in order:
+                key=f"issue-{issue}"
+                old=data["jobs"].get(key)
+                if not old or old.get("state") not in BLOCKED:
+                    continue
+                attempts=int(old.get("repair_attempts",0))
+                if attempts>=MAX_REPAIRS:
+                    continue
+                recipe=cfg["recipes"].get(str(issue))
+                if recipe is None:continue
+                worktree=Path(old.get("worktree","/nonexistent"))
+                if not worktree.is_dir() or worktree.is_symlink():
+                    old["error"]="repair refused: source worktree unavailable"
+                    old["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+                    journal.state_write(state_path,data)
+                    continue
+                # Check existing uncommitted/generated source remains strictly
+                # within the local trusted recipe before invoking an editor.
+                try:
+                    current=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
+                except builder.Refused as exc:
+                    old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
+                               repair_attempts=MAX_REPAIRS,
+                               error=f"unsafe or unexpected repair file: {exc}"[:400])
+                    journal.state_write(state_path,data)
+                    return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
+                            "events":[{"issue":issue,"result":"REPAIR_SCOPE_REFUSED",
+                                       "reason":str(exc)[:150]}],"hardware_operations":0}
+                stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                target=out_root/f"repair-{issue}-{attempts+1}-{stamp}"
+                target.mkdir(parents=True,mode=0o700)
+                old.update(state="REPAIRING_DEVICE_FREE",repair_attempts=attempts+1,
+                           last_repair_started=datetime.now(timezone.utc).isoformat())
                 journal.state_write(state_path,data)
-                return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
-                        "events":[{"issue":issue,"result":"REPAIR_SCOPE_REFUSED",
-                                   "reason":str(exc)[:150]}],"hardware_operations":0}
-            stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            target=out_root/f"repair-{issue}-{attempts+1}-{stamp}"
-            target.mkdir(parents=True,mode=0o700)
-            old.update(state="REPAIRING_DEVICE_FREE",repair_attempts=attempts+1,
-                       last_repair_started=datetime.now(timezone.utc).isoformat())
-            journal.state_write(state_path,data)
-            try:
-                original=out_root/f"issue-{issue}-{old.get('source_sha','')[:10]}/tests.log"
-                logs=original.read_text() if original.exists() else ""
-                # Give the delegate the concrete *latest* failure, not only
-                # the original failing fixture. New adversarial regression
-                # tests must inform every follow-up repair attempt.
-                previous=sorted(out_root.glob(f"repair-{issue}-{attempts}-*"))
-                if attempts and previous:
-                    for filename in ("tests.log","preflight.log"):
-                        recent=previous[-1]/filename
-                        if recent.is_file():
-                            logs+="\n\nLATEST "+filename+"\n"+recent.read_text()
-                prompt=target/"prompt.md"
-                make_prompt(issue,recipe,old,worktree,logs,prompt)
-                muse=["/home/tyler/.local/bin/muse","exec","--json",
-                      "--workspace",str(worktree),"--prompt-file",str(prompt),
-                      "--reasoning-effort","medium","--max-model-steps","38",
-                      "--disable-web-tools","--disable-shell","--no-session-log",
-                      "--disable-request-user-input","--disable-reminders",
-                      "--no-foreign-personal-context","--approval-mode","on-request"]
-                rc=builder.supervised(
-                    builder.sandbox(*muse,worktree=worktree,allow_write=True,allow_net=True),
-                    worktree,target/"delegate.log",timeout=350)
-                old["last_repair_delegate_rc"]=rc
-                if rc!=0:
-                    raise Refused(f"repair delegate exited {rc}")
-                changed=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
-                all_changed=sorted(set(changed)|set(old.get("changed_files",[])))
-                if not all_changed:
-                    raise Refused("delegate produced no candidate source changes")
-                test_targets=[PYTHON,"-m","pytest","-q",*recipe["tests"]]
-                rc=builder.supervised(
-                    builder.sandbox(*test_targets,worktree=worktree,
-                                    allow_write=True,allow_net=False),
-                    worktree,target/"tests.log",timeout=160)
-                old["last_repair_test_rc"]=rc
-                if rc!=0:
-                    raise Refused(f"device-free tests failed ({rc})")
-                result=(target/"tests.log").read_text()
-                if not re.search(r"\b[1-9]\d* passed\b",result):
-                    raise Refused("no concrete passing tests")
-                scripts=[p for p in recipe["allowed_paths"]
-                         if p.startswith("tools/") and p.endswith("_bench.py")]
-                if len(scripts)!=1 or not (worktree/scripts[0]).is_file():
-                    raise Refused("no physical bench implementation")
-                candidate=(worktree/scripts[0]).read_text()
-                fit,reason=has_live_hardware_path(candidate,recipe["kind"])
-                if not fit:raise Refused(reason)
-                # Exercise the exact executable physical preflight in a
-                # device-free, no-network OS sandbox. No invocation of
-                # --run is allowed during candidate preparation.
-                preflight=[PYTHON,str(worktree/scripts[0]),"--preflight-only"]
-                preflight_rc=builder.supervised(
-                    builder.sandbox(*preflight,worktree=worktree,
-                                    allow_write=True,allow_net=False),
-                    worktree,target/"preflight.log",timeout=70)
-                old["last_repair_preflight_rc"]=preflight_rc
-                if preflight_rc!=0:
-                    raise Refused(f"device-free physical preflight failed ({preflight_rc})")
-                # Only supervisor freezes new working code, never the delegate.
-                if changed:
-                    builder.run("git","-C",str(worktree),"add","--",*changed,timeout=30)
-                    builder.run("git","-C",str(worktree),"-c",
-                                "user.name=Flux Autonomous Bench",
-                                "-c","user.email=local-bench@localhost",
-                                "commit","-m",f"Repair device-free candidate #{issue} round {attempts+1}",
-                                timeout=45)
-                if builder.run("git","-C",str(worktree),"status","--porcelain"):
-                    raise Refused("uncommitted worktree drift after repair")
-                head=builder.run("git","-C",str(worktree),"rev-parse","HEAD")
-                pins=[{"path":rel,"sha256":hashlib.sha256((worktree/rel).read_bytes()).hexdigest()}
-                      for rel in all_changed]
-                old.update(state="TESTED_NEEDS_INDEPENDENT_REVIEW",
-                           changed_files=all_changed,pins=pins,
-                           tests_log_sha256=hashlib.sha256(result.encode()).hexdigest(),
-                           frozen_commit=head,
-                           last_repair_finished=datetime.now(timezone.utc).isoformat())
-                old.pop("error",None)
-                journal.state_write(state_path,data)
-                return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
-                        "events":[{"issue":issue,"result":"READY_FOR_PROMOTION",
-                                   "tests":"PASS","frozen_commit":head}],
-                        "hardware_operations":0}
-            except (Refused,builder.Refused,ValueError,OSError,subprocess.SubprocessError) as exc:
-                old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
-                           error=f"{type(exc).__name__}: {exc}"[:400],
-                           last_repair_finished=datetime.now(timezone.utc).isoformat())
-                journal.state_write(state_path,data)
-                return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
-                        "events":[{"issue":issue,"result":"BLOCKED",
-                                   "attempt":attempts+1,"reason":str(exc)[:200]}],
-                        "hardware_operations":0}
-        return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR","events":[],
-                "hardware_operations":0,"eligible":[n for n in PRIORITY
-                     if data["jobs"].get(f"issue-{n}",{}).get("state") in BLOCKED
-                     and data["jobs"][f"issue-{n}"].get("repair_attempts",0)<MAX_REPAIRS]}
+                selected=(issue,key,old,attempts,recipe,worktree,target)
+                break
+        if selected is None:
+            return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR","events":[],
+                    "hardware_operations":0,"eligible":[n for n in candidates
+                         if data["jobs"].get(f"issue-{n}",{}).get("state") in BLOCKED
+                         and data["jobs"][f"issue-{n}"].get("repair_attempts",0)<MAX_REPAIRS]}
+        issue,key,old,attempts,recipe,worktree,target=selected
+        try:
+            original=out_root/f"issue-{issue}-{old.get('source_sha','')[:10]}/tests.log"
+            logs=original.read_text() if original.exists() else ""
+            # Give the delegate the concrete *latest* failure, not only
+            # the original failing fixture. New adversarial regression
+            # tests must inform every follow-up repair attempt.
+            previous=sorted(out_root.glob(f"repair-{issue}-{attempts}-*"))
+            if attempts and previous:
+                for filename in ("tests.log","preflight.log"):
+                    recent=previous[-1]/filename
+                    if recent.is_file():
+                        logs+="\n\nLATEST "+filename+"\n"+recent.read_text()
+            prompt=target/"prompt.md"
+            make_prompt(issue,recipe,old,worktree,logs,prompt)
+            muse=["/home/tyler/.local/bin/muse","exec","--json",
+                  "--workspace",str(worktree),"--prompt-file",str(prompt),
+                  "--reasoning-effort","medium","--max-model-steps","38",
+                  "--disable-web-tools","--disable-shell","--no-session-log",
+                  "--disable-request-user-input","--disable-reminders",
+                  "--no-foreign-personal-context","--approval-mode","on-request"]
+            rc=builder.supervised(
+                builder.sandbox(*muse,worktree=worktree,allow_write=True,allow_net=True),
+                worktree,target/"delegate.log",timeout=350)
+            old["last_repair_delegate_rc"]=rc
+            if rc!=0:
+                raise Refused(f"repair delegate exited {rc}")
+            changed=builder.candidate_files(worktree,set(recipe["allowed_paths"]))
+            all_changed=sorted(set(changed)|set(old.get("changed_files",[])))
+            if not all_changed:
+                raise Refused("delegate produced no candidate source changes")
+            test_targets=[PYTHON,"-m","pytest","-q",*recipe["tests"]]
+            rc=builder.supervised(
+                builder.sandbox(*test_targets,worktree=worktree,
+                                allow_write=True,allow_net=False),
+                worktree,target/"tests.log",timeout=160)
+            old["last_repair_test_rc"]=rc
+            if rc!=0:
+                raise Refused(f"device-free tests failed ({rc})")
+            result=(target/"tests.log").read_text()
+            if not re.search(r"\b[1-9]\d* passed\b",result):
+                raise Refused("no concrete passing tests")
+            scripts=[p for p in recipe["allowed_paths"]
+                     if p.startswith("tools/") and p.endswith("_bench.py")]
+            if len(scripts)!=1 or not (worktree/scripts[0]).is_file():
+                raise Refused("no physical bench implementation")
+            candidate=(worktree/scripts[0]).read_text()
+            fit,reason=has_live_hardware_path(candidate,recipe["kind"])
+            if not fit:raise Refused(reason)
+            # Exercise the exact executable physical preflight in a
+            # device-free, no-network OS sandbox. No invocation of
+            # --run is allowed during candidate preparation.
+            preflight=[PYTHON,str(worktree/scripts[0]),"--preflight-only"]
+            preflight_rc=builder.supervised(
+                builder.sandbox(*preflight,worktree=worktree,
+                                allow_write=True,allow_net=False),
+                worktree,target/"preflight.log",timeout=70)
+            old["last_repair_preflight_rc"]=preflight_rc
+            if preflight_rc!=0:
+                raise Refused(f"device-free physical preflight failed ({preflight_rc})")
+            # Only supervisor freezes new working code, never the delegate.
+            if changed:
+                builder.run("git","-C",str(worktree),"add","--",*changed,timeout=30)
+                builder.run("git","-C",str(worktree),"-c",
+                            "user.name=Flux Autonomous Bench",
+                            "-c","user.email=local-bench@localhost",
+                            "commit","-m",f"Repair device-free candidate #{issue} round {attempts+1}",
+                            timeout=45)
+            if builder.run("git","-C",str(worktree),"status","--porcelain"):
+                raise Refused("uncommitted worktree drift after repair")
+            head=builder.run("git","-C",str(worktree),"rev-parse","HEAD")
+            pins=[{"path":rel,"sha256":hashlib.sha256((worktree/rel).read_bytes()).hexdigest()}
+                  for rel in all_changed]
+            old.update(state="TESTED_NEEDS_INDEPENDENT_REVIEW",
+                       changed_files=all_changed,pins=pins,
+                       tests_log_sha256=hashlib.sha256(result.encode()).hexdigest(),
+                       frozen_commit=head,
+                       last_repair_finished=datetime.now(timezone.utc).isoformat())
+            old.pop("error",None)
+            builder.save_job_entry(state_path,key,old)
+            return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
+                    "events":[{"issue":issue,"result":"READY_FOR_PROMOTION",
+                               "tests":"PASS","frozen_commit":head}],
+                    "hardware_operations":0}
+        except (Refused,builder.Refused,ValueError,OSError,subprocess.SubprocessError) as exc:
+            old.update(state="BLOCKED_CANDIDATE_NEEDS_REPAIR",
+                       error=f"{type(exc).__name__}: {exc}"[:400],
+                       last_repair_finished=datetime.now(timezone.utc).isoformat())
+            builder.save_job_entry(state_path,key,old)
+            return {"mode":"DEVICE_FREE_CANDIDATE_REPAIR",
+                    "events":[{"issue":issue,"result":"BLOCKED",
+                               "attempt":attempts+1,"reason":str(exc)[:200]}],
+                    "hardware_operations":0}
 
 
 def main(argv=None):

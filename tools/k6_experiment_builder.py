@@ -168,110 +168,136 @@ Reply with precisely which files you changed and any remaining blockers.
     prompt.chmod(0o600)
 
 
+def worker_lock_path(state_path):
+    state_path=Path(state_path)
+    return state_path.with_name(state_path.stem+"-worker.lock")
+
+
+def save_job_entry(state_path,key,entry):
+    state_path=Path(state_path)
+    with state_path.with_suffix(".lock").open("a+b") as jlock:
+        fcntl.flock(jlock.fileno(),fcntl.LOCK_EX)
+        latest=journal.state_load(state_path)
+        latest["jobs"][key]=entry
+        journal.state_write(state_path,latest)
+
+
 def build_once(config=CONFIG,state_path=STATE,intake_path=INTAKE,
                output_root=ROOT_OUT,repo=REPO):
     cfg=config_load(config)
     if not cfg["enabled"]:return {"mode":"BUILDER_DISABLED","events":[]}
     if not repo.is_dir():raise Refused("firmware source repository not available")
     triaged=current_triage(intake_path)
+    state_path=Path(state_path)
     state_path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    with state_path.with_suffix(".lock").open("a+b") as lock:
+    with worker_lock_path(state_path).open("a+b") as wlock:
         try:
-            fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            fcntl.flock(wlock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:
             return {"mode":"BUILDER_BUSY_SKIP","events":[],"physical_runs":0}
-        state=journal.state_load(state_path)
-        today=datetime.now(timezone.utc).date().isoformat()
-        submitted=sum(1 for x in state["jobs"].values()
-                      if x.get("started","").startswith(today))
-        for issue,recipe in sorted(cfg["recipes"].items(),key=lambda x:(x[1]["kind"]!="RX_ONLY",{26:0,20:1,30:2}.get(int(x[0]),10),int(x[0]))):
-            n=int(issue)
-            if n not in triaged:continue
-            triage=triaged[n][1]
-            if triage.get("verdict") not in ALLOWED_VERDICTS:continue
-            key=f"issue-{n}"
-            if key in state["jobs"]:continue
-            if submitted>=cfg["max_daily"]:
-                break
-            # Frozen ref must be available, checked out into a new
-            # separate worktree with no cross-agent edits.
-            base_ref=recipe["base_ref"]
-            sha=run("git","-C",str(repo),"rev-parse",base_ref)
-            if not re.fullmatch(r"[a-f0-9]{40}",sha):raise Refused("invalid frozen ref")
-            worktree=WORKTREE_BASE/f"flux-autobuild-{n}-{sha[:10]}-{today.replace('-','')}"
-            if worktree.exists():raise Refused("unexpected existing builder workspace")
-            stamp=datetime.now(timezone.utc).isoformat()
-            state["jobs"][key]={"state":"STARTED_NO_RETRY","started":stamp,
-                                "source_sha":sha,"intake_verdict":triage["verdict"],
-                                "worktree":str(worktree)}
-            journal.state_write(state_path,state)
+        selected=None
+        with state_path.with_suffix(".lock").open("a+b") as lock:
             try:
-                run("git","-C",str(repo),"worktree","add","--detach",
-                    str(worktree),sha,timeout=50)
-                output_root.mkdir(parents=True,mode=0o700,exist_ok=True)
-                out=output_root/f"issue-{n}-{sha[:10]}"
-                out.mkdir(mode=0o700,exist_ok=False)
-                prompt=out/"prompt.md"
-                make_prompt(n,recipe,worktree,prompt)
-                # NO uncontrolled shell, NO serial/USB, NO device nodes.
-                muse=[
-                    "/home/tyler/.local/bin/muse","exec","--json",
-                    "--workspace",str(worktree),"--prompt-file",str(prompt),
-                    "--reasoning-effort","low","--max-model-steps","22",
-                    "--disable-web-tools","--disable-shell","--no-session-log",
-                    "--disable-request-user-input","--disable-reminders",
-                    "--no-foreign-personal-context","--approval-mode","on-request"]
-                rc=supervised(sandbox(*muse,worktree=worktree,allow_write=True,
-                                      allow_net=True),worktree,out/"delegate.log",timeout=235)
-                state["jobs"][key]["delegate_rc"]=rc
-                if rc!=0:raise Refused(f"delegated editor exited {rc}; no retry")
-                changed=candidate_files(worktree,set(recipe["allowed_paths"]))
-                if not changed:raise Refused("delegate made no code changes")
-                # Tests are untrusted generated code: no network or USB
-                # access even when Python executes with host user privileges.
-                tests=recipe["tests"]
-                target=[
-                  "/home/tyler/.local/share/flux-rf-venv/bin/python","-m","pytest","-q",
-                  *tests]
-                rc=supervised(sandbox(*target,worktree=worktree,allow_write=True,
-                                      allow_net=False),worktree,out/"tests.log",timeout=140)
-                state["jobs"][key]["test_rc"]=rc
-                if rc!=0:raise Refused(f"device-free tests failed ({rc}); no physical enrollment")
-                test_text=(out/"tests.log").read_text()
-                if not re.search(r"\b[1-9]\d* passed\b",test_text):
-                    raise Refused("test report lacks concrete passing tests")
-                pins=[{"path":rel,"sha256":hashlib.sha256((worktree/rel).read_bytes()).hexdigest()}
-                      for rel in changed]
-                # Only the supervisor, never the delegate, freezes its
-                # verified candidate as an immutable local Git commit.
-                run("git","-C",str(worktree),"add","--",*changed,timeout=30)
-                run("git","-C",str(worktree),"-c","user.name=Flux Autonomous Bench",
-                    "-c","user.email=local-bench@localhost","commit","-m",
-                    f"Freeze device-free reviewed candidate issue #{n}",timeout=35)
-                frozen_commit=run("git","-C",str(worktree),"rev-parse","HEAD")
-                if run("git","-C",str(worktree),"status","--porcelain"):
-                    raise Refused("candidate not clean after supervisor freeze")
-                state["jobs"][key].update(frozen_commit=frozen_commit,
-                    state="TESTED_NEEDS_INDEPENDENT_REVIEW",
-                                          changed_files=changed,pins=pins,
-                                          tests_log_sha256=hashlib.sha256(test_text.encode()).hexdigest(),
-                                          finished=datetime.now(timezone.utc).isoformat())
+                fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                return {"mode":"BUILDER_BUSY_SKIP","events":[],"physical_runs":0}
+            state=journal.state_load(state_path)
+            today=datetime.now(timezone.utc).date().isoformat()
+            submitted=sum(1 for x in state["jobs"].values()
+                          if x.get("started","").startswith(today))
+            for issue,recipe in sorted(cfg["recipes"].items(),key=lambda x:(x[1]["kind"]!="RX_ONLY",{26:0,20:1,30:2}.get(int(x[0]),10),int(x[0]))):
+                n=int(issue)
+                if n not in triaged:continue
+                triage=triaged[n][1]
+                if triage.get("verdict") not in ALLOWED_VERDICTS:continue
+                key=f"issue-{n}"
+                if key in state["jobs"]:continue
+                if submitted>=cfg["max_daily"]:
+                    break
+                # Frozen ref must be available, checked out into a new
+                # separate worktree with no cross-agent edits.
+                base_ref=recipe["base_ref"]
+                sha=run("git","-C",str(repo),"rev-parse",base_ref)
+                if not re.fullmatch(r"[a-f0-9]{40}",sha):raise Refused("invalid frozen ref")
+                worktree=WORKTREE_BASE/f"flux-autobuild-{n}-{sha[:10]}-{today.replace('-','')}"
+                if worktree.exists():raise Refused("unexpected existing builder workspace")
+                stamp=datetime.now(timezone.utc).isoformat()
+                entry={"state":"STARTED_NO_RETRY","started":stamp,
+                       "source_sha":sha,"intake_verdict":triage["verdict"],
+                       "worktree":str(worktree)}
+                state["jobs"][key]=entry
                 journal.state_write(state_path,state)
-                return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE",
-                        "events":[{"issue":n,"state":"TESTED_NEEDS_INDEPENDENT_REVIEW",
-                                   "files":changed,"tests":"PASS"}],
-                        "physical_runs":0}
-            except (OSError,ValueError,Refused,subprocess.SubprocessError) as exc:
-                state["jobs"][key].update(state="BLOCKED_NO_AUTO_RETRY",
-                                          error=f"{type(exc).__name__}: {exc}"[:500],
-                                          finished=datetime.now(timezone.utc).isoformat())
-                journal.state_write(state_path,state)
-                return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE",
-                        "events":[{"issue":n,"state":"BLOCKED_NO_AUTO_RETRY",
-                                   "reason":str(exc)[:200]}],"physical_runs":0}
-        return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE","events":[],
-                "physical_runs":0,"candidate_jobs":len(state["jobs"]),
-                "daily_budget_remaining":max(0,cfg["max_daily"]-submitted)}
+                selected=(n,recipe,key,sha,worktree,entry)
+                break
+        if selected is None:
+            return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE","events":[],
+                    "physical_runs":0,"candidate_jobs":len(state["jobs"]),
+                    "daily_budget_remaining":max(0,cfg["max_daily"]-submitted)}
+        n,recipe,key,sha,worktree,entry=selected
+        try:
+            run("git","-C",str(repo),"worktree","add","--detach",
+                str(worktree),sha,timeout=50)
+            output_root.mkdir(parents=True,mode=0o700,exist_ok=True)
+            out=output_root/f"issue-{n}-{sha[:10]}"
+            out.mkdir(mode=0o700,exist_ok=False)
+            prompt=out/"prompt.md"
+            make_prompt(n,recipe,worktree,prompt)
+            # NO uncontrolled shell, NO serial/USB, NO device nodes.
+            muse=[
+                "/home/tyler/.local/bin/muse","exec","--json",
+                "--workspace",str(worktree),"--prompt-file",str(prompt),
+                "--reasoning-effort","low","--max-model-steps","22",
+                "--disable-web-tools","--disable-shell","--no-session-log",
+                "--disable-request-user-input","--disable-reminders",
+                "--no-foreign-personal-context","--approval-mode","on-request"]
+            rc=supervised(sandbox(*muse,worktree=worktree,allow_write=True,
+                                  allow_net=True),worktree,out/"delegate.log",timeout=235)
+            entry["delegate_rc"]=rc
+            if rc!=0:raise Refused(f"delegated editor exited {rc}; no retry")
+            changed=candidate_files(worktree,set(recipe["allowed_paths"]))
+            if not changed:raise Refused("delegate made no code changes")
+            # Tests are untrusted generated code: no network or USB
+            # access even when Python executes with host user privileges.
+            tests=recipe["tests"]
+            target=[
+              "/home/tyler/.local/share/flux-rf-venv/bin/python","-m","pytest","-q",
+              *tests]
+            rc=supervised(sandbox(*target,worktree=worktree,allow_write=True,
+                                  allow_net=False),worktree,out/"tests.log",timeout=140)
+            entry["test_rc"]=rc
+            if rc!=0:raise Refused(f"device-free tests failed ({rc}); no physical enrollment")
+            test_text=(out/"tests.log").read_text()
+            if not re.search(r"\b[1-9]\d* passed\b",test_text):
+                raise Refused("test report lacks concrete passing tests")
+            pins=[{"path":rel,"sha256":hashlib.sha256((worktree/rel).read_bytes()).hexdigest()}
+                  for rel in changed]
+            # Only the supervisor, never the delegate, freezes its
+            # verified candidate as an immutable local Git commit.
+            run("git","-C",str(worktree),"add","--",*changed,timeout=30)
+            run("git","-C",str(worktree),"-c","user.name=Flux Autonomous Bench",
+                "-c","user.email=local-bench@localhost","commit","-m",
+                f"Freeze device-free reviewed candidate issue #{n}",timeout=35)
+            frozen_commit=run("git","-C",str(worktree),"rev-parse","HEAD")
+            if run("git","-C",str(worktree),"status","--porcelain"):
+                raise Refused("candidate not clean after supervisor freeze")
+            entry.update(frozen_commit=frozen_commit,
+                         state="TESTED_NEEDS_INDEPENDENT_REVIEW",
+                         changed_files=changed,pins=pins,
+                         tests_log_sha256=hashlib.sha256(test_text.encode()).hexdigest(),
+                         finished=datetime.now(timezone.utc).isoformat())
+            save_job_entry(state_path,key,entry)
+            return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE",
+                    "events":[{"issue":n,"state":"TESTED_NEEDS_INDEPENDENT_REVIEW",
+                               "files":changed,"tests":"PASS"}],
+                    "physical_runs":0}
+        except (OSError,ValueError,Refused,subprocess.SubprocessError) as exc:
+            entry.update(state="BLOCKED_NO_AUTO_RETRY",
+                         error=f"{type(exc).__name__}: {exc}"[:500],
+                         finished=datetime.now(timezone.utc).isoformat())
+            save_job_entry(state_path,key,entry)
+            return {"mode":"DEVICE_FREE_AUTONOMOUS_CANDIDATE",
+                    "events":[{"issue":n,"state":"BLOCKED_NO_AUTO_RETRY",
+                               "reason":str(exc)[:200]}],"physical_runs":0}
 
 
 def main(argv=None):

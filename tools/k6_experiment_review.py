@@ -199,14 +199,25 @@ def once(hardware_config=hw.CONFIG,state_path=DEFAULT_STATE,prompt_root=PROMPT_R
                 "events":events}
 
 def main(argv=None):
+    import time
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--once",action="store_true")
+    p.add_argument("--wait-seconds",type=int,default=75)
     p.add_argument("--config",type=Path,default=hw.CONFIG)
     p.add_argument("--state",type=Path,default=DEFAULT_STATE)
     args=p.parse_args(argv)
     if not args.once:p.error("use --once")
     try:
-        print(json.dumps(once(args.config,args.state),indent=2))
+        out=once(args.config,args.state)
+        deadline=time.monotonic()+max(0,args.wait_seconds)
+        while time.monotonic()<deadline and any(
+            e.get("action") in ("REVIEW_DELEGATED","REVIEW_INFRA_REQUEUED")
+            or e.get("verdict")=="PENDING"
+            for e in out.get("events",[])
+        ):
+            time.sleep(3)
+            out=once(args.config,args.state)
+        print(json.dumps(out,indent=2))
         return 0
     except (batch.Refused,dispatch.Refused,ValueError,OSError,KeyError,subprocess.SubprocessError) as exc:
         print(f"REFUSED: {exc}",file=sys.stderr)
