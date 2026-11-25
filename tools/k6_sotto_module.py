@@ -106,7 +106,7 @@ def main():
     for f,b in files.items():(a.out/f).write_bytes(b)
     manifest={"format":1,"build":"Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
               "build_id":"0000000000000000",
-              "library":[{"id":"sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO TX" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
+              "library":[{"id":"sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
                           "file":"module.bin","level":30 if a.live_tx else 31 if a.tone_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")

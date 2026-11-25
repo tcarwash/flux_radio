@@ -10,7 +10,7 @@
 #include "sotto_slim_context.inc"
 #include "../../fixed/fx_tables.c"
 #include "sotto_live_engine.h"
-K6_MODULE_NAME("SOTTO TX");
+K6_MODULE_NAME("SOTTO MIC");
 typedef struct{
     const k6_api_t *a;
     slim_enc_t *enc;
@@ -47,12 +47,17 @@ int k6_main(const k6_api_t*a){
     uint8_t last_produced;
     int r;
     if(!a||a->level<30||a->abi!=1)return -3;
+    a->lcd_text(0,"SOTTO MIC"); // visible before SPI/codec preflight
     scratch=a->scratch(&room);
     if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(*s)+slim_enc_bytes()){
         a->say("SOTTO no RAM");return -8;
     }
     s=(sl_engine_t*)scratch;e=(slim_enc_t*)(scratch+sizeof(*s));
-    if(a->fd_read(0)!=0x4829||sio_init(&io,a))return -10;
+    if(a->fd_read(0)!=0x4829||sio_init(&io,a)){
+        a->lcd_text(1,"CODEC DATA ERROR");
+        a->delay_us(1000000); // allow operator to read before Catalog reopens
+        return -10;
+    }
     slim_enc_init(e);e->io=&io;
     c.a=a;c.enc=e;c.io=&io;c.last_poll=0;
     o.encode=encode;o.flush=flush;o.start=start;o.poll=poll;
@@ -60,7 +65,7 @@ int k6_main(const k6_api_t*a){
     // First bench build: a stable released PTT followed by a fresh
     // 60-ms press, not a UART transition, is required. The operator
     // must unplug the cable and attach a dummy load.
-    a->lcd_text(0,"SOTTO TX BENCH");
+    a->lcd_text(0,"SOTTO MIC BENCH");
     a->lcd_text(1,"Dummy load / cable out");
     a->lcd_text(2,"Hold PTT to speak");
     /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
