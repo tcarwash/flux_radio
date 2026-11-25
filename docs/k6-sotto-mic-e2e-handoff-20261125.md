@@ -192,3 +192,19 @@ With the external K6 programming cable reconnected, live status initially showed
 A cable-connected `run-coop 25` physically loaded 1,608 B and returned `-4` as expected from the microphone/PTT shared connector; it did **not** freeze or transmit. Post-check: `transmitting=false`, `standby_idle=true`, VFO A=443.500 MHz, battery=7.73V. Exact installation log and module backups live in `/home/tyler/flux-bench/sotto-mic-calibration-20261125/`, including `sweep-install-report.json`, `sweep-cable-preflight.log`, original `slot25-mic-diag-before.k6m` and `slot25-mic-cal-v2.k6m`.
 
 **Attended final test remains outstanding:** unplug programming cable, connect external generator at **1 kHz / nominal 0.1 V**, leave radio on dummy load, enter `CATALOG → MIC SWEEP`, hold PTT continuously about **4 seconds** until radio returns, then photograph the first LCD results page (`GAIN 1K CLIP`: gains 31,24,16,8,0) and after 8 seconds the second page (`GAIN AVG VOX`). These are **physical** gains/results, not the deterministic synthetic tests previously captured. Don't infer gain linearity before this hardware experiment.
+
+## MIC SWEEP first attended physical result: gain curve shows baseline-only PCM
+
+The operator submitted two photographs after a real run of installed `MIC SWEEP` (slot25), with all five gain stages complete and the two LCD result pages present:
+
+| Gain | 1K | C (16-bit saturated samples) | A (mean absolute PCM) | V (RFIC VOX maximum) |
+|---:|---:|---:|---:|---:|
+| 31 | 0 | 0 | 1 | 192 |
+| 24 | 0 | 0 | 1 | 181 |
+| 16 | 0 | 0 | 1 | 192 |
+| 8 | 0 | 0 | 1 | 201 |
+| 0 | 0 | 0 | 1 | 200 |
+
+These are **real hardware measurements**, not the offline host fixture's synthetic gain response. All five gain rows printed rather than errors, so register writes were apparently accepted and the ring delivered enough samples per gain to avoid `ERR` (the current UI does not display sample counts or loss; firmware only checks them internally). `1K=0`, `C=0`, `A=1` at *all* five gains indicate virtually no measurable reconstructed analog waveform. VOX maximum ~181-201 matches the earlier known generator-OFF test `VOX max=178`, unlike previous tone-ON runs VOX ~517-968. **Leading hypothesis:** the generator output was disabled/disconnected or the mic-pad path was open during the sweep. Confirm external generator output was ENABLED and its tone actually audible on a nearby normal-FM receiver in the same setup before attributing the result to mic-gain ineffectiveness. An alternate possibility is that `fd_write(REG_7D)` while the sampler is active changes RFIC state or suppresses AF routing; even the first gain31 re-writes this register. Distinguish these by adding a gain31 no-write control before software gain changes if repeated tone-ON sweep reproduces silence.
+
+Importantly, these results **do not establish** that RFIC gain affects or fails to affect microphone PCM, or that Sotto MIC is fixed. The previous MIC CAL at 0.1 nominal source reported AVG=1151, VOX max=542 and clipping, so the new all-zero run is *not directly comparable* until verified constant input. `SOTTO MIC` slot30 and firmware unchanged; bench lock was free after the test.
