@@ -37,8 +37,10 @@ from pathlib import Path
 from tools.k6_sotto_module import build,FIXED
 from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 d=Path(sys.argv[1])
-is_tone=len(sys.argv)>3 and sys.argv[3]=='tone'
-code,entry=build(host_resources=True,live_tx=not is_tone,tone_tx=is_tone)
+is_tone='tone' in sys.argv[2:]
+is_gp0='gp0' in sys.argv[2:]
+assert not(is_tone and is_gp0)
+code,entry=build(host_resources=True,live_tx=not (is_tone or is_gp0),tone_tx=is_tone,gp0_irq_tx=is_gp0)
 (d/'module.bin').write_bytes(code)
 (d/'entry').write_text(str(entry))
 so=d/'ref.so'
@@ -51,8 +53,11 @@ state=C.create_string_buffer(c.slim_enc_bytes());c.slim_enc_init(state)
 pcm=(C.c_int16*80)();out=C.create_string_buffer(6);bits=bytearray()
 if len(sys.argv)>2:
  payload=Path(sys.argv[2]).read_bytes()
- assert len(payload)%160==0 and len(payload)>0
+ assert len(payload)%2==0 and len(payload)>=1600
  samples=struct.unpack('<%dh'%(len(payload)//2),payload)
+ # The on-radio PCM queue pads its final partial 80-sample block at PTT
+ # release. Compare the real GP0 module against this padded native oracle.
+ samples=list(samples)+[0]*((-len(samples))%80)
 else:
  samples=[(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)]
 for block in range(len(samples)//80):
@@ -69,19 +74,24 @@ struct.pack_into('<I',h,28,zlib.crc32(h[:28]))
 (d/'deck.bin').write_bytes(build_deck(SLIM_CELLS.read_text()))
 """
 
-def prepare(tree,d,pcm=None,*,tone=False):
+def prepare(tree,d,pcm=None,*,tone=False,gp0=False):
     tree=Path(tree).resolve()
     if tone and pcm is None:
         raise ValueError("Tone module requires deterministic reference PCM")
+    if gp0 and pcm is None:
+        raise ValueError("GP0 TX emulator requires explicit PCM fixture and physical-release length")
+    if tone and gp0:
+        raise ValueError("Cannot select tone and GP0 TX simultaneously")
     args=[sys.executable,"-c",PREPARE,str(d)]
     if pcm is not None:
         pcm=np.asarray(pcm,dtype="<i2")
-        if len(pcm)%80 or not 800<=len(pcm)<=24000:
-            raise ValueError("PCM must be 0.1–3.0 seconds of 8kHz signed 16-bit mono, in 80-sample blocks")
+        if (not gp0 and len(pcm)%80) or not 800<=len(pcm)<=24000:
+            raise ValueError("PCM must be 0.1–3.0 seconds of 8kHz signed 16-bit mono; GP0 permits a partial final block")
         audio_path=d/"input.pcm"
         audio_path.write_bytes(pcm.tobytes())
         args.append(str(audio_path))
     if tone:args.append('tone')
+    if gp0:args.append('gp0')
     subprocess.run(args,cwd=tree,check=True)
     h=(tree/"c/k6/k6_mod.h").read_text().split("typedef struct k6_api {")[1].split("} k6_api_t;")[0]
     names=re.findall(r"\(\*(\w+)\)\(",re.sub(r"/\*.*?\*/","",h,flags=re.S))
@@ -97,7 +107,7 @@ def prepare(tree,d,pcm=None,*,tone=False):
                      cflags=[*k6mod.CFLAGS,"-I"+str(tree/"c/k6")])
     return dict(wire=wire,code=(d/"module.bin").read_bytes(),entry=int((d/"entry").read_text()),
                 cb=(d/"codebook.bin").read_bytes(),deck=(d/"deck.bin").read_bytes(),
-                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty,pcm=pcm)
+                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty,pcm=pcm,gp0=gp0)
 
 REGS=(0x3f,0x59,0x58,0x70,0x72,0x5a,0x5b,0x5c,0x5d)
 VALS=(0x8000,0xf8,0xe1,0x95,0xc194,0x076b,0x3e36,0x5625,0x4100)
@@ -106,6 +116,10 @@ PCM=np.array([(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)],dt
 
 class LiveTx(Emu):
     def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0):
+        self.gp0=artifact.get('gp0',False)
+        self.gp0_route=False
+        self.gp0_starts=0
+        self.gp0_stops=0
         self.pcm=artifact.get("pcm")
         if self.pcm is None:self.pcm=PCM
         self.capture=None;self.capture_start=None;self.sample=0;self.highwater=0
@@ -116,6 +130,7 @@ class LiveTx(Emu):
         self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter();self.codebook_reads=[]
         self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"];self.deck_opened=False
         self.tx_backend=backend;self.deadline=0
+        if self.gp0:arena=14976-1040 # expanded arena less callback stack
         room=arena-len(artifact["code"])-24
         if room<=0:raise ValueError("module exceeds arena")
         self.api_level=31 if "mb_version" in artifact["names"] else 29
@@ -252,16 +267,23 @@ class LiveTx(Emu):
             if r0==3:
                 ret=int(self.cyc>=FCPU*.02 and (self.capture_start is None or
                          self.cyc<self.capture_start+len(self.pcm)*FCPU/8000))
-            elif r0==0 and self.keyed and r2==644 and self.scr<=r1<=self.scr+self.scratch-r2:
+            elif r0==0 and not self.gp0 and self.keyed and r2==644 and self.scr<=r1<=self.scr+self.scratch-r2:
                 self.capture=r1;self.capture_start=self.cyc
-            elif r0==1:self.capture=None
+            elif r0==7 and self.gp0 and self.keyed and not self.gp0_route:
+                self.gp0_route=True
+            elif r0==8 and self.gp0 and self.keyed and self.gp0_route and r2==87260 and r1%4==0 and self.scr<=r1<=self.scr+self.scratch-644:
+                self.capture=r1;self.capture_start=self.cyc;self.gp0_starts+=1
+            elif r0==1:
+                self.capture=None
+                if self.gp0_route:self.gp0_stops+=1
+                self.gp0_route=False
             else:ret=-1
         elif name=="fsk_async":ret=self.async_fsk(r0,r1,r2)
         elif name=="tx_on":
             if self.keyed or not 0<r0<=25000:ret=-1
             else:self.keyed=True;self.lease_end=self.cyc+r0*96000
         elif name=="tx_off":
-            self.cleanup();self.keyed=False;self.capture=None
+            self.cleanup();self.keyed=False;self.capture=None;self.gp0_route=False
         elif name=="tx_pa":
             if not self.keyed:ret=-1
             # The model already handles PA as part of FSK enable/cleanup;
@@ -348,7 +370,7 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
         if ret>>31:ret-=1<<32
         b.advance_tx(e.cyc/FCPU)
         tx=b.tx_status()
-        if e.keyed or e.capture is not None or e.saved is not None:
+        if e.keyed or e.capture is not None or e.saved is not None or e.gp0_route:
             raise RuntimeError("live module returned without cleanup")
         if any(e.fd_regs.get(r,0)!=v for r,v in e.initial_regs.items()):
             raise RuntimeError("RF register restore mismatch")
@@ -369,6 +391,7 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 module_bytes=len(artifact["code"]),module_return=ret,
                 stack_bytes=stack,cpi=cpi,spi_us=spi_us,spi_byte_us=spi_byte_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
                 channel=channel.__dict__,samples=e.sample,samples_expected=len(e.pcm),pcm_highwater=e.highwater,pcm_lost=e.lost,lease_expired=e.lease_expired,
+                gp0=e.gp0,gp0_starts=e.gp0_starts,gp0_stops=e.gp0_stops,
                 spi_reads=e.spi_reads,keyed_reads=e.keyed_reads,spi_read_bytes=e.spi_read_bytes,keyed_read_bytes=e.keyed_read_bytes,read_sizes=dict(e.read_sizes),
                 codebook_profile=codebook_profile(e.codebook_reads),
                 cache_bytes=cache_bytes,cache_hits=e.cache_hits,spi_hit_us=spi_hit_us,tx_before_release=e.pre_release,first_rf_ms=e.first_rf_ms,
