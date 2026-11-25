@@ -287,12 +287,17 @@ def _register_locked(policy_path,builder_state,hardware_config):
         old=reg["manifests"].get(nstr)
         if old:
             # Old exact manifest may be superseded ONLY after the previous
-            # physical attempt has reached a terminal state and source pins
-            # changed. The old journal/manifest/ACK remain immutable.
+            # physical attempt has reached a terminal state (or was rejected
+            # during pre-execution review) and source pins changed.
             prev=journal.state_load(STATE_ROOT/"hardware.json")["jobs"].get(
                 f"issue-{n}:{old['sha256']}",{})
             if prev.get("state") not in ("BLOCKED_NO_AUTO_RETRY","PASS"):
-                continue
+                from k6_experiment_review import fingerprint,DEFAULT_STATE
+                _,api_raw=batch.read_api_config(batch.API_CONFIG)
+                rkey=fingerprint(n,old["sha256"],api_raw)
+                rev=journal.state_load(DEFAULT_STATE)["jobs"].get(rkey,{})
+                if rev.get("state") not in ("REJECTED","REJECTED_INFRA"):
+                    continue
             old_manifest=json.loads(Path(old["path"]).read_text())
             oldpins={x["path"]:x["sha256"] for x in old_manifest["jobs"][0]["pins"]}
             if all(oldpins.get(str(Path(record["worktree"])/x["path"]))==x["sha256"]
