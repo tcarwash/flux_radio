@@ -56,3 +56,21 @@ The operator reconnected UART without power cycling after an attended nominal **
 All four consecutive ~48.21ms windows completed under the PA-muted TX lease with RFIC microphone ADC enabled, PA11 sampler unused, GP0 selector12. Calibrated GPIOB raw DMA rate **5,437 kS/s**, 64:1 decimated rate **84,960 samples/s**; overall RFIC **VOX max=517**, indicating strong injected mic activity compared with prior generator OFF about 198. Each of the four windows returned **1kHz normalized spectral score 5**, **2kHz score 0**, raw density RMS score 5, mean absolute density delta score 3, and per-window RFIC VOX ~512. GP0 bit HIGH fractions are 0.5020, 0.5020, 0.4980, 0.4980 respectively. No DMA overrun or abort was reported, and the radio returned to standby idle and TX=false.
 
 **Interpretation:** This is a reproducible *within-run* 1kHz narrowband component at the GP0 selector12 DMA output with an independently strong RFIC microphone/VOX signal, but the 1kHz spectral score is low and uncalibrated. Do not label it as decoded microphone audio until controlled generator OFF and distinct 2kHz generator ON runs provide frequency-selective contrast and rule out sampling artifacts, spurs and phase/frequency leakage. If the 2kHz capture shows a matching movement into the 2kHz channel absent at 1kHz, then pursue a GP0 PCM converter with a calibrated sample-rate estimator and longer full-band recording; if it does not, this result is inconclusive. No additional radio flash or module install is needed for the control pair.
+
+### Generator OFF GP0 DMA control: physical capture, 2026-11-25 20:47 UTC
+
+The operator performed the attended generator-output-OFF capture with the same `MIC GP0` slot25 module, dummy-load setup and RFIC-only microphone route, reconnecting serial without rebooting. Read-only live status reported standby idle, no TX and 7.75V battery. `mic-result` returned a CRC-valid **version6 four-window** report, saved permanently to `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-dma-v1/tone-off-01.json`, SHA256 `4938e5a8552dd5938c3e44e95ed60e079901d809f9c30dd6ea41d6652bfdd4a9`. Retrieval timestamp `2026-11-25T20:47:33.522959+00:00` is not the capture time.
+
+| Measurement | Tone 1kHz ON (`tone-1khz-01.json`) | Generator OFF (`tone-off-01.json`) |
+|---|---:|---:|
+| RFIC VOX maximum | **517** | **171** |
+| GP0 DMA raw samples/s | 5.437 million | 5.617 million |
+| 64:1 decimated samples/s | 84,960 | 87,770 |
+| Four window durations | 48.21 ms each | 46.67 ms each |
+| Four 1kHz spectral scores | **5, 5, 5, 5** | **0, 0, 0, 0** |
+| Four 2kHz spectral scores | 0, 0, 0, 0 | 0, 0, 0, 0 |
+| Four raw density RMS scores | 5, 5, 5, 5 | 3, 3, 3, 3 |
+| GP0 fraction HIGH | 49.8–50.2% | 49.8–50.2% |
+| Per-window VOX approximate | 512 | 164 |
+
+This *is* an independent input-on versus input-off contrast with clear RFIC microphone stimulation (VOX 517 versus 171). The consistent within-run 1kHz DFT score of 5 versus 0 OFF at GP0 selector12, alongside density RMS 5 versus 3, **supports a possible audio-correlated component** in GP0's DMA bit density. But the amplitudes are small, 8-bit relative scores, and the raw DMA rate differs by ~3.3% between runs; the DFT phase step is calibrated per run, but hardware sampling artifacts, off-bin effects, or correlated clock/FD6818 state changes remain competing explanations. **Do not report full PCM recovery or a proven continuously usable microphone path yet.** The decisive next experiment is the **same physical test with the generator output awake, 0.1V at 2kHz**, then verify that the 2kHz DFT rises while 1kHz falls, compared with this ON/OFF pair. This test requires no flash/reinstall or additional bench lock.
