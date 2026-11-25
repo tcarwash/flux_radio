@@ -369,6 +369,12 @@ def grant_once(policy_path=APPROVAL_POLICY,builder_state=builder.STATE,
         api,api_raw=batch.read_api_config(batch.API_CONFIG)
         key=fingerprint(n,manifest_sha,api_raw)
         decision=reviews["jobs"].get(key,{})
+        if decision.get("state") in ("REJECTED","REJECTED_INFRA"):
+            record["state"]="BLOCKED_CANDIDATE_NEEDS_REPAIR"
+            record["error"]=f"Refused: independent hardware review rejected manifest ({decision.get('job_id','')})"
+            builder.save_job_entry(builder_state,f"issue-{nstr}",record)
+            events.append({"issue":n,"state":"REVIEW_REJECTED_SENT_TO_REPAIR"})
+            continue
         if decision.get("state")!="APPROVED" or not decision.get("job_id"):
             events.append({"issue":n,"state":"WAITING_INDEPENDENT_HARDWARE_REVIEW"})
             continue
