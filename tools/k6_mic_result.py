@@ -42,11 +42,43 @@ def decode_mic_result(response: bytes) -> dict:
         data=base64.b64decode(encoded,validate=True)
     except (ValueError,binascii.Error) as exc:
         raise ValueError("MIC A/B mailbox base64 invalid") from exc
-    if len(data)!=33 or data[0] not in (1,2,3,4,5,6,7):
+    if len(data)!=33 or data[0] not in (1,2,3,4,5,6,7,8,9):
         raise ValueError("MIC mailbox format/version invalid")
     expected=struct.unpack_from("<H",data,31)[0]
     if crc16_xmodem(data[:31])!=expected:
         raise ValueError("MIC A/B mailbox checksum mismatch")
+    if data[0]==9:
+        error=data[1]
+        if error not in (5,6,9,11,12,17,18,19,20,21,22,23,24,25):
+            raise ValueError("MIC PCM DMA failure code invalid")
+        reason={5:"PA-muted TX lease refused",6:"RFIC mic route-only service missing or refused",
+                9:"physical PTT released or interrupted",11:"DMA ring overrun",
+                12:"DMA capture time limit",17:"GP0 output enable refused",
+                18:"GP0 selector 12 write/readback refused",
+                19:"TIM17 already owned",20:"DMA1 channel1 already owned",
+                21:"DMA sample rate outside expected hardware bounds",
+                22:"GP0 selector restoration failed",23:"GP0 output restoration failed",
+                24:"bad GP0 PCM bit-count or sample rate",25:"incomplete GP0 PCM sample windows"}[error]
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":9,"measurement":"gp0_dma_mic_8khz_pcm",
+                "completed":False,"error_code":error,"reason":reason}
+    if data[0]==8:
+        vox,fs10,total=struct.unpack_from("<HHH",data,1)
+        if vox>1023 or not 3500<=fs10<=13000 or total!=1824:
+            raise ValueError("MIC PCM DMA VOX/rate/sample count invalid")
+        windows=[]
+        for i in range(4):
+            a1,a2,rms8,clips=struct.unpack_from("<HHBB",data,7+i*6)
+            windows.append({"index":i,"pcm_samples":256,"duration_ms":32,
+                            "pcm_tone_1khz_peak":a1,"pcm_tone_2khz_peak":a2,
+                            "pcm_rms_approx":rms8*64,"pcm_clipped_samples":clips})
+        return {"available":True,"storage":"boot-local RAM","survives_reboot":False,
+                "version":8,"measurement":"gp0_dma_mic_8khz_pcm",
+                "capture":"PA-muted TX, RFIC mic route only; GP0 PB1 DMA to 8kHz signed PCM",
+                "gp0_selector":12,"dma_decimated_samples_per_second":fs10*10,
+                "pcm_samples_total":total,"pcm_warmup_samples_discarded":800,
+                "vox_max":vox,"windows":windows,
+                "note":"Window spectra are from real 8kHz reconstructed PCM, not proof of intelligible speech or live codec scheduling"}
     if data[0]==7:
         error,completed=data[1],data[2]
         if error not in (5,6,9,11,12,17,18,19,20,21,22,23) or completed>4:

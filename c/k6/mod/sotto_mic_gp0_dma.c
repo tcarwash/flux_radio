@@ -5,7 +5,11 @@
 #define K6_MODULE_LEVEL 30
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
+#ifdef MIC_GP0_PCM_ONLY
+K6_MODULE_NAME("MIC PCM");
+#else
 K6_MODULE_NAME("MIC GP0");
+#endif
 #define GPIOB 0x48000400u
 #define RCC_AHB 0x40021014u
 #define RCC_APB2 0x40021018u
@@ -103,6 +107,7 @@ static void feed(metrics_t *m,unsigned bits,unsigned inc1,unsigned inc2){
  if(m->count)m->sumdiff+=abs32(x-m->prev);
  m->prev=x;m->count++;
 }
+#ifndef MIC_GP0_PCM_ONLY
 static uint8_t spectrum(int32_t a,int32_t b,uint32_t n){
  if(!n)return 0;
  int32_t x=a<0?-(int32_t)divu(abs32(a),n):(int32_t)divu(abs32(a),n);
@@ -111,6 +116,7 @@ static uint8_t spectrum(int32_t a,int32_t b,uint32_t n){
  uint32_t mag=root(v)/16u;
  return (uint8_t)(mag>255u?255u:mag);
 }
+ #endif
 /* ring DMA is free-running at ~5.5MS/s, independently of TIM17's
  * nominal update configuration on this chip. Poll within 186us or abort. */
 static int capture(uint8_t*ring,uint32_t goal,unsigned inc1,unsigned inc2,metrics_t*m){
@@ -135,6 +141,8 @@ static int capture(uint8_t*ring,uint32_t goal,unsigned inc1,unsigned inc2,metric
  stop_dma();
  return 0;
 }
+/* Shared DMA capture machinery; optionally embed in MIC PCM module. */
+#ifndef MIC_GP0_PCM_ONLY
 int k6_main(const k6_api_t*a){
  if(!a||a->abi!=1||a->level<30)return -3;
  uint32_t space=0;uint8_t*scratch=a->scratch(&space);
@@ -234,3 +242,5 @@ done:
  while(a->ms()-end<6000u){if(a->key_down())break;a->delay_us(25000);}
  return (int)NW;
 }
+
+#endif /* !MIC_GP0_PCM_ONLY */
