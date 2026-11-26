@@ -97,6 +97,21 @@ fn udiv(mut n:u32,mut d:u32)->u32{
     while bit!=0{if n>=d{n-=d;q|=bit;}d>>=1;bit>>=1;}
     q
 }
+// Exact constant-denominator divider for the hardware GP0 PDM rate.
+// 2^32 / 87260 = 49220 remainder 30096. The reciprocal underestimates
+// by at most one, so one correction produces EXACTLY floor(n/87260).
+// Two 16x16 multiplies replace the per-sample variable-length restoring
+// divide on Cortex-M0; no u64 multiply, heap, FPU, or persistent state.
+#[cfg(k6_sotto_gp0_fast_isr)]
+#[inline(always)]
+fn gp0_div_87260(n:u32)->u32{
+    const MAGIC:u32=49220;
+    const DIVISOR:u32=87260;
+    let hi=(n>>16)*MAGIC;
+    let lo=((n&0xffff)*MAGIC)>>16;
+    let q=(hi+lo)>>16;
+    q+((n-q*DIVISOR)>=DIVISOR) as u32
+}
 #[inline(always)]
 fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     if d.fs<=16000||d.fs>160000||bits>64{return -1;}
@@ -106,7 +121,11 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     let left=d.fs-d.phase;
     let area=d.area+x*(left as i32);
     let mag=area.unsigned_abs();
-    let q=udiv(mag<<8,d.fs) as i32;
+    let num=mag<<8;
+    #[cfg(k6_sotto_gp0_fast_isr)]
+    let q=(if d.fs==FS {gp0_div_87260(num)} else {udiv(num,d.fs)}) as i32;
+    #[cfg(not(k6_sotto_gp0_fast_isr))]
+    let q=udiv(num,d.fs) as i32;
     let centered=if area<0{-q}else{q};
     d.dc+=((centered<<8)-d.dc)>>7;
     let mut sample=(centered-(d.dc>>8))*8;
@@ -117,6 +136,25 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     d.samples+=1;
     *out=sample as i16;
     1
+}
+// The real hardware uses 16 volatile 32-bit PDM reads per 64-bit-count
+// group. Unrolling removes 16 loop branches per group (128 per DMA IRQ).
+// All reads remain volatile and in the original order.
+#[cfg(k6_sotto_gp0_fast_isr)]
+#[inline(always)]
+unsafe fn gp0_bits_64(raw:*mut u8,off:usize)->u32 {
+    let p=raw.add(off).cast::<u32>();
+    let mut acc=0u32;
+    macro_rules! pdm_word {
+        ($n:expr)=>{acc=acc.wrapping_add(rdv(p.add($n))&0x0202_0202);};
+    }
+    pdm_word!(0);pdm_word!(1);pdm_word!(2);pdm_word!(3);
+    pdm_word!(4);pdm_word!(5);pdm_word!(6);pdm_word!(7);
+    pdm_word!(8);pdm_word!(9);pdm_word!(10);pdm_word!(11);
+    pdm_word!(12);pdm_word!(13);pdm_word!(14);pdm_word!(15);
+    acc>>=1;
+    acc=(acc&0x00ff_00ff)+((acc>>8)&0x00ff_00ff);
+    (acc&0xffff)+(acc>>16)
 }
 #[inline(always)]
 unsafe fn pcm_sample(p:*mut PcmRing,sample:i16)->bool{
@@ -168,14 +206,19 @@ pub unsafe extern "C" fn sotto_gp0_dma_irq(){
     (*st).expect_tc^=1;
     let raw=SOTTO_GP0_RAW_RING;
     for i in 0..8usize{
-        let mut acc=0u32;
-        for j in 0..16usize{
-            let word=rdv(raw.add(off+i*64+j*4).cast::<u32>());
-            acc=acc.wrapping_add(word&0x0202_0202);
-        }
-        acc>>=1;
-        acc=(acc&0x00ff_00ff)+((acc>>8)&0x00ff_00ff);
-        let bits=(acc&0xffff)+(acc>>16);
+        #[cfg(k6_sotto_gp0_fast_isr)]
+        let bits=gp0_bits_64(raw,off+i*64);
+        #[cfg(not(k6_sotto_gp0_fast_isr))]
+        let bits={
+            let mut acc=0u32;
+            for j in 0..16usize{
+                let word=rdv(raw.add(off+i*64+j*4).cast::<u32>());
+                acc=acc.wrapping_add(word&0x0202_0202);
+            }
+            acc>>=1;
+            acc=(acc&0x00ff_00ff)+((acc>>8)&0x00ff_00ff);
+            (acc&0xffff)+(acc>>16)
+        };
         let mut sample=0i16;
         match dec_push(&mut (*st).dec,bits,&mut sample){
             -1=>{(*st).failed=3;fail(3,p);return;}

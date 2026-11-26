@@ -325,6 +325,17 @@ if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
 if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
 if [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_trace"; fi
+# Optional exact 87,260 Hz GP0 decimator divider; all non-GP0 builds and
+# other mic sample rates retain the original restoring-divider path.
+case "${K6_SOTTO_GP0_FAST_ISR:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_FAST_ISR requires GP0 mic and expanded RAM0=1" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fast_isr" ;;
+  *) echo "K6_SOTTO_GP0_FAST_ISR must be 0 or 1" >&2; exit 1 ;;
+esac
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
 if [ "${K6_RAM0:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ]; then
