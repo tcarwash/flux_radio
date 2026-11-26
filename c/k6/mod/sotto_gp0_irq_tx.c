@@ -51,7 +51,7 @@ int k6_main(const k6_api_t*a){
     uint32_t t0,pressed,last_progress;
     uint8_t last_produced;
     int r;
-    const char *error="GP0 RUN ABORT";
+    const char *error="GP0 OTHER";
     if(!a||a->level<30||a->abi!=1)return -3;
     scratch=a->scratch(&room);
     if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(*s)+slim_enc_bytes()){
@@ -70,7 +70,6 @@ int k6_main(const k6_api_t*a){
     // 60-ms press, not a UART transition, is required. The operator
     // must unplug the cable and attach a dummy load.
     a->lcd_text(0,"SOTTO GP0 / TX");
-    a->lcd_text(1,"PTT / dummy load");
     a->lcd_flush();
     /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
     /* Both an already-held PTT and a new press must stay asserted for
@@ -108,10 +107,10 @@ ptt_ready:
         if(s->phase==SL_CAPTURE){
             if(s->mic.produced!=last_produced){
                 last_produced=s->mic.produced;last_progress=a->ms();
-            }else if(a->ms()-last_progress>100u)goto fail;
+            }else if(a->ms()-last_progress>100u){error="GP0 STALL";goto fail;}
         }
         r=sl_engine_tick(s,&o,&c);
-        if(r<0)goto fail;
+        if(r<0){error="GP0 ENGINE";goto fail;}
         if(r==1)return (int)s->tx.encoded;
         if(s->mic.produced==s->mic.consumed&&!s->pending)a->delay_us(300);
     }
