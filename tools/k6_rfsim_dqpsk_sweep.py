@@ -25,6 +25,10 @@ from tools.k6_frequency_modem_lab import rx_soapy
 from tools.k6_rfsim_onair_sweep import PROFILES, csv_values, CENTER_HZ
 
 
+class PilotLockError(RuntimeError):
+    """The simulated receiver failed to acquire the public pilot."""
+
+
 def run_case(*, baud=100, bandwidth_hz=135., dac_bits=7,
              spi_write_us=117., profile="static", snr_db=30.,
              seed=0, cfo_hz=0., reverse_sign=False,
@@ -57,7 +61,10 @@ def run_case(*, baud=100, bandwidth_hz=135., dac_bits=7,
     if np.shape(iq)!=np.shape(transmitted) or not np.all(np.isfinite(iq)):
         raise ValueError("RFSim returned invalid IQ")
     filtered=receiver(np.asarray(iq,dtype=np.complex64),snr_db=120.)
-    result=decoder(source,filtered)
+    try:
+        result=decoder(source,filtered)
+    except RuntimeError as exc:
+        raise PilotLockError(str(exc)) from exc
     good=(result["payload_ber"]==0 and result["sync_errors"]==0
           and result["signed_frequency_mapping_valid"]
           and result["phase_level_span_degrees"]>20
@@ -119,12 +126,12 @@ def main(argv=None):
         try:
             row=run_case(**args)
             row["status"]="decoded" if row["simulation_pass"] else "decode_failed"
-        except RuntimeError as exc:
+        except PilotLockError as exc:
             # Loss of public-pilot lock is a modeled PHY failure, not a
             # harness bug; preserve the exact loss reason.
             row=dict(**args,status="decode_failed",reason=str(exc),
                      simulation_pass=False,physical_tx=False,hardware_qualified=False)
-        except (ValueError,ArithmeticError) as exc:
+        except (ValueError,ArithmeticError,RuntimeError) as exc:
             row=dict(**args,status="harness_error",reason=f"{type(exc).__name__}: {exc}",
                      simulation_pass=False,physical_tx=False,hardware_qualified=False)
         print(f'{rate:4} baud {bw:5g} Hz {profile:16} SNR={snr:5g} '
