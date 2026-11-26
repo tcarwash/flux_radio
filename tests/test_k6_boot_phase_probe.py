@@ -9,10 +9,20 @@ MAIN = '''fn main() {
     app.radio_mut().enter_rx(&mut cp.SYST);
     loop {
         let due = scheduler.tick();
+            app.poll_blink();
+            draw_ui_on_arena(&mut display, &mut app);
     }
 }
 '''
 BOOT = 'fn draw_headlines<D>(lcd: &mut D, l1: &str, l2: &str) {}\n'
+UART = '''pub unsafe extern "C" fn USART1() {
+    let regs = &*kd32f328_pac::Usart1::ptr();
+    if isr.rxne().bit_is_set() {
+        let byte = regs.rdr().read().rdr().bits() as u8;
+    }
+}
+'''
+
 
 
 def apply(work):
@@ -22,12 +32,16 @@ def apply(work):
 
 def test_probe_idempotent_and_survives_boot_ui_regeneration(tmp_path):
     (tmp_path / 'src/ui').mkdir(parents=True)
+    (tmp_path / 'src/hal').mkdir(parents=True)
+    (tmp_path / 'src/hal/uart.rs').write_text(UART)
     main = tmp_path / 'src/main.rs'
     boot = tmp_path / 'src/ui/boot.rs'
     main.write_text(MAIN)
     boot.write_text(BOOT)
     assert apply(tmp_path).returncode == 0
     first = main.read_text()
+    assert 'IRQ YES' in first and 'RX YES' in first
+    assert 'UART_PHASE_PROBE_BEGIN' in (tmp_path / 'src/hal/uart.rs').read_text()
     assert all(first.count(f'"PHASE {n}"') == 1 for n in (1, 2, 3))
     assert apply(tmp_path).returncode == 0
     assert main.read_text() == first
@@ -41,6 +55,8 @@ def test_probe_idempotent_and_survives_boot_ui_regeneration(tmp_path):
 
 def test_probe_fails_without_expected_rx_entry(tmp_path):
     (tmp_path / 'src/ui').mkdir(parents=True)
+    (tmp_path / 'src/hal').mkdir(parents=True)
+    (tmp_path / 'src/hal/uart.rs').write_text(UART)
     (tmp_path / 'src/main.rs').write_text('fn main() {}')
     (tmp_path / 'src/ui/boot.rs').write_text(BOOT)
     result = apply(tmp_path)
