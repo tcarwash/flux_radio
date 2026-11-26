@@ -49,3 +49,20 @@ UPDATE mode can be made until the operator confirms the screen.** A new
 flash requires the operator to enter UPDATE using both side buttons and
 confirm `UPDATE` visibly, then rerun a safe bootloader command/handshake.
 No module library writes, SPI restore or RF transmissions were attempted.
+
+## Successful stock UPDATE-mode flashing and postflash serial check
+
+After operator **explicitly confirmed `UPDATE` was visible**, ran
+`python3 tools/k6_install.py --port /dev/ttyUSB0 flash --already-update
+/storage5/dev/flux-gp0-phase-probe-20261125-release/flux-fd6818b-gp0-uart-probe.bin`
+under bench owner `sotto-gp0-uart-reflash`. Bootloader accepted the whole
+**119/119KiB** stream and reported `flashed; the radio restarts`. This is
+first successful physical installation of the **121,644B** IRQ/RX LCD
+instrumentation; no module/SPI changes.
+
+Postflash read-only `k6_live.py caps` and `status` both returned
+`No live response` (exit 1). Thus UART is still not operational from the
+PC's perspective. The last stage must be determined from the **physical
+LCD**, not the missing serial handshake. Ask operator to report `IRQ YES/NO`
+and `RX YES/NO`; any `YES` status tells us which interrupt/receive stage
+is alive. No RF transmission has been attempted.
