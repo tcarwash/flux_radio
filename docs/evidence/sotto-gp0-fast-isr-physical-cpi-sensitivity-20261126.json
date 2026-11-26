@@ -1,0 +1,79 @@
+[
+  {
+    "assumed_cpi": 1.5,
+    "modeled_adc_cycles_per_sample": 4000,
+    "pcm_lost": false,
+    "samples": 2000,
+    "pcm_highwater": 2,
+    "first_rf_ms": 116.86532523148088,
+    "spi_reads": 1718,
+    "module_return": 7,
+    "session_complete": true
+  },
+  {
+    "assumed_cpi": 2,
+    "modeled_adc_cycles_per_sample": 3000,
+    "pcm_lost": false,
+    "samples": 2000,
+    "pcm_highwater": 2,
+    "first_rf_ms": 117.43165856481421,
+    "spi_reads": 1718,
+    "module_return": 7,
+    "session_complete": true
+  },
+  {
+    "assumed_cpi": 2,
+    "modeled_adc_cycles_per_sample": 4000,
+    "pcm_lost": false,
+    "samples": 2000,
+    "pcm_highwater": 3,
+    "first_rf_ms": 120.68965856481421,
+    "spi_reads": 1718,
+    "module_return": 7,
+    "session_complete": true
+  },
+  {
+    "assumed_cpi": 2.5,
+    "modeled_adc_cycles_per_sample": 3000,
+    "pcm_lost": false,
+    "samples": 2000,
+    "pcm_highwater": 3,
+    "first_rf_ms": 120.80440856481421,
+    "spi_reads": 1718,
+    "module_return": 7,
+    "session_complete": true
+  },
+  {
+    "assumed_cpi": 2.5,
+    "modeled_adc_cycles_per_sample": 4000,
+    "pcm_lost": true,
+    "samples": 1600,
+    "pcm_highwater": 4,
+    "first_rf_ms": 124.68099189814754,
+    "spi_reads": 1047,
+    "module_return": -12,
+    "session_complete": false
+  },
+  {
+    "assumed_cpi": 3,
+    "modeled_adc_cycles_per_sample": 3000,
+    "pcm_lost": true,
+    "samples": 1280,
+    "pcm_highwater": 4,
+    "first_rf_ms": 125.61415856481422,
+    "spi_reads": 841,
+    "module_return": -12,
+    "session_complete": false
+  },
+  {
+    "assumed_cpi": 3,
+    "modeled_adc_cycles_per_sample": 4000,
+    "pcm_lost": true,
+    "samples": 1040,
+    "pcm_highwater": 4,
+    "first_rf_ms": null,
+    "spi_reads": 625,
+    "module_return": -12,
+    "session_complete": false
+  }
+]
