@@ -244,6 +244,19 @@ fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
   python3 "$HERE/apply-sotto-api28-resources.py"
 fi
+# Experimental codec resource path only: stream one SPI NOR READ transaction
+# with a final bounded BSY check instead of waiting for BUSY after every byte.
+# Never change default NOR reads or the module-loader flash path.
+case "${K6_SOTTO_FAST_SPI:-0}" in
+  0) K6_SOTTO_FAST_SPI=0 python3 "$HERE/apply-sotto-fast-spi.py" ;;
+  1)
+    [ "$K6_SOTTO_RESOURCES" = 1 ] || {
+      echo "K6_SOTTO_FAST_SPI requires the Sotto resource service" >&2; exit 1;
+    }
+    python3 "$HERE/apply-sotto-fast-spi.py"
+    ;;
+  *) echo "K6_SOTTO_FAST_SPI must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then
   python3 "$HERE/apply-sotto-api29-async-fsk.py"
 fi
