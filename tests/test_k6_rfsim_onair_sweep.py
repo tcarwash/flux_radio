@@ -24,7 +24,9 @@ def test_tx_classes_distinguish_ideal_phase_only_and_k6_path():
     phase, evidence = lab.candidate_waveform("qpsk", "phase_only", ("carrier",),
                                              "constant_pa", 117.)
     assert evidence == "hypothetical_unrestricted_carrier_phase"
-    assert np.max(np.abs(np.abs(phase)-1.)) < 1e-12
+    active = np.abs(ref) > 1e-8
+    assert np.max(np.abs(np.abs(phase[active])-1.)) < 1e-12
+    assert np.all(phase[~active] == 0)  # Keep the fixture's silent padding
     k6, evidence = lab.candidate_waveform("qpsk", "k6_path", ("carrier",),
                                           "constant_pa", 117.)
     assert evidence == "unqualified_K6_path_model"
