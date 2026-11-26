@@ -66,3 +66,24 @@ PC's perspective. The last stage must be determined from the **physical
 LCD**, not the missing serial handshake. Ask operator to report `IRQ YES/NO`
 and `RX YES/NO`; any `YES` status tells us which interrupt/receive stage
 is alive. No RF transmission has been attempted.
+
+## Operator's physical LCD observation after successful UART probe flash
+
+The operator reported that the screen shows **`PHASE 3 / MAIN LOOP`**,
+not the expected `IRQ YES/NO` and `RX YES/NO` screen. Source inspection
+shows `PHASE 3` is displayed at the *start of the first main-loop pass*,
+whereas the UART summary is drawn only inside the normal 50ms refresh
+much later in that loop, after scheduler/timer, serial PTT polling,
+watchdog service, handshake, keypad and module service, plus several
+normal RX housekeeping calls. This is evidence that the new image enters
+`main`'s scheduler loop, **not** evidence that it ever completes an
+iteration. The screen alone cannot distinguish a first-pass deadlock,
+interrupt fault, broken uptime/scheduler or a permanently false 50ms
+refresh condition. Likewise, it provides **no UART IRQ/RX counter verdict**.
+
+Next targeted offline/hardware probe: insert one-shot display checkpoints
+after scheduler, serial/txdog/handshake dispatch, module/key service, and
+just ahead of the first UI refresh. Reuse existing phase probe state; keep
+SRAM0/stack and flash audits enabled. This should be done before risking
+any new Sotto module flash or RF transmission. Existing recovery image
+and full 2MiB SPI backup are unchanged.
