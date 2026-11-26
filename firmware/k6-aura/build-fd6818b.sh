@@ -275,6 +275,17 @@ if [ "$K6_SOTTO_MIC" = 1 ]; then
   python3 "$HERE/apply-sotto-api30-mic.py"
   python3 "$HERE/apply-mic-result-serial.py"
 fi
+# Optional foreground-only fault counters, readable through 0x75 after GP0
+# returns. The original module binary and default firmware stay unchanged.
+case "${K6_SOTTO_GP0_TRACE:-0}" in
+  0) K6_SOTTO_GP0_TRACE=0 python3 "$HERE/apply-sotto-gp0-fault.py" ;;
+  1)
+    [ "$K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_TRACE requires resources, FSK async, GP0 mic, and expanded RAM0=1" >&2; exit 1;
+    }
+    K6_SOTTO_GP0_TRACE=1 python3 "$HERE/apply-sotto-gp0-fault.py" ;;
+  *) echo "K6_SOTTO_GP0_TRACE must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
 fi
@@ -313,6 +324,7 @@ if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resour
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
 if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
+if [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_trace"; fi
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
 if [ "${K6_RAM0:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ]; then
