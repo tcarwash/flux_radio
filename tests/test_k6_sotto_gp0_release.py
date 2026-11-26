@@ -22,6 +22,8 @@ def test_offline_release_manifest_and_module_is_installable(tmp_path,firmware_im
     assert info['module_scratch_margin']>=0
     assert info['firmware_flash_headroom']>=0
     assert not info['flashed_to_radio'] and not info['on_radio_receiver_included']
+    assert info['library_layout']=='KUL2'
+    assert 'K6_USER_STORE=1' in (out/'README.md').read_text()
     assert (out/'module-bundle/manifest.json').exists()
     for fn,want in info['sha256'].items():
         assert hashlib.sha256((out/fn).read_bytes()).hexdigest()==want
@@ -35,4 +37,14 @@ def test_invalid_firmware_rejected_without_creating_release(tmp_path):
     invalid=tmp_path/'oversized.bin';invalid.write_bytes(b'0'*122881)
     with pytest.raises(ValueError,match='flash size'):
         build_release(invalid,tmp_path/'release')
+    assert not (tmp_path/'release').exists()
+
+
+def test_legacy_layout_firmware_rejected_before_any_files_written(tmp_path):
+    # This reproduces the Nov 26 failure: an otherwise flash-sized image
+    # lacking the compiled packed-library reader cannot see any KUL2 modules.
+    legacy=tmp_path/'legacy-fixed-slot.bin'
+    legacy.write_bytes(b'\xff'*119820)
+    with pytest.raises(ValueError,match='lacks KUL2 support'):
+        build_release(legacy,tmp_path/'release')
     assert not (tmp_path/'release').exists()

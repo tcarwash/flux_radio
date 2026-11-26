@@ -51,6 +51,11 @@ def build_release(firmware:Path,dest:Path):
     if dest.exists():raise FileExistsError(f'Preserving existing release folder: {dest}')
     image=firmware.read_bytes()
     if not 90000<=len(image)<=122880:raise ValueError(f'Firmware flash size invalid: {len(image)}')
+    # This release is for packed KUL2 SPI. Fixed-slot firmware boots but
+    # cannot enumerate that directory. The compiled magic is an additional
+    # preflight gate, not a replacement for testing the actual module reader.
+    if b'KUL2' not in image:
+        raise ValueError('Firmware lacks KUL2 support; refusing packed-library GP0 release')
     # Cable-only K6 builds intentionally omit the 16-byte signing placeholder;
     # keyed OTA builds use exactly one. Reject ambiguous images, and never
     # package the user's personal signing key.
@@ -92,6 +97,7 @@ def build_release(firmware:Path,dest:Path):
           'module_scratch_available':scratch,'module_scratch_required':SOTTO_LIVE_SCRATCH_REQUIRED,
           'module_scratch_margin':scratch-SOTTO_LIVE_SCRATCH_REQUIRED,
           'resources':['K6CB at SPI 0x100000','K6SC IVF deck in packed library'],
+          'library_layout':'KUL2',
           'modules_install_as_separate_bundle':True,
           'sha256':{k:hash_bytes(v) for k,v in payloads.items()}}
     (dest/'release.json').write_text(json.dumps(info,indent=2)+'\n')
@@ -107,7 +113,8 @@ def build_release(firmware:Path,dest:Path):
            '- `release.json` and `SHA256SUMS`: exact artifact identities.','',
            '## Installation prerequisites (NOT AUTOMATED)','',
            'This is a **cable-only** firmware build; it has no OTA signing-key placeholder.',
-           'Do not try to key it as an OTA build or distribute any personal module keys.','',
+           'It must have `K6_USER_STORE=1` for the existing packed KUL2 SPI directory.',
+           'Do not flash legacy fixed-slot firmware on a KUL2 radio or distribute personal module keys.','',
            '1. Verify the radio is idle on the authorized dummy load. Claim the bench and back up'
            '   the entire SPI flash; save and verify its SHA256 before changing firmware.',
            '2. Compare `tools/k6_install.py --port /dev/ttyUSB0 status` with this manifest.',
