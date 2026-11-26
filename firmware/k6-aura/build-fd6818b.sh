@@ -257,6 +257,17 @@ case "${K6_SOTTO_FAST_SPI:-0}" in
     ;;
   *) echo "K6_SOTTO_FAST_SPI must be 0 or 1" >&2; exit 1 ;;
 esac
+# Opt-in cable-only SPI timing report; requires *both* Sotto resources and
+# streaming read support. Never enters TX; no radio writes in this overlay.
+case "${K6_SOTTO_SPI_BENCH:-0}" in
+  0) K6_SOTTO_SPI_BENCH=0 python3 "$HERE/apply-sotto-spi-bench.py" ;;
+  1)
+    [ "${K6_SOTTO_FAST_SPI:-0}" = 1 ] || {
+      echo "K6_SOTTO_SPI_BENCH requires K6_SOTTO_FAST_SPI=1" >&2; exit 1;
+    }
+    K6_SOTTO_SPI_BENCH=1 python3 "$HERE/apply-sotto-spi-bench.py" ;;
+  *) echo "K6_SOTTO_SPI_BENCH must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then
   python3 "$HERE/apply-sotto-api29-async-fsk.py"
 fi
@@ -301,6 +312,7 @@ if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
+if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
 if [ "${K6_RAM0:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ]; then
