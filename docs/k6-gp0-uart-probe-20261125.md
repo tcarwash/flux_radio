@@ -33,3 +33,19 @@ SHA256 `751995d2dd346a2cfbf7503f8b4d722076cec9164a61efa495b3ca884dc67ccb`.
 The full 2MB SPI backup was already preserved as documented in
 `docs/k6-gp0-startup-phase-diagnostic-20261125.md`. Avoid altering module
 slots while live serial is unresponsive.
+
+## Actual attempted bootloader flash (2026-11-25 PST, after image built)
+
+After the operator said "hit it", the bench was claimed and the staged
+UART diagnostic SHA256 was checked against the on-disk image. The installer
+opened `/dev/ttyUSB0` with `flash --already-update` but the stock bootloader
+**did not respond to command `0x01`**. It reported `stopped: no answer from
+the bootloader to command 0x01`, **before any firmware image bytes were
+flashed**. Post-attempt, read-only live status still timed out (the prior
+phase-diagnostic image had already exhibited that behavior). The device
+node existed, was not held by another process, and system logs were not
+accessible as an unprivileged user. **No assertion that the radio is in
+UPDATE mode can be made until the operator confirms the screen.** A new
+flash requires the operator to enter UPDATE using both side buttons and
+confirm `UPDATE` visibly, then rerun a safe bootloader command/handshake.
+No module library writes, SPI restore or RF transmissions were attempted.
