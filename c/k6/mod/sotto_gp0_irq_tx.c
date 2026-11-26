@@ -51,6 +51,7 @@ int k6_main(const k6_api_t*a){
     uint32_t t0,pressed,last_progress;
     uint8_t last_produced;
     int r;
+    const char *error="GP0 RUN ABORT";
     if(!a||a->level<30||a->abi!=1)return -3;
     scratch=a->scratch(&room);
     if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(*s)+slim_enc_bytes()){
@@ -96,7 +97,7 @@ ptt_ready:
      * PTT is still held: no RF is emitted while waiting. */
     a->delay_us(800000u);
     if(a->mic_stream(3,0,0)!=1 || a->key_down())goto fail;
-    if(a->mic_stream(8,(uint8_t*)&s->mic,87260u))goto fail;
+    if(a->mic_stream(8,(uint8_t*)&s->mic,87260u)){error="GP0 START FAIL";goto fail;}
     t0=a->ms();last_progress=t0;last_produced=0;
     while(a->ms()-t0<20000u){
         r=a->mic_stream(3,0,0);
@@ -115,5 +116,5 @@ ptt_ready:
         if(s->mic.produced==s->mic.consumed&&!s->pending)a->delay_us(300);
     }
 fail:
-    stop(&c);end(&c);a->say("SOTTO TX aborted");return -12;
+    stop(&c);end(&c);a->lcd_text(0,error);a->lcd_flush();a->delay_us(2500000u);return -12;
 }
