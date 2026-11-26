@@ -76,6 +76,7 @@ def test_bench_requires_opt_in_streaming_path(tmp_path):
 def test_bench_is_bound_read_only_and_timed_on_device():
     source=HELPER.read_text()
     assert 'const N: u16 = 128' in source
+    assert '#[inline(never)]' in source  # comparison buffers get a dedicated bounded stack frame
     assert '[20usize, 128usize]' in source
     assert source.count('crate::hal::uptime::now()')==2
     assert 'read_bytes_checked(' in source

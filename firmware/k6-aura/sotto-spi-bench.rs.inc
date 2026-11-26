@@ -4,6 +4,7 @@
 // A 128-read batch resolves microsecond per-read differences with <1us
 // aggregate quantization; each sample must complete within one timer wrap.
 #[cfg(k6_sotto_spi_bench)]
+#[inline(never)] // keep the 2x128-byte compare buffers off the cable dispatch frame
 fn sotto_spi_bench(app: &mut App) -> [u8; 24] {
     const N: u16 = 128;
     let mut ticks = [0u16; 4]; // length20 baseline/fast; length128 baseline/fast
