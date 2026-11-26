@@ -39,9 +39,17 @@ The prototype's direct release build had 102,224 bytes .text and 12,900 bytes .r
 
 The benchmark overlay was enabled twice, disabled and reenabled without duplicate helpers. The combined Sotto GP0 virtual-RF/PCM and SPI overlay/decoder suite passed **58/58 tests**. After removing both the bench and streaming SPI overlays and recompiling with the same flags, the default Thumb ELF matched the earlier baseline **byte-for-byte**. The generated research checkout was left in the default, nonbenchmark configuration.
 
+## Reproducible clean-build qualification
+
+An isolated detached worktree was created at /storage5/dev/flux-sotto-spi-clean-build-20261126 from commit 8e6491ca. Its Sotto git submodule was initialized at the recorded pinned revision **598f1bce87c22ebada2b9d0d1fcfd89107b33a09**, and the generated Aura checkout was reset to the pinned upstream revision **c3aeb17** before every build. Both a benchmark+streaming image and a default (both features disabled) image built successfully through the complete firmware/k6-aura/build-fd6818b.sh script, not merely direct Cargo compilation.
+
+Under identical clean-build feature flags (API28+29+30, KUL2 User Store, RAM0, TX watchdog, no live serial), the default firmware was **102,016 bytes** and the opt-in benchmark+streaming firmware was **102,928 bytes**, a **+912-byte** binary delta. Both retained a 14,976-byte module arena and **92 free RAM0 bytes**, with 2,820 bytes of reported stack reservation. `SPB1` was absent from the baseline binary and present once in the instrumented image; `KUL2` remained present in both. The candidate SHA256 is **f2da7786bfc155ea0149fef3daa99b1d229fad8c7b055736439279059e073507**. Build artifacts and detailed logs are stored under recovery/spi-clean-build-output and recovery/spi-clean-default-output outside the checkout.
+
+**Do not flash the 102,928-byte clean-build image as a drop-in replacement:** its feature profile differs from the previously fielded 116,796-byte firmware; matching all runtime capabilities, RAM/stack behavior and recovery requirements remains necessary.
+
 ## Remaining gates
 
-1. Complete clean build from the pinned upstream source (the older generated Aura workspace has an independently documented duplicate UI/stack overlay and is not safe for incremental full overlay reruns).
+1. Reproduce and audit the **exact fielded firmware feature profile** with the new command (the clean-build profile above is deliberately slimmer).
 3. Audit cable-session stack usage, TIM14 counter behavior and watchdog, and flash/RAM headroom. Instrumented code's two 128-byte scratch buffers are **stack**, not static RAM.
 4. Only after hardware owner explicitly elects to install a diagnostic image: take full SPI/firmware backups, verify exact build ID and staged image, install firmware with existing recovery procedure; issue the single read-only benchmark request and restore the preferred prior firmware. **Do not key PTT.**
 5. Compare measured SPI timing against offline overflow sensitivity before choosing optimized codebook/cache work. GP0 ISR latency during real encoding still needs a separate safe telemetry path.
