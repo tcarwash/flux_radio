@@ -34,6 +34,17 @@ Optional Data and authenticated OTA services are available through
 custom builds. Sotto is currently deferred. APRS is a separately installable experimental application;
 its weak-signal reception is still under investigation.
 
+### Sotto digital voice: research dossier
+
+Work towards **standalone half-duplex Sotto-1200 RX and TX on the FD6818B K6**
+(including GP0 microphone-to-MCU PCM, DMA IRQ capture, 4,800-baud FSK FIFO,
+codec and real-speaker receive) is documented in the
+[on-radio Sotto technical dossier](docs/K6_SOTTO_ON_RADIO_TECHNICAL_DOSSIER.md)
+and the [complete research/source evidence index](docs/K6_SOTTO_EVIDENCE_INDEX.md).
+The RF/GP0 hardware experiments and emulator gates are distinguished from
+remaining integration work; **these are research records, not a flashable
+working two-way voice release**.
+
 ## Is my radio supported?
 
 | Hardware | Status |
