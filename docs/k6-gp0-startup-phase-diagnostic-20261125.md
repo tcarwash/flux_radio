@@ -41,3 +41,20 @@ standard `tools/k6_install.py --port /dev/ttyUSB0 flash --already-update` tool.
 Full 2 MiB SPI backup at
 `/storage5/dev/flux-sotto-gp0-ptt-optimized-release-20261125/preflash/k6-spi-before-gp0.bin`;
 SHA256 `ec856e231599ef83734f436560380470aaf06ab3c9effe7aaff49d237cebbeee`.
+
+## Physical display follow-up
+
+After the diagnostic flash, the operator reported that the radio **reached the
+normal VFO screen**. This is materially different from the prior GP0 image
+stopping at the splash: the phase-instrumented image proceeded through the
+receive transition and UI startup. The exact intermediate phase strings were
+not observed/reported, so do not infer a particular transient phase display.
+
+Post-VFO checks still failed to elicit a response from live serial (`caps`,
+`status`, and the installed library query). The `/dev/ttyUSB0` device existed
+and was not held open by another process; generated firmware has
+`k6_live_serial` handshake/dispatch code but the physical serial link remains
+unverified. This build is therefore **not qualified** for module installation
+or TX, even though its UI boots. No additional RF was transmitted or library
+slots modified. Firmware left on radio pending operator decision; do not
+mistake it for the production known-good baseline.
