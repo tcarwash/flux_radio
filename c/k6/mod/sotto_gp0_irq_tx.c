@@ -55,11 +55,11 @@ int k6_main(const k6_api_t*a){
     if(!a||a->level<30||a->abi!=1)return -3;
     scratch=a->scratch(&room);
     if(!scratch||((uintptr_t)scratch&3u)||room<sizeof(*s)+slim_enc_bytes()){
-        return -8;
+        a->say("SOTTO no RAM");return -8;
     }
     s=(sl_engine_t*)scratch;e=(slim_enc_t*)(scratch+sizeof(*s));
     if(a->fd_read(0)!=0x4829||sio_init(&io,a)){
-
+        a->say("SOTTO MIC codec");
         return -10;
     }
     slim_enc_init(e);e->io=&io;
@@ -69,19 +69,19 @@ int k6_main(const k6_api_t*a){
     // First bench build: a stable released PTT followed by a fresh
     // 60-ms press, not a UART transition, is required. The operator
     // must unplug the cable and attach a dummy load.
-    /* Diagnostic build omits initial LCD text to preserve encoder scratch.
-     * No RF can start here. Check keypad cancellation after the PA-muted
-     * 800ms settling interval and on every active loop iteration. */
+    a->lcd_text(0,"SOTTO GP0 / TX");
+    a->lcd_flush();
+    /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
     /* Both an already-held PTT and a new press must stay asserted for
      * 60 ms. Reject UART ownership or other keypad input immediately. */
     t0=a->ms();
     while(a->ms()-t0<30000u){
         r=a->mic_stream(3,0,0);
-        if(r<0)return -4;
+        if(r<0||a->key_down())return -4;
         if(r){
             for(pressed=0;pressed<12u;pressed++){
                 a->delay_us(5000);
-                if(a->mic_stream(3,0,0)!=1)break;
+                if(a->mic_stream(3,0,0)!=1||a->key_down())break;
             }
             if(pressed==12u)goto ptt_ready;
         }else a->delay_us(5000);
@@ -96,7 +96,7 @@ ptt_ready:
      * PTT is still held: no RF is emitted while waiting. */
     a->delay_us(800000u);
     if(a->mic_stream(3,0,0)!=1 || a->key_down())goto fail;
-    if(a->mic_stream(8,(uint8_t*)&s->mic,87260u))goto fail;
+    if(a->mic_stream(8,(uint8_t*)&s->mic,87260u)){error="GP0 START FAIL";goto fail;}
     t0=a->ms();last_progress=t0;last_produced=0;
     while(a->ms()-t0<20000u){
         r=a->mic_stream(3,0,0);
@@ -107,12 +107,12 @@ ptt_ready:
         if(s->phase==SL_CAPTURE){
             if(s->mic.produced!=last_produced){
                 last_produced=s->mic.produced;last_progress=a->ms();
-            }else if(a->ms()-last_progress>100u){stall: error="GP0 PCM";goto fail;}
+            }else if(a->ms()-last_progress>100u){error="GP0 STALL";goto fail;}
         }
         r=sl_engine_tick(s,&o,&c);
-        if(r<0){if(s->mic.lost)goto stall;goto fail;}
+        if(r<0){error="GP0 ENGINE";goto fail;}
         if(r==1)return (int)s->tx.encoded;
-        /* IRQ preempts foreground polling; do not busy-wait between PCM blocks. */
+        if(s->mic.produced==s->mic.consumed&&!s->pending)a->delay_us(300);
     }
 fail:
     stop(&c);end(&c);a->lcd_text(0,error);a->lcd_flush();a->delay_us(2500000u);return -12;
