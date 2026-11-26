@@ -72,29 +72,21 @@ int k6_main(const k6_api_t*a){
     a->lcd_text(1,"PTT / dummy load");
     a->lcd_flush();
     /* The mode-owned UI redraws separately; avoid synchronous LCD SPI from TX. */
-    t0=a->ms();pressed=0;
-    r=a->mic_stream(3,0,0);
-    if(r<0)return -4;
-    if(r==1){
-        a->delay_us(30000);
-        if(a->mic_stream(3,0,0)!=1)return -4;
-        goto ptt_ready;
-    }
+    /* Both an already-held PTT and a new press must stay asserted for
+     * 60 ms. Reject UART ownership or other keypad input immediately. */
+    t0=a->ms();
     while(a->ms()-t0<30000u){
         r=a->mic_stream(3,0,0);
         if(r<0||a->key_down())return -4;
-        if(!r){pressed=1;}
-        else if(pressed){
-            unsigned i;
-            for(i=0;i<12;i++){
+        if(r){
+            for(pressed=0;pressed<12u;pressed++){
                 a->delay_us(5000);
                 if(a->mic_stream(3,0,0)!=1||a->key_down())break;
             }
-            if(i==12)break;
-        }
-        a->delay_us(5000);
+            if(pressed==12u)goto ptt_ready;
+        }else a->delay_us(5000);
     }
-    if(a->ms()-t0>=30000u)return -4;
+    return -4;
 ptt_ready:
     if(sl_engine_begin(s,a->ticks()|1u,a->ms()))return -11;
     if(a->tx_on(25000u))return -5;

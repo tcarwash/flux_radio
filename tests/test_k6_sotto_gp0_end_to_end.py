@@ -43,7 +43,8 @@ def test_gp0_scratch_fits_expanded_arena(gp0):
     backend=VirtualTxBackend(air,240000,HZ)
     try:
         r=LiveTx(gp0,backend)
-        assert r.scratch >= 4080 and r.scratch<4150
+        assert r.scratch == 14976-1040-len(gp0['code'])-24
+        assert r.scratch >= 4080
         assert r.gp0
     finally:backend.close()
 
