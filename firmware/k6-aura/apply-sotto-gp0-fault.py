@@ -41,7 +41,7 @@ APIS='''    // GPF1_APIS_BEGIN
 '''
 PAGER_BEGIN='''    // GPF1_BEGIN_RUN_BEGIN
     #[cfg(k6_sotto_gp0_trace)]
-    gp0_fault_trace_begin(st.serial, arena::base());
+    gp0_fault_trace_begin(st.serial, unsafe { arena::base().add(16) });
     // GPF1_BEGIN_RUN_END
 '''
 PAGER_FINISH='''    // GPF1_FINISH_RUN_BEGIN

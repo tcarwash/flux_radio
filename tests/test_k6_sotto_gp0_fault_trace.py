@@ -108,6 +108,21 @@ def test_overlay_fails_closed_if_api_contract_missing(tmp_path):
     assert 'API30 field triplet' in error.stderr+error.stdout
     assert {name:(work/name).read_bytes() for name in files}==before
 
+def test_trace_arms_on_executable_after_signed_k6m_envelope():
+    # KUL2 loads the complete signed K6M envelope into the arena. Its
+    # executable K6NM name is at +16, not at the envelope base.
+    from modem import k6mod
+    from tools.k6_sotto_module import build
+    code,entry=build(host_resources=True,gp0_irq_tx=True)
+    assert entry==16 and code[:13]==b"K6NMSOTTO GP0"
+    envelope=k6mod.image(code,entry,1795730062,None,level=30,lib=24)
+    assert envelope[:4]==b"K6M\x01"
+    assert envelope[:13]!=b"K6NMSOTTO GP0"
+    assert envelope[16:29]==b"K6NMSOTTO GP0"
+    patcher=(ROOT/'firmware/k6-aura/apply-sotto-gp0-fault.py').read_text()
+    assert 'gp0_fault_trace_begin(st.serial, unsafe { arena::base().add(16) });' in patcher
+    assert 'gp0_fault_trace_begin(st.serial, arena::base());' not in patcher
+
 def test_tracing_does_not_change_original_gp0_module_source():
     source=(ROOT/'c/k6/mod/sotto_gp0_irq_tx.c').read_text()
     assert 'if(r<0){error="GP0 ENGINE";goto fail;}' in source
