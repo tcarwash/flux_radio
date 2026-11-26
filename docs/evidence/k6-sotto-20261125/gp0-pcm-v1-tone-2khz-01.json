@@ -1,0 +1,53 @@
+{
+  "available": true,
+  "storage": "boot-local RAM",
+  "survives_reboot": false,
+  "version": 8,
+  "measurement": "gp0_dma_mic_8khz_pcm",
+  "capture": "PA-muted TX, RFIC mic route only; GP0 PB1 DMA to 8kHz signed PCM",
+  "gp0_selector": 12,
+  "dma_decimated_samples_per_second": 87260,
+  "pcm_samples_total": 1824,
+  "pcm_warmup_samples_discarded": 800,
+  "vox_max": 434,
+  "windows": [
+    {
+      "index": 0,
+      "pcm_samples": 256,
+      "duration_ms": 32,
+      "pcm_tone_1khz_peak": 544,
+      "pcm_tone_2khz_peak": 24299,
+      "pcm_rms_approx": 8896,
+      "pcm_clipped_samples": 0
+    },
+    {
+      "index": 1,
+      "pcm_samples": 256,
+      "duration_ms": 32,
+      "pcm_tone_1khz_peak": 439,
+      "pcm_tone_2khz_peak": 24072,
+      "pcm_rms_approx": 8768,
+      "pcm_clipped_samples": 0
+    },
+    {
+      "index": 2,
+      "pcm_samples": 256,
+      "duration_ms": 32,
+      "pcm_tone_1khz_peak": 608,
+      "pcm_tone_2khz_peak": 23766,
+      "pcm_rms_approx": 8640,
+      "pcm_clipped_samples": 0
+    },
+    {
+      "index": 3,
+      "pcm_samples": 256,
+      "duration_ms": 32,
+      "pcm_tone_1khz_peak": 136,
+      "pcm_tone_2khz_peak": 23331,
+      "pcm_rms_approx": 8512,
+      "pcm_clipped_samples": 0
+    }
+  ],
+  "note": "Window spectra are from real 8kHz reconstructed PCM, not proof of intelligible speech or live codec scheduling",
+  "retrieved_at_utc": "2026-11-25T21:04:18.274178+00:00"
+}

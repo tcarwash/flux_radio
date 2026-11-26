@@ -1,0 +1,57 @@
+{
+  "available": true,
+  "storage": "boot-local RAM",
+  "survives_reboot": false,
+  "version": 6,
+  "measurement": "gp0_dma_tx_mic_spectrum",
+  "capture": "PA-muted TX; RFIC mic ADC enabled; no PA11 sampler",
+  "gp0_selector": 12,
+  "raw_dma_ksamples_per_second": 5617,
+  "decimated_samples_per_second": 87770,
+  "vox_max": 435,
+  "windows": [
+    {
+      "index": 0,
+      "nominal_duration_ms": 46.67,
+      "amplitude_1khz_q": 0,
+      "amplitude_2khz_q": 25,
+      "rms_raw_density": 5,
+      "gp0_raw_high_fraction": 0.498,
+      "mean_density_change": 3,
+      "approx_vox": 432
+    },
+    {
+      "index": 1,
+      "nominal_duration_ms": 46.67,
+      "amplitude_1khz_q": 0,
+      "amplitude_2khz_q": 25,
+      "rms_raw_density": 5,
+      "gp0_raw_high_fraction": 0.502,
+      "mean_density_change": 3,
+      "approx_vox": 432
+    },
+    {
+      "index": 2,
+      "nominal_duration_ms": 46.67,
+      "amplitude_1khz_q": 0,
+      "amplitude_2khz_q": 25,
+      "rms_raw_density": 5,
+      "gp0_raw_high_fraction": 0.502,
+      "mean_density_change": 3,
+      "approx_vox": 428
+    },
+    {
+      "index": 3,
+      "nominal_duration_ms": 46.67,
+      "amplitude_1khz_q": 0,
+      "amplitude_2khz_q": 25,
+      "rms_raw_density": 5,
+      "gp0_raw_high_fraction": 0.498,
+      "mean_density_change": 3,
+      "approx_vox": 428
+    }
+  ],
+  "scale": "amplitude bins are relative 8-bit normalized DFT scores, not calibrated PCM",
+  "note": "1k/2k generator contrast required; detected digital activity alone is not recovered voice",
+  "retrieved_at_utc": "2026-11-25T20:48:59.873604+00:00"
+}

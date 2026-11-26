@@ -145,7 +145,7 @@ The known-good radio firmware is `b6a3df0d360d3110`. After the last successful d
 | Qualified continuous-PA synthesized-PCM RF sessions | `/storage5/dev/sotto-monitor/evidence/bench-rf-goal-20261125/` |
 | Diagnostic UART image built, **not flashed** | `/storage5/dev/flux-gp0-phase-probe-20261125-release/flux-fd6818b-gp0-uart-probe.bin` SHA256 `bc063e85bf59cfb4419b98e155b4ae8431fbbd944efc455e34fa7eeca2e2f4c2` |
 
-These paths identify retained local evidence, **not public download URLs**. Full SPI dumps and raw microphone/IQ audio have not been published here because they may contain calibration and user/private radio data and large binary samples. The existing checked-in docs describe the measurements and tests; checksums allow reproducibility without embedding those assets.
+Eight measurement-only GP0 tone/control/IRQ JSON reports are now [checked in with original SHA256 checksums](evidence/k6-sotto-20261125/README.md), separate from sensitive raw captures. These paths identify the remaining retained local evidence, **not public download URLs**. Full SPI dumps and raw microphone/IQ audio have not been published here because they may contain calibration and user/private radio data and large binary samples. The existing checked-in docs describe the measurements and tests; checksums allow reproducibility without embedding those assets.
 
 ## 8. Proposed acceptance plan, in dependency order
 

@@ -319,6 +319,10 @@ The table below lists **repository files**, not just links to the experimental p
 - [`tests/test_k6_sotto_tx_stage.py`](../tests/test_k6_sotto_tx_stage.py)
 - [`tests/test_k6_sotto_virtual_link.py`](../tests/test_k6_sotto_virtual_link.py)
 
+## Physical measurement records published with checksums
+
+The 1kHz / 2kHz / generator-OFF GP0 bit-density and 8kHz PCM measurements and two sustained DMA IRQ reports are now published as [eight measurement-only JSON files](evidence/k6-sotto-20261125/README.md) with preserved source SHA256. These are operator-attended lab summaries, not raw speech or production voice validation.
+
 ## Non-repository evidence
 
 Original physical bench artifacts and full radio SPI/calibration backups remain on the private development workstation. They are **identified by local path and checksum in the technical dossier**, not uploaded blindly to a public repository. If transferring the radio work to another workstation, privately export and authenticate those artifacts, preserving their original SHA256 and associated versioned module image.
