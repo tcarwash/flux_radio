@@ -22,7 +22,7 @@ struct Ring {pcm:[i16;320],produced:u8,consumed:u8,offset:u8,lost:u8}
 const _:()=assert!(core::mem::size_of::<Ring>()==644);
 static mut RING:*mut Ring=core::ptr::null_mut();
 #[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
-static mut SAVED:[u32;5]=[0;5];
+static mut SAVED:[u32;6]=[0;6];
 #[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut CIC:[u32;4]=[0;4];
 static mut DC:i32=0;
@@ -54,7 +54,7 @@ pub fn active()->bool{unsafe{!rdv(core::ptr::addr_of!(RING)).is_null()}}
 pub fn start(ptr:*mut u8)->bool{
     cortex_m::interrupt::free(|_|unsafe{
         if active()||rd(EN)&MASK!=0||rd(ISER)&IRQ!=0||!super::txdog::pcm_vector(true, isr as *const () as usize as u32|1){return false;}
-        SAVED=[rd(A),rd(A+8),rd(A+12),rd(A+20),rd(B+20)];
+        SAVED=[rd(A),rd(A+8),rd(A+12),rd(A+20),rd(B+20),rd(EN)];
         OLD_PRIO=rdv(IPR as *const u8);
         wrv(IPR as *mut u8,0xc0);
         wr(B+24,1<<(2+16));mask(A,MODE,0);mask(A+12,MODE,0);mask(A+8,MODE,MODE);
@@ -80,6 +80,7 @@ pub fn stop(){
         mask(A+8,MODE,SAVED[1]);mask(A+12,MODE,SAVED[2]);
         wr(A+24,if SAVED[3]&PIN!=0{PIN}else{PIN<<16});
         mask(A,MODE,SAVED[0]);
+        wr(EN,SAVED[5]);
         // PA11 speaker switch remains muted until host receive setup.
     })
 }

@@ -187,3 +187,16 @@ def test_packed_deck_discovery(artifacts,fault,rc):
     assert r==rc
     if rc==26:assert log==[expected(artifacts[-1])]
     else:assert not any("dry FNV" in s for s in log)
+
+def test_gp0_module_uses_dma_service_and_fits_expanded_arena():
+    from tools.k6_sotto_module import SOTTO_LIVE_SCRATCH_REQUIRED
+    source=(FIXED.parent/"k6/mod/sotto_gp0_irq_tx.c").read_text()
+    assert "mic_stream(7,0,0)" in source
+    assert "mic_stream(8,(uint8_t*)&s->mic,87260u)" in source
+    assert "mic_stream(1,0,0)" in source
+    assert "sotto_gp0_scratch_budget_check" in source
+    code,entry=build(host_resources=True,gp0_irq_tx=True)
+    assert entry==k6mod.bin_entry(code)
+    available=14976-1040-len(code)-24
+    assert available>=SOTTO_LIVE_SCRATCH_REQUIRED
+    assert available-SOTTO_LIVE_SCRATCH_REQUIRED>=0

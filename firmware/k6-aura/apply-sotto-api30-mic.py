@@ -32,15 +32,10 @@ s=sub_once(s,'    unsafe{sotto_tx29_cleanup();}\n',
 s=sub_once(s,'fn run_module(app: &mut App, syst: &mut SYST) {\n',
            'fn run_module(app: &mut App, syst: &mut SYST) {\n'
            '    #[cfg(k6_sotto_mic)]\n'
-           '    unsafe{SOTTO_MIC_ROUTE=false;}\n')
+           '    unsafe{SOTTO_MIC_ROUTE=false;SOTTO_GP0_ROUTE=false;}\n')
 body=(here/'sotto-api30-mic.rs.inc').read_text()
 if '// SOTTO_API30_MIC_BEGIN' not in s:s+='\n'+body+'\n'
-# Action key table runs in a small static array; relocate it with the
-# host's other persistent state only in the expanded Sotto RAM0 profile.
-if 'static mut ACTION_IDS: [u8;32] = [0;32];' in s:
-    s=sub_once(s,'static mut ACTION_IDS: [u8;32] = [0;32];',
-        '#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]\n'
-        'static mut ACTION_IDS: [u8;32] = [0;32];')
+# ACTION_IDS stays in ordinary .bss; preserve scarce protected SRAM0 for IRQ state.
 pager.write_text(s)
 # Live serial uses a dedicated bounded cancel decoder; on profiles enabling
 # both LIVE_SERIAL and Sotto, it can live in protected RAM0 without sharing
@@ -56,20 +51,32 @@ if live.exists():
 mods=hal.read_text()
 if 'pub mod pcm_capture;' not in mods:
     mods+='\n#[cfg(k6_sotto_mic)]\npub mod pcm_capture;\n'
+if 'pub mod gp0_capture;' not in mods:
+    mods+='#[cfg(k6_sotto_mic)]\npub mod gp0_capture;\n'
 hal.write_text(mods)
 capture=src/'hal/pcm_capture.rs'
 capture.write_text((here/'sotto-api30-pcm-capture.rs').read_text())
+gp0=src/'hal/gp0_capture.rs'
+gp0.write_text((here/'sotto-api30-gp0-capture.rs').read_text())
 t=txdog.read_text()
-anchor='pub fn unkeyed() {\n    KEYED_AT.store'
-t=sub_once(t,anchor,'pub fn unkeyed() {\n'
-    '    #[cfg(k6_sotto_mic)]\n'
-    '    super::pcm_capture::stop();\n'
-    '    KEYED_AT.store')
+if '    super::pcm_capture::stop();\n    KEYED_AT.store' in t:
+    if '    super::gp0_capture::stop();' not in t:
+        t=sub_once(t,'    super::pcm_capture::stop();\n    KEYED_AT.store',
+            '    super::gp0_capture::stop();\n'
+            '    super::pcm_capture::stop();\n'
+            '    KEYED_AT.store')
+else:
+    t=sub_once(t,'pub fn unkeyed() {\n    KEYED_AT.store',
+        'pub fn unkeyed() {\n'
+        '    #[cfg(k6_sotto_mic)]\n'
+        '    super::gp0_capture::stop();\n'
+        '    #[cfg(k6_sotto_mic)]\n'
+        '    super::pcm_capture::stop();\n'
+        '    KEYED_AT.store')
 if '// SOTTO_API30_PCM_VECTOR_BEGIN' not in t:
-    t+='''
+    t+="""
 // SOTTO_API30_PCM_VECTOR_BEGIN
-// TIM17 interrupt vector is only borrowed while TX watchdog remaps SRAM.
-// Timer shutdown MUST restore the bootloader vector before txdog::unkeyed.
+// TIM17 interrupt vector is borrowed only while TXDOG remaps SRAM.
 #[cfg(k6_sotto_mic)]
 pub fn pcm_vector(on:bool,handler:u32)->bool{
     let a=SRAM0+4*(16+22);
@@ -90,6 +97,31 @@ pub fn pcm_vector(on:bool,handler:u32)->bool{
     }
 }
 // SOTTO_API30_PCM_VECTOR_END
-'''
+"""
+if '// SOTTO_API30_GP0_VECTOR_BEGIN' not in t:
+    t+="""
+// SOTTO_API30_GP0_VECTOR_BEGIN
+// DMA1 channel1 IRQ9 is borrowed only while the module TX watchdog owns SRAM vectors.
+#[cfg(k6_sotto_mic)]
+pub fn gp0_vector(on:bool,handler:u32)->bool{
+    let a=SRAM0+4*(16+9);
+    if on {
+        if !LIVE.load(Ordering::Relaxed)
+           || ARMED.load(Ordering::Relaxed)&ARM_TX==0
+           || rd(SYSCFG_CFGR1)&3!=3
+           || rd(a)!=rd(BOOT_VEC+4*(16+9)) {return false;}
+        wr(a,handler);
+        if rd(4*(16+9))!=handler {
+            wr(a,rd(BOOT_VEC+4*(16+9)));
+            return false;
+        }
+        true
+    } else {
+        wr(a,rd(BOOT_VEC+4*(16+9)));
+        true
+    }
+}
+// SOTTO_API30_GP0_VECTOR_END
+"""
 txdog.write_text(t)
 print('Applied experimental API30 TIM17/PA11 microphone ISR service')

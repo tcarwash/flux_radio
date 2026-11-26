@@ -52,7 +52,10 @@ def test_resource_overlay_refuses_non_api31_generated_checkout(tmp_path):
 def test_resource_callback_bounds_and_actual_build_flag_are_opt_in():
     rust=SOURCE.read_text()
     sh=BUILD.read_text()
-    assert 'if [ "$K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_FSK4800_RX" != 1 ]' in sh
+    assert 'if [ "$K6_SOTTO_RESOURCES" = 1 ]; then' in sh
+    assert 'Sotto resources require the API31 host tail and API26/27' in sh
+    assert 'if [ "$K6_FSK4800_RX" = 1 ] || [ "$K6_SOTTO_RESOURCES" = 1 ]; then' in sh
+    assert 'K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_FSK4800_RX" != 1' not in sh
     assert 'apply-sotto-api28-resources.py' in sh
     assert '--cfg k6_sotto_resources' in sh
     assert "resource_open" in rust and "resource_read" in rust

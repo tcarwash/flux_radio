@@ -159,14 +159,17 @@ if [ "${K6_PACKET_MAILBOX:-0}" = 1 ]; then
   [ "${K6_MODE_REGISTRY:-0}" = 1 ] || { echo "K6_PACKET_MAILBOX requires K6_MODE_REGISTRY=1" >&2; exit 1; }
   CFLAGS="$CFLAGS -DK6_PACKET_MAILBOX=1"
 fi
-# API31 Rust host and C km_packet/kl_install must agree about the maximum
-# *installable module level*. Ordinary API27 and earlier builds are unchanged.
+# Pass the append-only API tail into k6_mod.h. It promotes KM_LEVEL
+# monotonically: API28 resources, API29 async FSK, API30 mic, API31 RX.
+if [ "${K6_SOTTO_RESOURCES:-0}" = 1 ]; then CFLAGS="$CFLAGS -DK6_SOTTO_RESOURCES=1"; fi
+if [ "${K6_SOTTO_ASYNC_FSK:-0}" = 1 ]; then CFLAGS="$CFLAGS -DK6_SOTTO_ASYNC_FSK=1"; fi
+if [ "${K6_SOTTO_MIC:-0}" = 1 ]; then CFLAGS="$CFLAGS -DK6_SOTTO_MIC=1"; fi
 if [ "${K6_FSK4800_RX:-0}" = 1 ]; then
   [ "${K6_MODE_REGISTRY:-0}" = 1 ] && [ "${K6_PACKET_MAILBOX:-0}" = 1 ] || {
     echo "API31 module loader requires mode registry + packet mailbox" >&2
     exit 1
   }
-  CFLAGS="$CFLAGS -DKM_LEVEL=31"
+  CFLAGS="$CFLAGS -DK6_FSK4800_RX=1"
 fi
 KM=
 KM_MODE=

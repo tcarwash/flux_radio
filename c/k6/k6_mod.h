@@ -79,6 +79,34 @@ extern "C" {
 #undef KM_LEVEL
 #define KM_LEVEL 27
 #endif
+/* Append-only Sotto host tail: API28 resources, API29 async FSK,
+   API30 microphone capture, and optional API31 native 4800 RX. These
+   feature macros are supplied only by the matching firmware build. */
+#if defined(K6_SOTTO_RESOURCES) && !defined(K6_PACKET_MAILBOX)
+#error "K6_SOTTO_RESOURCES requires API26/27 (mode registry + packet mailbox)"
+#endif
+#if defined(K6_SOTTO_ASYNC_FSK) && !defined(K6_SOTTO_RESOURCES)
+#error "K6_SOTTO_ASYNC_FSK requires K6_SOTTO_RESOURCES"
+#endif
+#if defined(K6_SOTTO_MIC) && !defined(K6_SOTTO_ASYNC_FSK)
+#error "K6_SOTTO_MIC requires K6_SOTTO_ASYNC_FSK"
+#endif
+#if defined(K6_SOTTO_RESOURCES) && KM_LEVEL < 28
+#undef KM_LEVEL
+#define KM_LEVEL 28
+#endif
+#if defined(K6_SOTTO_ASYNC_FSK) && KM_LEVEL < 29
+#undef KM_LEVEL
+#define KM_LEVEL 29
+#endif
+#if defined(K6_SOTTO_MIC) && KM_LEVEL < 30
+#undef KM_LEVEL
+#define KM_LEVEL 30
+#endif
+#if defined(K6_FSK4800_RX) && KM_LEVEL < 31
+#undef KM_LEVEL
+#define KM_LEVEL 31
+#endif
 
 /* API 26 installed-provider record: mode ID u16LE, capability flags,
    name length + 12 name bytes, max packet payload u16LE. Naturally aligned
