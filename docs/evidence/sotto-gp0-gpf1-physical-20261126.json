@@ -1,0 +1,22 @@
+{
+  "boot_local": true,
+  "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+  "failure_classes": [
+    "pcm_dma"
+  ],
+  "fsk_errors": 0,
+  "gp0_capture_started": true,
+  "gp0_dma_error": 3,
+  "gp0_irq_count": 1310,
+  "gp0_missed_halves": 0,
+  "gp0_peak_isr_ticks": 4866,
+  "last_fsk_error": 0,
+  "module_return": -12,
+  "module_serial": 1795730062,
+  "pcm_lost": true,
+  "read_only": true,
+  "resource_errors": 0,
+  "saturating_16bit_counters": true,
+  "valid": true,
+  "version": "GPF1"
+}

@@ -1,0 +1,74 @@
+[
+  {
+    "driver": "baseline",
+    "adc_cycles_per_pcm_sample_model": 4000,
+    "spi_us_per_request_model": 7.639,
+    "spi_us_per_byte_model": 1.454,
+    "accepted": true,
+    "pcm_lost": false,
+    "highwater": 3,
+    "samples": 1600,
+    "module_return": 5,
+    "session_complete": true
+  },
+  {
+    "driver": "baseline",
+    "adc_cycles_per_pcm_sample_model": 6000,
+    "spi_us_per_request_model": 7.639,
+    "spi_us_per_byte_model": 1.454,
+    "accepted": false,
+    "pcm_lost": true,
+    "highwater": 4,
+    "samples": 1280,
+    "module_return": -12,
+    "session_complete": false
+  },
+  {
+    "driver": "baseline",
+    "adc_cycles_per_pcm_sample_model": 6600,
+    "spi_us_per_request_model": 7.639,
+    "spi_us_per_byte_model": 1.454,
+    "accepted": false,
+    "pcm_lost": true,
+    "highwater": 4,
+    "samples": 960,
+    "module_return": -12,
+    "session_complete": false
+  },
+  {
+    "driver": "streaming",
+    "adc_cycles_per_pcm_sample_model": 4000,
+    "spi_us_per_request_model": 6.192,
+    "spi_us_per_byte_model": 0.94,
+    "accepted": true,
+    "pcm_lost": false,
+    "highwater": 2,
+    "samples": 1600,
+    "module_return": 5,
+    "session_complete": true
+  },
+  {
+    "driver": "streaming",
+    "adc_cycles_per_pcm_sample_model": 6000,
+    "spi_us_per_request_model": 6.192,
+    "spi_us_per_byte_model": 0.94,
+    "accepted": true,
+    "pcm_lost": false,
+    "highwater": 3,
+    "samples": 1600,
+    "module_return": 5,
+    "session_complete": true
+  },
+  {
+    "driver": "streaming",
+    "adc_cycles_per_pcm_sample_model": 6600,
+    "spi_us_per_request_model": 6.192,
+    "spi_us_per_byte_model": 0.94,
+    "accepted": false,
+    "pcm_lost": true,
+    "highwater": 4,
+    "samples": 1280,
+    "module_return": -12,
+    "session_complete": false
+  }
+]
