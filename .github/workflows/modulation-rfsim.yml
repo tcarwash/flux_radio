@@ -5,6 +5,8 @@ on:
     paths:
       - "tools/k6_rfsim_onair_sweep.py"
       - "tests/test_k6_rfsim_onair_sweep.py"
+      - "tools/k6_rfsim_dqpsk_sweep.py"
+      - "tests/test_k6_rfsim_dqpsk_sweep.py"
       - "sim/modulation/**"
       - "tools/k6_soapyfang_modlab.py"
       - ".github/workflows/modulation-rfsim.yml"
@@ -30,7 +32,7 @@ jobs:
           python -m pip install -e /tmp/flux-rfsim
       - name: Run real RFSim and SoapyFang smoke tests
         run: |
-          python -m pytest -q tests/test_k6_rfsim_onair_sweep.py tests/test_k6_soapyfang_modlab.py
+          python -m pytest -q tests/test_k6_rfsim_onair_sweep.py tests/test_k6_rfsim_dqpsk_sweep.py tests/test_k6_soapyfang_modlab.py
       - name: Sweep clean and fading channels (negative PHY outcomes are evidence)
         run: |
           python tools/k6_rfsim_onair_sweep.py \
@@ -44,3 +46,24 @@ jobs:
           assert p['physical_tx'] is False
           print('Decoded:',p['decoded_count'],'PHY decode failures:',p['decode_failed_count'])
           PY
+      - name: Sweep signed-FM DQPSK phase increments under fading (hardware-unqualified)
+        run: |
+          python tools/k6_rfsim_dqpsk_sweep.py \
+            --bauds 50,100,150,200 --profiles static,mobile-rural \
+            --snr-db 30,15 --seeds 0 --json /tmp/flux-polar-dqpsk.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/flux-polar-dqpsk.json'))
+          assert len(p['cases'])==16, p
+          assert p['harness_error_count']==0, p
+          assert p['hardware_qualified'] is False
+          print('Polar DQPSK decoded:',p['decoded_count'],'failures:',p['decode_failed_count'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flux-virtual-air-results
+          path: |
+            /tmp/flux-virtual-air.json
+            /tmp/flux-polar-dqpsk.json
+          if-no-files-found: warn
