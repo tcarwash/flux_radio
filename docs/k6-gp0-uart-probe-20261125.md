@@ -87,3 +87,34 @@ just ahead of the first UI refresh. Reuse existing phase probe state; keep
 SRAM0/stack and flash audits enabled. This should be done before risking
 any new Sotto module flash or RF transmission. Existing recovery image
 and full 2MiB SPI backup are unchanged.
+
+## Confirmed hard freeze and physical battery removal (operator report)
+
+The operator reports **`PHASE 3 / MAIN LOOP` stayed on the screen, keypad
+buttons did not respond, and the radio remained frozen until the battery
+was physically removed**. This is stronger evidence than an unchanging LCD
+alone: the first main-loop iteration is not providing normal input service.
+Do **not** call the phase-three image a successful VFO boot or treat the
+missing UART response as an isolated parser bug. The operator removed the
+battery; current powered-on/UPDATE status is not established.
+
+Code inspection identifies this first-pass execution order following the
+`PHASE 3` display: `scheduler.tick()` (TIM14 uptime), optional live
+`poll_ptt`, `txdog::poll`/timer accounting, `host_handshake.poll()` (serial
+RX ring), `poll_keys_on_arena()` (switches stack to 14,976B module arena),
+`app.poll_pager`, then the remainder of power/battery/audio/scan/squelch
+housekeeping, and finally a scheduled 50ms screen refresh which would
+replace the display with `IRQ YES/NO / RX YES/NO`. The hang is **somewhere
+before that refresh** or the refresh clock never becomes due. We do not
+yet know the exact instruction or whether there was a HardFault, a clock
+stall, an infinite loop, or stack/arena overlap. Original protected SRAM0
+is nearly full (3836/3840 bytes in this debug image); no root-cause proof.
+
+For the next experiment, avoid testing another entire production-sized
+Sotto build blindly. Create a bounded diagnostic that emits checkpoints
+immediately following each early-loop step (or a smaller binary-search
+instrumentation) and preserves the known-good recovery image. Don't flash,
+run RF or modify SPI until the operator has explicitly placed the radio in
+UPDATE again, and verify the build has a safe main-stack and module-arena
+budget. A successful display of `PHASE 3` is **not** qualification of main
+loop, UART ISR, RX/TX or Sotto.
