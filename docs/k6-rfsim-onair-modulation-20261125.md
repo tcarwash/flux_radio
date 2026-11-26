@@ -118,3 +118,35 @@ Near-term directions:
 See also `docs/k6-modulation-workplan-20261124.md`,
 `docs/k6-tx-path-combination-lab-20261124.md`, and
 `docs/k6-soapyfang-modulation-validation-20261124.md`.
+
+## More plausible constant-envelope research: polar DQPSK
+
+Conventional RRC-QPSK needs an independently controlled linear RF envelope.
+The experimental signed-FM polar DQPSK source is different: it integrates
+quantized instantaneous frequency intentions to make differential phase
+steps with a constant envelope. The B-chip REG51 signed/multilevel transfer
+has **not** been demonstrated. The sweep retains a separate polarity gate
+because pilot-trained zero BER can otherwise hide reversed DAC sign.
+
+```sh
+export PYTHONPATH="$HOME/dev/rfsim:$PYTHONPATH"
+python tools/k6_rfsim_dqpsk_sweep.py \
+  --bauds 50,100,150,200 --bandwidth-hz 135 \
+  --dac-bits 7 --spi-write-us 117 \
+  --profiles static,mobile-rural --snr-db 30,15 --seeds 0 \
+  --json /tmp/flux-polar-dqpsk.json
+
+# Test the analog-bandwidth hypothesis; NOT a hardware calibration:
+python tools/k6_rfsim_dqpsk_sweep.py \
+  --bauds 100,200,300 --bandwidth-hz 135,350 \
+  --profiles static --snr-db 30 --seeds 0 \
+  --json /tmp/flux-polar-bandwidth.json
+
+python -m pytest -q tests/test_k6_rfsim_dqpsk_sweep.py
+```
+
+Each result stores simulated bit errors, public sync errors, signed-frequency
+order validity, pilot phase-span and register-write misses. Physical
+oscillator phase/timing must be established with independent RF before
+firmware support is considered. The new CI job runs 16 fixed polar cases
+and uploads the JSON outputs as the `flux-virtual-air-results` artifact.
