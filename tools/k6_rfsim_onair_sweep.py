@@ -97,7 +97,7 @@ def run_case(mode, profile, snr_db, seed, cfo_hz, tx_model="ideal",
     session = channel_class(RATE, profile, carrier_hz=CENTER_HZ, seed=seed,
                             duration_s=len(tx)/RATE + .1)
     propagated = session.apply(tx, snr_db=snr_db, cfo_hz=cfo_hz,
-                               noise_seed=seed + 1,
+                               noise_seed=(seed + 1) & 0xffffffff,
                                signal_power=float(np.mean(np.abs(tx)**2)))
     propagated = np.asarray(propagated, dtype=np.complex128)
     if propagated.shape != tx.shape or not np.isfinite(propagated).all():
