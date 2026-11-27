@@ -50,11 +50,16 @@ PAGER_FINISH='''    // GPF1_FINISH_RUN_BEGIN
     // GPF1_FINISH_RUN_END
 '''
 CPS_READ='''            // GPF1_CABLE_READ_BEGIN
-            // Cable-only, read-only 52-byte record; no radio/flash operation.
+            // Cable-only, read-only diagnostic records; no radio/flash operation.
             #[cfg(k6_sotto_gp0_trace)]
             0x75 if f.addr == 0 && f.len == 0 => {
                 let report=app.gp0_fault_trace_report();
                 cable_send(0x75,0,&report);
+            }
+            #[cfg(k6_sotto_gp0_timing)]
+            0x76 if f.addr == 0 && f.len == 0 => {
+                let report=app.gp0_timing_report();
+                cable_send(0x76,0,&report);
             }
             // GPF1_CABLE_READ_END
 '''
@@ -64,6 +69,14 @@ GP0_READER='''// GPF1_RING_READER_BEGIN
 pub unsafe fn fault_ring_lost(ring:*mut PcmRing)->bool {
     !ring.is_null() &&
         unsafe{rdv(core::ptr::addr_of!((*ring).lost))!=0}
+}
+#[cfg(k6_sotto_gp0_timing)]
+pub unsafe fn fault_ring_backlog(ring:*mut PcmRing)->(u8,u8){
+    if ring.is_null(){return (0,0);}
+    let p=unsafe{rdv(core::ptr::addr_of!((*ring).produced))};
+    let c=unsafe{rdv(core::ptr::addr_of!((*ring).consumed))};
+    let off=unsafe{rdv(core::ptr::addr_of!((*ring).offset))};
+    (p.wrapping_sub(c),off)
 }
 // GPF1_RING_READER_END
 '''

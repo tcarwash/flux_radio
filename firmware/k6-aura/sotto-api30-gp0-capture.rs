@@ -54,6 +54,9 @@ struct State {
     armed:u8,
     expect_tc:u8,
     failed:u8,
+    #[cfg(k6_sotto_gp0_timing)]
+    reason:u8,
+    #[cfg(not(k6_sotto_gp0_timing))]
     _pad:u8,
     old_priority:u8,
     _pad2:[u8;3],
@@ -61,7 +64,10 @@ struct State {
     old_apb2:u32,
     dec:Decimator,
 }
-impl State {const fn empty()->Self{Self{armed:0,expect_tc:0,failed:0,_pad:0,old_priority:0,_pad2:[0;3],old_ahb:0,old_apb2:0,dec:Decimator::empty()}}}
+impl State {const fn empty()->Self{Self{armed:0,expect_tc:0,failed:0,
+    #[cfg(k6_sotto_gp0_timing)] reason:0,
+    #[cfg(not(k6_sotto_gp0_timing))] _pad:0,
+    old_priority:0,_pad2:[0;3],old_ahb:0,old_apb2:0,dec:Decimator::empty()}}}
 
 #[cfg_attr(k6_sotto_ram0_state,link_section=".ram0")]
 #[no_mangle]
@@ -221,8 +227,19 @@ pub unsafe extern "C" fn sotto_gp0_dma_irq(){
         };
         let mut sample=0i16;
         match dec_push(&mut (*st).dec,bits,&mut sample){
-            -1=>{(*st).failed=3;fail(3,p);return;}
-            1=>if !pcm_sample(p,sample){(*st).failed=3;fail(3,p);return;},
+            -1=>{
+                #[cfg(k6_sotto_gp0_timing)] {(*st).reason=1;} // invalid decimator input
+                (*st).failed=3;fail(3,p);return;
+            }
+            1=>if !pcm_sample(p,sample){
+                #[cfg(k6_sotto_gp0_timing)] {
+                    let h=rdv(core::ptr::addr_of!((*p).produced));
+                    let t=rdv(core::ptr::addr_of!((*p).consumed));
+                    let o=rdv(core::ptr::addr_of!((*p).offset));
+                    (*st).reason=if h.wrapping_sub(t)>=4{2} else if o>=80{3}else{4};
+                }
+                (*st).failed=3;fail(3,p);return;
+            },
             _=>{},
         }
     }
@@ -231,6 +248,9 @@ pub unsafe extern "C" fn sotto_gp0_dma_irq(){
     if elapsed>SOTTO_GP0_PEAK_TICKS{SOTTO_GP0_PEAK_TICKS=elapsed;}
     if elapsed>PERIOD_LIMIT{(*st).failed=4;fail(4,p);}
 }
+
+#[cfg(k6_sotto_gp0_timing)]
+pub fn failure_reason()->u8{unsafe{rdv(core::ptr::addr_of!(STATE.reason))}}
 
 pub fn active()->bool{unsafe{rdv(core::ptr::addr_of!(STATE.armed))!=0}}
 
@@ -259,6 +279,7 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
         (*st).old_priority=old_priority;
         (*st).dec=Decimator{fs,phase:0,area:0,dc:0,samples:0,clipped:0};
         (*st).expect_tc=0;(*st).failed=0;(*st).armed=1;
+        #[cfg(k6_sotto_gp0_timing)] {(*st).reason=0;}
         SOTTO_GP0_PCM_RING=ptr.cast::<PcmRing>();
         SOTTO_GP0_RAW_RING=raw;
         SOTTO_GP0_IRQ_COUNT=0;SOTTO_GP0_PEAK_TICKS=0;SOTTO_GP0_MISSED_HALVES=0;SOTTO_GP0_ERROR=0;

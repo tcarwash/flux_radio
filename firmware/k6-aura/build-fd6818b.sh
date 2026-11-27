@@ -325,6 +325,17 @@ if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
 if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
 if [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_trace"; fi
+# Optional GPF1 supplement: precise DMA failure discriminator, bounded
+# resource-read timing and FSK preload timing; 16 extra protected RAM0 bytes.
+case "${K6_SOTTO_GP0_TIMING:-0}" in
+  0) ;;
+  1)
+    [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_TIMING requires GPF1 trace, mic capture, and expanded RAM0=1" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_timing" ;;
+  *) echo "K6_SOTTO_GP0_TIMING must be 0 or 1" >&2; exit 1 ;;
+esac
 # Optional exact 87,260 Hz GP0 decimator divider; all non-GP0 builds and
 # other mic sample rates retain the original restoring-divider path.
 case "${K6_SOTTO_GP0_FAST_ISR:-0}" in

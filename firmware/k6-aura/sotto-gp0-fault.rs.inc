@@ -26,6 +26,35 @@ const _:()=assert!(core::mem::size_of::<Gp0FaultTrace>()==24);
 #[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut GP0_FAULT_TRACE:Gp0FaultTrace=Gp0FaultTrace::empty();
 
+// Optional GPF2 supplement: 16 RAM0 bytes, no original GPF1 wire change.
+// Resource timings use the existing 16-bit 96MHz TIM17 counter, modulo
+// 65,536 ticks (~682us). Values spanning a full wrap are ambiguous.
+// FSK preload uses mod_tick() at 100us resolution and can span several ms.
+#[cfg(k6_sotto_gp0_timing)]
+#[derive(Clone, Copy)]
+struct Gp0Timing {
+    resource_reads:u16, resource_peak_ticks:u16, resource_total_ticks:u32,
+    fsk_preload_peak_100us:u16, fsk_preloads:u8, failure_reason:u8,
+    queue_backlog:u8, queue_offset:u8,
+}
+#[cfg(k6_sotto_gp0_timing)]
+impl Gp0Timing {
+    const fn empty()->Self {Self{resource_reads:0,resource_peak_ticks:0,
+        resource_total_ticks:0,fsk_preload_peak_100us:0,
+        fsk_preloads:0,failure_reason:0,queue_backlog:0,queue_offset:0}}
+}
+#[cfg(k6_sotto_gp0_timing)]
+const _:()=assert!(core::mem::size_of::<Gp0Timing>()==16);
+#[cfg(k6_sotto_gp0_timing)]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
+static mut GP0_TIMING:Gp0Timing=Gp0Timing::empty();
+
+#[cfg(k6_sotto_gp0_timing)]
+#[inline(always)]
+fn gp0_timer_ticks()->u16{
+    unsafe{core::ptr::read_volatile(0x4001_4824 as *const u32) as u16}
+}
+
 #[cfg(k6_sotto_gp0_trace)]
 fn gp0_fault_trace_begin(serial:u32, module:*mut u8) {
     if module.is_null() || unsafe{core::slice::from_raw_parts(module,13)}!=b"K6NMSOTTO GP0" {
@@ -35,6 +64,7 @@ fn gp0_fault_trace_begin(serial:u32, module:*mut u8) {
         GP0_FAULT_TRACE=Gp0FaultTrace::empty();
         GP0_FAULT_TRACE.serial=serial;
         GP0_FAULT_TRACE.state=1;
+        #[cfg(k6_sotto_gp0_timing)] {GP0_TIMING=Gp0Timing::empty();}
     }
 }
 #[cfg(k6_sotto_gp0_trace)]
@@ -43,6 +73,11 @@ fn gp0_fault_trace_finish(ret:i32) {
         if !GP0_FAULT_TRACE.active(){return;}
         GP0_FAULT_TRACE.state=(GP0_FAULT_TRACE.state&!1)|2;
         GP0_FAULT_TRACE.ret=ret;
+        #[cfg(k6_sotto_gp0_timing)] {
+            if GP0_FAULT_TRACE.state&4!=0 {
+                GP0_TIMING.failure_reason=crate::hal::gp0_capture::failure_reason();
+            }
+        }
         // GP0 HAL counters persist until the next capture. If this module
         // returned before a successful op8 start, they belong to an older
         // run and MUST NOT be mistaken for this run's failure evidence.
@@ -62,7 +97,21 @@ fn gp0_fault_trace_finish(ret:i32) {
 #[cfg(k6_sotto_gp0_trace)]
 unsafe extern "C" fn mod_sotto_resource_read_traced(
     kind:u32, off:u32, buf:*mut u8, n:u32)->i32 {
+    #[cfg(k6_sotto_gp0_timing)]
+    let timed=unsafe{GP0_FAULT_TRACE.active() && GP0_FAULT_TRACE.state&4!=0}
+        && crate::hal::gp0_capture::active();
+    #[cfg(k6_sotto_gp0_timing)]
+    let t0=if timed {gp0_timer_ticks()}else{0};
     let r=unsafe{mod_sotto_resource_read(kind,off,buf,n)};
+    #[cfg(k6_sotto_gp0_timing)]
+    if timed && crate::hal::gp0_capture::active(){
+        let dt=gp0_timer_ticks().wrapping_sub(t0);
+        unsafe{
+            GP0_TIMING.resource_reads=GP0_TIMING.resource_reads.saturating_add(1);
+            GP0_TIMING.resource_peak_ticks=GP0_TIMING.resource_peak_ticks.max(dt);
+            GP0_TIMING.resource_total_ticks=GP0_TIMING.resource_total_ticks.saturating_add(dt as u32);
+        }
+    }
     unsafe {
         if GP0_FAULT_TRACE.active() && r!=0 {
             GP0_FAULT_TRACE.resource_errors=GP0_FAULT_TRACE.resource_errors.saturating_add(1);
@@ -73,7 +122,19 @@ unsafe extern "C" fn mod_sotto_resource_read_traced(
 #[cfg(k6_sotto_gp0_trace)]
 unsafe extern "C" fn mod_sotto_async_fsk_traced(
     op:u32, words:*const u16, n:u32)->i32 {
+    #[cfg(k6_sotto_gp0_timing)]
+    let timed=op==0 && unsafe{GP0_FAULT_TRACE.active() && GP0_FAULT_TRACE.state&4!=0};
+    #[cfg(k6_sotto_gp0_timing)]
+    let t0=if timed{mod_tick()}else{0};
     let r=unsafe{mod_sotto_async_fsk(op,words,n)};
+    #[cfg(k6_sotto_gp0_timing)]
+    if timed {
+        let dt=mod_tick().wrapping_sub(t0).min(65535) as u16;
+        unsafe {
+            GP0_TIMING.fsk_preloads=GP0_TIMING.fsk_preloads.saturating_add(1);
+            GP0_TIMING.fsk_preload_peak_100us=GP0_TIMING.fsk_preload_peak_100us.max(dt);
+        }
+    }
     unsafe {
         if GP0_FAULT_TRACE.active() && (op==0 || op==1) &&
            (r<0 || (op==0 && r!=0) || (op==1 && r>1)) {
@@ -92,9 +153,16 @@ unsafe extern "C" fn mod_sotto_mic_stream_traced(
     unsafe {
         if GP0_FAULT_TRACE.active() {
             if op==8 && r==0 { GP0_FAULT_TRACE.state|=4; }
-            if op==1 && !ring.is_null() &&
-                crate::hal::gp0_capture::fault_ring_lost(ring) {
-                GP0_FAULT_TRACE.state|=8;
+            if op==1 && !ring.is_null() {
+                // op1 has stopped/joined DMA. Captured backlog is stable.
+                #[cfg(k6_sotto_gp0_timing)] {
+                    let (b,o)=crate::hal::gp0_capture::fault_ring_backlog(ring);
+                    GP0_TIMING.queue_backlog=b;
+                    GP0_TIMING.queue_offset=o;
+                }
+                if crate::hal::gp0_capture::fault_ring_lost(ring){
+                    GP0_FAULT_TRACE.state|=8;
+                }
             }
         }
     }
@@ -121,6 +189,34 @@ impl App {
         for (i,v) in values.iter().enumerate() {
             let off=4+4*i;
             out[off..off+4].copy_from_slice(&v.to_le_bytes());
+        }
+        out
+    }
+}
+#[cfg(k6_sotto_gp0_timing)]
+impl App {
+    // GPT1, a separate 40-byte read-only cable response. GPF1 remains
+    // unchanged so older readout clients still work.
+    pub(crate) fn gp0_timing_report(&self)->[u8;40]{
+        let mut out=[0u8;40];
+        out[..4].copy_from_slice(b"GPT1");
+        let basic=unsafe{GP0_FAULT_TRACE};
+        let t=unsafe{GP0_TIMING};
+        let valid=basic.state&2!=0;
+        let values=[
+            if valid {basic.serial}else{0},
+            valid as u32,
+            if valid {t.resource_reads as u32}else{0},
+            if valid {t.resource_peak_ticks as u32}else{0},
+            if valid {t.resource_total_ticks}else{0},
+            if valid {t.fsk_preload_peak_100us as u32}else{0},
+            if valid {t.fsk_preloads as u32}else{0},
+            if valid {t.failure_reason as u32}else{0},
+            if valid {(t.queue_backlog as u32)|((t.queue_offset as u32)<<8)}else{0},
+        ];
+        for (i,v) in values.iter().enumerate(){
+            let at=4+i*4;
+            out[at..at+4].copy_from_slice(&v.to_le_bytes());
         }
         out
     }
