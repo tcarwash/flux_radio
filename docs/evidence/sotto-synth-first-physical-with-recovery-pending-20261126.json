@@ -1,0 +1,72 @@
+{
+  "title": "First autonomous on-radio synthetic Sotto GP0 codec/FSK run",
+  "date_local": "2026-11-26",
+  "source_branch": "experiment/sotto-cooperative-fsk-preload-20261126",
+  "source_commit": "53b5198c396fc8a04ca42d3da7cfbf8fffd8df33",
+  "test_kind": "physical K6 MCU & guarded FSK API path, synthetic PCM; no independent SDR IQ validation",
+  "frequency_hz": 443500000,
+  "dummy_load": "Previously confirmed by operator; cannot independently inspect physical coax",
+  "firmware_image_sha256": "182d2700b868df2b6435f8e6418c2cc7f4016756d9e4464f76723a19be019c50",
+  "synthetic_module": {
+    "name": "SOTTO SYNTH",
+    "slot": 22,
+    "code_bytes": 9759,
+    "code_sha256": "2372da86b8149e19e5b9f3faa1de12af8df4bde79d229fc29def94cd6e1e1e79",
+    "api_level": 29,
+    "pcm_source": "Time-paced synthetic 8 kHz multitone; real optimized ARM encoder",
+    "max_tx_ms": 9000
+  },
+  "host_launch": {
+    "control": "Live serial cooperative one-shot module run",
+    "cancel_after_seconds": 7.5,
+    "timeout_seconds": 19,
+    "returned": true,
+    "result": 26,
+    "reports": [
+      "SYN:M:00000066",
+      "SYN:Q:00000001"
+    ],
+    "cancel_requested": false,
+    "cancelled": false
+  },
+  "interpreted": {
+    "codec_frames_completed": 26,
+    "encoder_peak_100us_ticks": 102,
+    "encoder_peak_ms": 10.2,
+    "pcm_queue_peak_blocks": 1,
+    "pcm_queue_capacity_blocks": 4,
+    "postrun_transmitting": false,
+    "postrun_standby_idle": true,
+    "battery_volts": 7.65
+  },
+  "limitations": [
+    "The FSK host/module reported completion; six RF packets were NOT independently decoded over an SDR",
+    "No IQ recording was captured in this run",
+    "This synthetic module bypasses the physical microphone path and does not prove live-mic Sotto capture works"
+  ],
+  "recovery": {
+    "status": "PENDING: workstation remote-development session terminated and alternate desktop connection has reached usage limit. No further hardware commands were possible. The temporary synthetic host MCU firmware and SOTTO SYNTH slot22 remain installed at the last verified state.",
+    "original_firmware_path": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/coop-gpf1-gpt1.bin",
+    "original_firmware_sha256": "c69a87428a4b72192f4a9ac22bd17c5fe40da159ebe818880a2a5b04ca7f03ec",
+    "evidence_dir": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/autonomous-pcm-virtual-tests-20261126/synth-hardware-flash-20261126",
+    "exact_physical_report_filename": "first-autonomous-physical-sotto-synth-rf-20261126.json",
+    "original_slot22_filename": "led-demo-slot22-before.bin",
+    "original_slot22_name": "LED DEMO",
+    "original_slot22_envelope_bytes": 1340,
+    "original_slot22_envelope_sha256": "9710a1800f2ef7663dd3f403a51fd3dc06c296e85f43651bf4055864dedcb293",
+    "original_slot22_code_sha256": "995e8a551035938f82cdce26a28f3e796eb69ccc95989ed5e38db60d4c95d1f7",
+    "fresh_packed_library_backup_filename": "packed-user-library-before-synth.bin",
+    "packed_library_bytes": 524288,
+    "packed_library_sha256": "73fce17c41a81e6c870251d6e6cc8bec86dba7a7df5d8a92969543d92c41cdde",
+    "earlier_full_spi_backup_path": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/k6-spi-before-sotto-spi-latency-test-20261126.bin",
+    "earlier_full_spi_sha256": "18fd1d3cb118c36eecf6111ec805f77ff70bd1732ed7576d459183f341d74dbd",
+    "pending_steps": [
+      "On next authorized workstation access: check bench owner and live status (no TX)",
+      "Restore LED DEMO slot22 from saved exact code using a NEW serial and CRC32 cable-only envelope; verify byte-exact new envelope readback and all 31 other logical object headers",
+      "Reflash original working GP0 diagnostic MCU image using stock bootloader; verify all blocks acknowledged and radio returns to VFO",
+      "Verify catalog slots24/25/30 plus restored slot22; release bench lease",
+      "Do not blindly retry uncertain SPI writes or transmit before status verification"
+    ],
+    "importantly": "The packed library has 32 allocated logical entries, including opaque nonmodule data; do NOT overwrite any apparently empty slot without examining KUL2 directory."
+  }
+}
