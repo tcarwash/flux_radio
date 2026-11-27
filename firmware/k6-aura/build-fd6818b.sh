@@ -275,6 +275,15 @@ if [ "$K6_SOTTO_MIC" = 1 ]; then
   python3 "$HERE/apply-sotto-api30-mic.py"
   python3 "$HERE/apply-mic-result-serial.py"
 fi
+# Alternate diagnostic host for codebook encoder on synthetic 8-kHz PCM.
+# This mode is NOT a replacement for the GP0 live-microphone firmware.
+if [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ]; then
+  [ "$K6_SOTTO_MIC" = 0 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+  [ "${K6_LIVE_SERIAL:-0}" = 1 ] || {
+    echo "Synthetic host requires MIC=0, RAM0=1, LIVE_SERIAL=1" >&2; exit 1;
+  }
+  python3 "$HERE/apply-sotto-synth-host-ram0.py"
+fi
 # Optional foreground-only fault counters, readable through 0x75 after GP0
 # returns. The original module binary and default firmware stay unchanged.
 case "${K6_SOTTO_GP0_TRACE:-0}" in
@@ -323,12 +332,17 @@ if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
 # Experimental bounded FSK preload. Default keeps the bench-qualified
-# single-call path. Only the opt-in GP0 + expanded-RAM0 host may stage writes.
+# single-call path. GP0 or explicitly gated synthetic-RF hosts may stage writes.
 case "${K6_SOTTO_FSK_COOP_PRELOAD:-0}" in
   0) ;;
   1)
-    [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
-      echo "K6_SOTTO_FSK_COOP_PRELOAD requires API29 FSK, GP0 mic and expanded RAM0=1" >&2; exit 1;
+    [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && {
+      [ "$K6_SOTTO_MIC" = 1 ] || {
+        [ "$K6_SOTTO_MIC" = 0 ] && [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ] &&
+        [ "${K6_LIVE_SERIAL:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ];
+      }
+    } || {
+      echo "Cooperative FSK requires MIC or gated live synthetic-TX host (API29, RAM0, TXDOG)" >&2; exit 1;
     }
     PACK_CFG="$PACK_CFG --cfg k6_sotto_fsk_coop_preload" ;;
   *) echo "K6_SOTTO_FSK_COOP_PRELOAD must be 0 or 1" >&2; exit 1 ;;
@@ -360,7 +374,9 @@ case "${K6_SOTTO_GP0_FAST_ISR:-0}" in
 esac
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
-if [ "${K6_RAM0:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ]; then
+if [ "${K6_RAM0:-0}" = 1 ] && {
+  [ "$K6_SOTTO_MIC" = 1 ] || [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ];
+}; then
   PACK_CFG="$PACK_CFG --cfg k6_sotto_ram0_state"
 fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi

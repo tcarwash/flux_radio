@@ -105,7 +105,12 @@ def strip(source, blocks):
         raise SystemExit('Unknown GP0 trace marker remains')
     return source
 
-files={p:strip(p.read_text(),blocks) for p,blocks in BLOCKS.items()}
+# API30 MIC is absent in a deliberately restricted synthetic PCM host.
+# When GP0 tracing is off, skip its optional generated source entirely.
+if ENABLED=='1' and not GP0.exists():
+    raise SystemExit('GPF1 requires the GP0 microphone source')
+files={p:strip(p.read_text(),blocks) for p,blocks in BLOCKS.items()
+       if p!=GP0 or p.exists()}
 
 def insert(source,anchor,addition,location='before'):
     if source.count(anchor)!=1:
