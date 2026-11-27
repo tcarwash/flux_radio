@@ -47,7 +47,7 @@ fn main(){
     p=tmp_path_factory.mktemp('gp0-antialias-actual-rust')
     src=p/'decimator.rs';src.write_text(program)
     builds={}
-    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11']),('fir11_late',['--cfg','k6_sotto_gp0_fir11_late'])]:
+    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11']),('fir11_late',['--cfg','k6_sotto_gp0_fir11_late']),('cic2',['--cfg','k6_sotto_gp0_cic2'])]:
         exe=p/label
         subprocess.run(['rustc','--edition=2021','-O','--cfg','k6_sotto_gp0_fast_isr',*cfg,str(src),'-o',str(exe)],
                        check=True,timeout=45,capture_output=True,text=True)
@@ -97,7 +97,7 @@ def test_anti_alias_suppresses_nine_khz_before_downsampling(rust_programs):
 def test_arm_profile_is_explicit_opt_in():
     s=SRC.read_text();b=BUILD.read_text()
     assert '#[cfg(k6_sotto_gp0_aa3)]' in s
-    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late)))]' in s
+    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2)))]' in s
     assert 'K6_SOTTO_GP0_AA3:-0' in b
     assert 'K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR' in b
     assert 'K6_SOTTO_GP0_FAST_ISR:-0' in b
@@ -148,7 +148,7 @@ def test_fir11_flag_gated_and_uncombined():
     assert "K6_SOTTO_GP0_AA3:-0" in b
     assert "k6_sotto_gp0_fir11" in s
     assert "fir_taps:[i8;11]" in s
-    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))" in s
+    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2))" in s
     assert 64*128*160000 < 2**31
 
 @pytest.mark.parametrize('fs',[35000,84960,87260,110000,160000])
@@ -192,3 +192,66 @@ def test_delayed_fir11_flag_remains_off_and_exclusive():
     assert 64*11*160000 < 2**31
     # Post-normalization quotient/remainder fit 32-bit, without 64-bit math.
     assert (160000-1)*256 < 2**32
+
+@pytest.mark.parametrize('fixture',['binomial','silence','full','impulse'])
+def test_cic2_r8_real_rust_matches_python_with_modular_integrators(rust_programs,fixture):
+    fs=FS
+    n=fs//3
+    rng=np.random.default_rng(198712)
+    if fixture=='binomial':bits=rng.binomial(64,.5,size=n).astype(np.uint8)
+    elif fixture=='silence':bits=np.zeros(n,dtype=np.uint8)
+    elif fixture=='full':bits=np.full(n,64,dtype=np.uint8)
+    else:
+        bits=np.full(n,32,dtype=np.uint8)
+        bits[0]=64;bits[::113]=0;bits[::347]=64
+    actual=run(rust_programs['cic2'],bits)
+    expected=decimate(bits,cic2=True)
+    np.testing.assert_array_equal(actual,expected)
+    assert abs(len(actual)-n*8000/fs)<=2
+    assert actual.dtype==np.int16
+
+
+def test_cic2_spectral_response_relative_aa3(rust_programs):
+    t=np.arange(int(FS*.9))/FS
+    for f in (1000,2800,3500,7000,9000,15000):
+        counts=np.rint(32+4*np.sin(2*np.pi*f*t)).astype(np.uint8)
+        cic=run(rust_programs['cic2'],counts)
+        base=run(rust_programs['legacy'],counts)
+        aa3=run(rust_programs['aa3'],counts)
+        alias=abs((f+4000)%8000-4000)
+        db=lambda y:20*math.log10(max(1e-9,phase_amp(y,alias))/max(1e-9,phase_amp(base,alias)))
+        if f==1000:assert -2<db(cic)<.6,(f,db(cic))
+        if f==2800:assert db(cic)>db(aa3)+1.5,(f,db(cic),db(aa3))
+        # R=8 is a genuine intermediate-rate stage (10,907.5 Hz). Its
+        # aliases are NOT in general located at the direct 8kHz alias bin!
+        # Measure the strongest 80–3900Hz component, rather than only 1kHz.
+        def strongest(y):
+            x=y.astype(float)[1600:]
+            window=np.hanning(len(x))
+            freq=np.fft.rfftfreq(len(x),d=1/8000)
+            amplitude=np.abs(np.fft.rfft(x*window))*2/window.sum()
+            amplitude[(freq<80)|(freq>3900)]=0
+            i=int(np.argmax(amplitude))
+            return float(freq[i]),float(amplitude[i])
+        bfreq,bamp=strongest(base)
+        cfreq,camp=strongest(cic)
+        strongest_db=20*math.log10(max(camp,1e-9)/max(bamp,1e-9))
+        if f==9000:
+            assert abs(cfreq-1907.5)<10,(cfreq,camp)
+            assert -20<strongest_db<-9,(f,strongest_db)
+        if f==15000:
+            assert strongest_db<-14,(f,strongest_db)
+
+
+def test_cic2_config_is_default_off_rate_restricted_and_bounded():
+    source=SRC.read_text(); build=BUILD.read_text()
+    assert 'K6_SOTTO_GP0_CIC2:-0' in build
+    assert 'k6_sotto_gp0_cic2' in source
+    assert 'd.cic_i1=d.cic_i1.wrapping_add(raw as u16)' in source
+    assert 'd.cic_i2=d.cic_i2.wrapping_add(d.cic_i1)' in source
+    assert 'let group_weight=64000u32;' in source
+    assert 'let num=mag<<2;' in source
+    assert 'if d.fs!=FS{return -1;}' in source
+    assert 64*64*160000*4 < 2**32
+    with pytest.raises(ValueError,match='requires'):
+        decimate(np.full(1000,32,dtype=np.uint8),fs=110000,cic2=True)

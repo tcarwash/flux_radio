@@ -15,20 +15,34 @@ FS=87260
 OUT=8000
 
 
-def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False, fir11_late=False) -> np.ndarray:
+def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False, fir11_late=False, cic2=False) -> np.ndarray:
     """Python reference for signed, 7-bit-fraction high-rate fixed-point filter.
 
     Match Rust truncation and DC IIR; divide exactly in Python without the
     optional Cortex-M0 reciprocal. Input is popcount from one 64-bit raw group.
     """
-    if (fir11 and fir11_late) or (poles and (fir11 or fir11_late)):
+    if sum(bool(x) for x in (poles,fir11,fir11_late,cic2))>1:
         raise ValueError("select exactly one prefilter")
+    if cic2 and fs!=FS:
+        raise ValueError("CIC2/R8 requires the actual 87260-Hz GP0 rate")
     phase=0;area=0;dc=0
     lp=[0,0,0]
     taps=[0]*11;tap_head=0;tap_sum=0
+    ci1=ci2=ci2_prev=cc1_prev=ccount=0
     out=[]
     for n in bits:
         x=2*int(n)-64
+        if cic2:
+            ci1=(ci1+x)&0xffff
+            ci2=(ci2+ci1)&0xffff
+            ccount+=1
+            if ccount<8:continue
+            ccount=0
+            cc1=(ci2-ci2_prev)&0xffff
+            ci2_prev=ci2
+            val=(cc1-cc1_prev)&0xffff
+            cc1_prev=cc1
+            x=val if val<32768 else val-65536
         if fir11 or fir11_late:
             outgoing=taps[tap_head]
             taps[tap_head]=x
@@ -46,13 +60,14 @@ def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False, fir11_late=False) 
                 lp[i]+=(v-lp[i])>>2
                 v=lp[i]
             x=v
-        newphase=phase+OUT
+        weight=OUT*8 if cic2 else OUT
+        newphase=phase+weight
         if newphase<fs:
-            area+=x*OUT;phase=newphase;continue
+            area+=x*weight;phase=newphase;continue
         left=fs-phase
         whole=area+x*left
         q=(abs(whole)*256)//(11*fs) if fir11_late else \
-          (((abs(whole)<<1) if poles or fir11 else (abs(whole)<<8))//fs)
+          (((abs(whole)<<2) if cic2 else (abs(whole)<<1) if poles or fir11 else (abs(whole)<<8))//fs)
         centered=-q if whole<0 else q
         dc+=((centered<<8)-dc)>>7
         sample=(centered-(dc>>8))*8

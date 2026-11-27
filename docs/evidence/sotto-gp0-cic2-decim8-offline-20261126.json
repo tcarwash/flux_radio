@@ -1,0 +1,168 @@
+{
+  "frequencies": [
+    {
+      "aa3_strongest_hz": 1000.0,
+      "aa3_strongest_relative_db": -0.76,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 1000.1,
+      "cic2_strongest_relative_db": -0.42,
+      "input_hz": 1000
+    },
+    {
+      "aa3_strongest_hz": 2800.0,
+      "aa3_strongest_relative_db": -5.16,
+      "bypass_strongest_hz": 2800.0,
+      "cic2_strongest_hz": 2800.27,
+      "cic2_strongest_relative_db": -3.54,
+      "input_hz": 2800
+    },
+    {
+      "aa3_strongest_hz": 3500.0,
+      "aa3_strongest_relative_db": -7.35,
+      "bypass_strongest_hz": 3500.0,
+      "cic2_strongest_hz": 3500.34,
+      "cic2_strongest_relative_db": -5.59,
+      "input_hz": 3500
+    },
+    {
+      "aa3_strongest_hz": 480.0,
+      "aa3_strongest_relative_db": -13.77,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 480.05,
+      "cic2_strongest_relative_db": -13.7,
+      "input_hz": 7000
+    },
+    {
+      "aa3_strongest_hz": 780.0,
+      "aa3_strongest_relative_db": -21.98,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 1907.88,
+      "cic2_strongest_relative_db": -10.75,
+      "input_hz": 9000
+    },
+    {
+      "aa3_strongest_hz": 1440.0,
+      "aa3_strongest_relative_db": -16.47,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 1440.14,
+      "cic2_strongest_relative_db": -15.81,
+      "input_hz": 15000
+    },
+    {
+      "aa3_strongest_hz": 880.0,
+      "aa3_strongest_relative_db": -20.14,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 3184.92,
+      "cic2_strongest_relative_db": -10.5,
+      "input_hz": 17000
+    },
+    {
+      "aa3_strongest_hz": 1440.0,
+      "aa3_strongest_relative_db": -2.96,
+      "bypass_strongest_hz": 1000.0,
+      "cic2_strongest_hz": 1440.14,
+      "cic2_strongest_relative_db": -2.29,
+      "input_hz": 25000
+    }
+  ],
+  "irq_profiles": {
+    "silence": {
+      "final_irq_instructions": [
+        1161,
+        1164,
+        1084,
+        1164,
+        1161,
+        1087,
+        1161,
+        1164
+      ],
+      "firmware_bytes": 117380,
+      "first_irq_instructions": [
+        1084,
+        1164,
+        1161,
+        1087,
+        1161,
+        1164,
+        1161,
+        1087
+      ],
+      "groups_per_half": 8,
+      "halves": 96,
+      "irq_instructions_max": 1164,
+      "irq_instructions_mean": 1141.65,
+      "irq_instructions_median": 1161.0,
+      "irq_instructions_min": 1084,
+      "irq_instructions_total": 109598,
+      "not_cycle_accurate": true,
+      "offline_only": true,
+      "pcm_output_sha256": "24045c10c12a89f4c11e3b88ea34558fcdf926a8c1008cd08cc33bc71407c774",
+      "pcm_peak": 0,
+      "pcm_samples": 70,
+      "rate_hz": 87260,
+      "real_linked_rust_isr": true,
+      "ring_consumed": 0,
+      "ring_lost": 0,
+      "ring_offset": 70,
+      "ring_produced": 0,
+      "sha256": "8f75a78c336d9a85f49dc5fc67f3d65bd44c5f59ab2a666799c9ceddc1390b9a",
+      "symbol_irq": "0x8016c54",
+      "symbol_state": "0x20000fa8",
+      "unicorn_instruction_count": true
+    },
+    "tone": {
+      "final_irq_instructions": [
+        1161,
+        1164,
+        1084,
+        1164,
+        1161,
+        1087,
+        1162,
+        1165
+      ],
+      "firmware_bytes": 117380,
+      "first_irq_instructions": [
+        1084,
+        1164,
+        1161,
+        1087,
+        1161,
+        1164,
+        1162,
+        1087
+      ],
+      "groups_per_half": 8,
+      "halves": 96,
+      "irq_instructions_max": 1165,
+      "irq_instructions_mean": 1142,
+      "irq_instructions_median": 1162.0,
+      "irq_instructions_min": 1084,
+      "irq_instructions_total": 109632,
+      "not_cycle_accurate": true,
+      "offline_only": true,
+      "pcm_output_sha256": "7a81e05dd8345ff30aa2cf4718650fb900b4ab2534415c561358cec0554ba833",
+      "pcm_peak": 19648,
+      "pcm_samples": 70,
+      "rate_hz": 87260,
+      "real_linked_rust_isr": true,
+      "ring_consumed": 0,
+      "ring_lost": 0,
+      "ring_offset": 70,
+      "ring_produced": 0,
+      "sha256": "8f75a78c336d9a85f49dc5fc67f3d65bd44c5f59ab2a666799c9ceddc1390b9a",
+      "symbol_irq": "0x8016c54",
+      "symbol_state": "0x20000fa8",
+      "unicorn_instruction_count": true
+    }
+  },
+  "linked_firmware_build_sha256": "8f75a78c336d9a85f49dc5fc67f3d65bd44c5f59ab2a666799c9ceddc1390b9a",
+  "measured_audio": false,
+  "measured_cpu_cycles": false,
+  "modeled_audio": true,
+  "purpose": "CIC2 R=8 alias-aware spectral comparison, use strongest 80-3900Hz output not direct 8kHz alias bin",
+  "schema": 1,
+  "signal_source": "synthetic deterministic 64-bit popcount at 87260 groups/sec, not measured K6 ADC",
+  "test_time_sec": 1.5
+}
