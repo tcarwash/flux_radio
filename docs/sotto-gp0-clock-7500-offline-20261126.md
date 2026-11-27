@@ -44,7 +44,7 @@ The original generator-500 take1 had no appreciable 500Hz tone; its pitch-correc
 
 ## Next acceptance gates (no MCU flash yet)
 
-1. Keep this isolated opt-in branch; run existing module, GP0 ISR, codec, and virtual-link regression tests against the exact pinned `sotto` submodule. Compare actual linked firmware size/CPU and RAM0 headroom **before** any MCU flash; the 12-byte Thumb wrapper result is not a full size proof.
+1. **Completed offline:** complete default and calibrated ARM images built under the recovered feature profile, plus linked Cortex-M0 IRQ simulation and pinned Sotto virtual link checks. The two paired builds have identical flash/RAM0/stack layout; see the qualification addendum below. Verify the actual fielded image provenance and physical CPU/IRQ timing **before any MCU flash**; the 12-byte isolated Thumb wrapper result alone was not a full size proof.
 2. Preserve the existing known-good MCU firmware and 2MiB SPI backup. For any subsequent test flash require an **attended recovery plan and operator at the radio**. Do not overwrite current diagnostic module merely to test the clock.
 3. On the dummy-load RF bench, capture *new* generator 500Hz and 1kHz raw PCM with corrected firmware, with PTT held until `67 packets sent`. Success criteria: independent CRC-verified full 1600 PCM samples in ~200ms physical, both original WAV header spectra within a few Hz of generators, no GP0 overflows, no TX hang, and normal RX restored.
 4. Only after that feed corrected 8k PCM to the pinned Sotto encoder, compare SNR/intelligibility to prior voice WAVs, and evaluate any **separate** cheap high-rate anti-alias filter under measured IRQ/stack budgets. Avoid combining several unqualified DSP changes into one flash.
@@ -71,3 +71,33 @@ $V tools/k6_gp0_pcm_clock_replay.py \
 ```
 
 Always use **new output names**; the replay refuses to overwrite existing evidence. This tool does not touch the radio, serial port, firmware, or transmitter.
+
+## Full matched ARM builds and linked-IRQ validation (same evening)
+
+The normal pinned Aura build script `firmware/k6-aura/build-fd6818b.sh` was run **twice from the pinned upstream c3aeb17 source**, with the Sotto codec at pinned `598f1bc`, `K6_AURA_RESET_GENERATED=1`, and the recovered physical-profile feature set: API30 Sotto MIC resources, async cooperative FSK, fast SPI, GP0 fast ISR with fault/timing instrumentation, expanded RAM0, scan/Data, user store, font subset/raster boot, serial transport, etc. All other GP0 prefilters were OFF. **The only meaningful controlled build-profile difference was `K6_SOTTO_GP0_CLOCK_7500=0` vs `=1`.** MCU images were generated **only in ignored, private build output directories**; no flashing or K6 serial connection occurred.
+
+| Full linked MCU resource | Default weight=8000 | Calibrated weight=7500 |
+|---|---:|---:|
+| Application binary bytes | **118,408** | **118,408** |
+| Application flash headroom (122,880B limit) | **4,472B** | **4,472B** |
+| Protected RAM0 used/free | **3,816B / 24B** | **3,816B / 24B** |
+| Protected module arena | 14,976B | 14,976B |
+| Main-stack reservation | 2,812B | 2,812B |
+| Complete image SHA256 | `42c9ca7847448c6cbd5518395ab096e8898f2d8abe68f859e61dd1fefe5f2c83` | `e7edf82c5aa9081662f649a383375c68026ecff1a8a16e3ca51edf990561631d` |
+
+Across the two complete binaries, 604 bytes differed in 38 contiguous spans (including relocated code). **Equal-size images do not imply binary identity.** Crucially, although the default image has the same 118,408B size as the previously booted `coop-gpf1-gpt1.bin`, its SHA256 **does not match that fielded image**. Thus neither output should be regarded as a drop-in replacement yet. The 24B free protected RAM0 is especially tight: any future diagnostics/filter state must not consume more unless the entire memory contract is requalified.
+
+The exact **linked** Thumbv6M `sotto_gp0_dma_irq` was then executed in the Unicorn Cortex-M0 emulator with **96 virtual DMA half-buffer interrupts and 8 GP0 groups per half**, using matching ELF/image pairs checked byte-for-byte by the profiler. It exercised the actual compiled ISR/decimator, not a Python reimplementation:
+
+| Linked ISR profile | Default | Calibrated |
+|---|---:|---:|
+| Emitted PCM samples / ring offset | **70** | **66** |
+| Ring lost / queued full blocks | **0 / 0** | **0 / 0** |
+| Mean emulated instructions per IRQ | **1,093.46** | **1,087.18** |
+| Maximum emulated instructions per IRQ | **1,117** | **1,114** |
+
+The corrected image also passed the existing **linked GP0 service start/stop** test, including interrupt vector/route restoration and TX inactive at completion. A new opt-in repeatable paired test `tests/test_k6_gp0_clock_7500_linked_arm.py` asserts 70→66 and no losses when `K6_GP0_CLOCK_PAIR_ROOT` points to the local `firmware/k6-aura` directory; it intentionally skips when private ELF/BIN fixtures are absent. All **100 tests passed with 3 optional linked-image tests skipped** in the standard GP0/codec/virtual-link regression suite before the paired fixture was enabled; the new optional linked test then passed, as did the separate linked service gate. Neither Unicorn instruction counts nor successful mock DMA execution establish **real physical CPU cycles, sample-clock stability under codec load, a successful radio boot, or RF interoperability**.
+
+Public, derived-only exact results: [`docs/evidence/sotto-gp0-clock-7500-full-arm-build-20261126.json`](evidence/sotto-gp0-clock-7500-full-arm-build-20261126.json). Actual ELF/BIN and logs stay local under `firmware/k6-aura/out-clock-7500-{baseline,calibrated}` and `recovery/clock-7500-build-check/`; source radio backup, RF IQ, WAVs, and signing keys stay private.
+
+**Status:** `OFFLINE_ONLY_NOT_APPROVED_FOR_FLASH`. Before an attended radio trial, ensure a boot/recovery image is explicitly validated against the current fielded firmware, then arrange dummy-load transmit, supervised physical PTT, and independent RTL-SDR CRC. Any calibration value should eventually derive from a measured GP0 raw-group clock, not be assumed universal.
