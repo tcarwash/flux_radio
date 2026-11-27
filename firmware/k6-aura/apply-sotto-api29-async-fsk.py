@@ -68,6 +68,13 @@ s=change(s,'fn run_module(app: &mut App, syst: &mut SYST) {\n',
     #[cfg(k6_sotto_async_fsk)]
     unsafe{SOTTO_TX29_ACTIVE=false;SOTTO_TX29_STARTED=false;SOTTO_TX29_SNAPSHOT=false;}
 ''')
+# A stale per-module FIFO pointer must not survive an abnormal return. This
+# idempotent anchor also updates previously generated API29 source trees.
+s=change(s,
+         '    unsafe{SOTTO_TX29_ACTIVE=false;SOTTO_TX29_STARTED=false;SOTTO_TX29_SNAPSHOT=false;}\n',
+         '    unsafe{SOTTO_TX29_ACTIVE=false;SOTTO_TX29_STARTED=false;SOTTO_TX29_SNAPSHOT=false;}\n'
+         '    #[cfg(k6_sotto_fsk_coop_preload)]\n'
+         '    unsafe{SOTTO_TX29_PRELOAD_STEP=0;SOTTO_TX29_PRELOAD_PTR=core::ptr::null();}\n')
 body=(here/'sotto-api29-async-fsk.rs.inc').read_text()
 if '// SOTTO_API29_ASYNC_FSK_BEGIN' not in s:
     s+='\n'+body+'\n'

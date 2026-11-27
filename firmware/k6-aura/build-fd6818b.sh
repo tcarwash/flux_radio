@@ -322,6 +322,17 @@ if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbo
 if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
 if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
 if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
+# Experimental bounded FSK preload. Default keeps the bench-qualified
+# single-call path. Only the opt-in GP0 + expanded-RAM0 host may stage writes.
+case "${K6_SOTTO_FSK_COOP_PRELOAD:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_FSK_COOP_PRELOAD requires API29 FSK, GP0 mic and expanded RAM0=1" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_fsk_coop_preload" ;;
+  *) echo "K6_SOTTO_FSK_COOP_PRELOAD must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
 if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
 if [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_trace"; fi

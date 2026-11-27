@@ -55,14 +55,16 @@ static mut GUARD_COUNT:usize=0;
 struct Fd;
 impl Fd {
     fn reg_read(&mut self,_:&mut SYST,r:u8)->u16 {
-        unsafe {
+        let result=unsafe {
             let c=CHIP.as_ref().unwrap();
             match r {
                 0x0c=>if c.tx_start.is_some() && c.elapsed()>=c.irqat {1} else {0},
                 0x30=>if c.tx_ready() {2} else {0},
                 _=>c.regs[r as usize],
             }
-        }
+        };
+        #[cfg(k6_sotto_fsk_coop_preload)] unsafe{TIME+=4;}
+        result
     }
     fn reg_write(&mut self,_:&mut SYST,r:u8,v:u16){
         unsafe {
@@ -75,6 +77,9 @@ impl Fd {
                 else {c.overflowed=true;} // intentionally silent 32-word cap
             }
             if r==0x59 && v==0x08f8 {c.tx_start=Some(TIME);}
+            // 0.4-ms synthetic SPI register write latency in cooperative
+            // tests only; this is an approximation, NOT a measured RFIC.
+            #[cfg(k6_sotto_fsk_coop_preload)] {TIME+=4;}
         }
     }
 }
@@ -137,6 +142,10 @@ fn reset(irq:u32,cap:usize,drop:Option<u32>) {
         MOD_CTX=ModCtx{app:addr_of_mut!(APP),tx:true,scratch:addr_of_mut!(RAM).cast::<u16>() as usize};
         SOTTO_TX29_ACTIVE=false;SOTTO_TX29_STARTED=false;SOTTO_TX29_SNAPSHOT=false;SOTTO_TX29_UNTIL=0;SOTTO_TX29_START_AT=0;
         SOTTO_TX29_SAVED=[0;9];
+        #[cfg(k6_sotto_fsk_coop_preload)] {
+            SOTTO_TX29_PRELOAD_PTR=std::ptr::null();
+            SOTTO_TX29_PRELOAD_STEP=0;
+        }
         let words=vector();
         RAM[..33].copy_from_slice(&words);
     }
@@ -207,6 +216,7 @@ fn send(irq:u32,cap:usize,drop:Option<u32>,period:u32,phase:u32)->(i32,u32,usize
     }
     (rc,end_time,written,on_air)
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn normal_33_words_full_guard_and_rx_restoration(){
     let (rc,off,written,bits)=send(AIR_MS,33,None,5,0);
@@ -219,18 +229,21 @@ fn normal_33_words_full_guard_and_rx_restoration(){
     }
     println!("CASE nominal rc={} off_ms={} words={} bits={} bytes={}",rc,off,written,bits,bits/8);
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn early_irq_immediately_cuts_real_callback_mid_payload(){
     let (rc,off,written,bits)=send(90,33,None,5,0);
     assert_eq!((rc,off,written,bits),(1,145,33,439));
     println!("CASE early_done rc={} off_ms={} words={} bits={} bytes={}",rc,off,written,bits,bits/8);
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn poll_jitter_changes_termination_byte(){
     let (rc,off,written,bits)=send(90,33,None,7,3);
     assert_eq!((rc,off,written,bits),(1,150,33,444));
     println!("CASE early_done_jitter rc={} off_ms={} words={} bits={} bytes={}",rc,off,written,bits,bits/8);
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn silent_32_word_capacity_truncates_guard_but_not_crc(){
     let (rc,off,written,bits)=send(AIR_MS,32,None,5,0);
@@ -238,12 +251,14 @@ fn silent_32_word_capacity_truncates_guard_but_not_crc(){
     unsafe{assert!(CHIP.as_ref().unwrap().overflowed);}
     println!("CASE capacity32 rc={} off_ms={} words={} bits={} bytes={}",rc,off,written,bits,bits/8);
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn tx_ready_drop_aborts_and_restores(){
     let (rc,off,written,bits)=send(AIR_MS,33,Some(95),5,0);
     assert_eq!((rc,off,written,bits),(-2,150,33,463));
     println!("CASE ready_drop rc={} off_ms={} words={} bits={} bytes={}",rc,off,written,bits,bits/8);
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn explicit_abort_unconditionally_dekeys(){
     reset(AIR_MS,33,None);
@@ -257,6 +272,7 @@ fn explicit_abort_unconditionally_dekeys(){
     println!("CASE explicit_abort rc=0 off_ms=70");
 }
 
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn three_frames_reuse_one_pa_lease_and_restore_exactly_once() {
     reset(AIR_MS,33,None);
@@ -296,6 +312,7 @@ fn three_frames_reuse_one_pa_lease_and_restore_exactly_once() {
         assert_eq!(CHIP.as_ref().unwrap().regs[0x59],0x00f8);
     }
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn abort_during_preair_settle_releases_pa_and_restores() {
     reset(AIR_MS,33,None);
@@ -309,6 +326,7 @@ fn abort_during_preair_settle_releases_pa_and_restores() {
         assert_eq!(CHIP.as_ref().unwrap().regs[0x3f],0x0100);
     }
 }
+#[cfg(not(k6_sotto_fsk_coop_preload))]
 #[test]
 fn missing_poll_during_settle_has_startup_watchdog() {
     reset(AIR_MS,33,None);
@@ -319,4 +337,194 @@ fn missing_poll_during_settle_has_startup_watchdog() {
         assert!(!MOD_CTX.tx && !CHIP.as_ref().unwrap().pa);
         assert_eq!(CHIP.as_ref().unwrap().tx_start,None);
     }
+}
+
+// The cooperative variant is a separate, explicitly opt-in host compile.
+// Each phase is exercised against the ACTUAL production include above.
+#[cfg(k6_sotto_fsk_coop_preload)]
+fn progress_coop()->u32 {
+    assert_eq!(call_start(),0);
+    unsafe {
+        assert_eq!(SOTTO_TX29_PRELOAD_STEP,1);
+        assert!(TIME<=50,"synchronous start still monopolizes the foreground");
+        assert!(CHIP.as_ref().unwrap().fifo.is_empty());
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+    }
+    let mut max_ticks=unsafe{TIME};
+    for phase in 1..=7 {
+        unsafe{TIME=phase*50;}
+        let before=unsafe{TIME};
+        assert_eq!(call_poll(),0);
+        let ticks=unsafe{TIME-before};
+        assert!(ticks<=36,"overlarge foreground RFIC operation: {} ticks",ticks);
+        max_ticks=max_ticks.max(ticks);
+        unsafe {
+            assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+            assert!(SOTTO_TX29_ACTIVE);
+            assert_eq!(SOTTO_TX29_PRELOAD_STEP,if phase==7 {0} else {(phase+1) as u8});
+            let expected=if phase<3 {0} else if phase==7 {33} else {(phase-2)*8} as usize;
+            assert_eq!(CHIP.as_ref().unwrap().fifo.len(),expected,"phase {}",phase);
+        }
+    }
+    unsafe {
+        assert_eq!(CHIP.as_ref().unwrap().fifo,vector());
+        assert_eq!(SOTTO_TX29_PRELOAD_STEP,0);
+        assert!(SOTTO_TX29_PRELOAD_PTR.is_null());
+        assert!(SOTTO_TX29_START_AT>=550);
+        assert_eq!(CHIP.as_ref().unwrap().events.iter()
+            .filter(|e|matches!(e,Event::Pa(_,true))).count(),1);
+        let events=&CHIP.as_ref().unwrap().events;
+        let pa_on=events.iter().position(|e|matches!(e,Event::Pa(_,true))).unwrap();
+        let fifo_first=events.iter().position(|e|matches!(e,Event::Reg(_,0x5f,_))).unwrap();
+        assert!(pa_on<fifo_first);
+    }
+    max_ticks
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_seven_bounded_preload_steps_have_exact_fifo_and_late_rf_start(){
+    reset(AIR_MS,33,None);
+    let max=progress_coop();
+    unsafe{TIME=550;}
+    assert_eq!(call_poll(),0); // 55 ms: 20ms settling not quite complete
+    unsafe{assert!(CHIP.as_ref().unwrap().tx_start.is_none());}
+    unsafe{TIME=600;}
+    assert_eq!(call_poll(),0);
+    unsafe {
+        assert!(CHIP.as_ref().unwrap().tx_start.is_some());
+        assert_eq!(CHIP.as_ref().unwrap().fifo.len(),33);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x59],0x08f8);
+    }
+    unsafe{TIME=2100;}
+    assert_eq!(call_poll(),1);
+    unsafe {
+        assert!(MOD_CTX.tx && CHIP.as_ref().unwrap().pa);
+        mod_tx_off();
+        assert!(!CHIP.as_ref().unwrap().pa);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x3f],0x0100);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x59],0x00f8);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x5d],0);
+    }
+    println!("COOP max_callback_ticks={} fifo_words=33 rf_start_after_full_fifo=1",max);
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_cancel_during_fifo_preload_dekeys_and_restores(){
+    reset(AIR_MS,33,None);
+    assert_eq!(call_start(),0);
+    for step in 1..=4 {
+        unsafe{TIME=step*50;}
+        assert_eq!(call_poll(),0);
+    }
+    unsafe {
+        assert_eq!(CHIP.as_ref().unwrap().fifo.len(),16);
+        CANCEL=true;TIME=250;
+    }
+    assert_eq!(call_poll(),-2);
+    unsafe {
+        assert!(!MOD_CTX.tx && !CHIP.as_ref().unwrap().pa);
+        assert!(!SOTTO_TX29_ACTIVE && !SOTTO_TX29_SNAPSHOT);
+        assert!(SOTTO_TX29_PRELOAD_PTR.is_null());
+        assert_eq!(SOTTO_TX29_PRELOAD_STEP,0);
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x59],0x00f8);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x3f],0x0100);
+    }
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_corrupted_guard_during_preload_must_abort_before_air(){
+    reset(AIR_MS,33,None);
+    assert_eq!(call_start(),0);
+    unsafe{TIME=50;}
+    assert_eq!(call_poll(),0);
+    unsafe{RAM[32]=0x0000;TIME=100;}
+    assert_eq!(call_poll(),-2);
+    unsafe {
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+        assert!(!CHIP.as_ref().unwrap().pa && !MOD_CTX.tx);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x3f],0x0100);
+    }
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_stalled_preload_hits_same_watchdog_and_dekeys(){
+    reset(AIR_MS,33,None);
+    assert_eq!(call_start(),0);
+    unsafe{TIME=50;}
+    assert_eq!(call_poll(),0);
+    unsafe{TIME=2050;}
+    assert_eq!(call_poll(),-2);
+    unsafe {
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+        assert!(!MOD_CTX.tx && !CHIP.as_ref().unwrap().pa);
+    }
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_duplicate_start_while_staged_fails_closed(){
+    reset(AIR_MS,33,None);
+    assert_eq!(call_start(),0);
+    assert_eq!(call_start(),-2);
+    unsafe {
+        assert!(!MOD_CTX.tx && !CHIP.as_ref().unwrap().pa);
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+    }
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_three_packets_reuse_one_pa_and_each_fifo_is_full(){
+    reset(AIR_MS,33,None);
+    for frame in 0..3 {
+        let base=frame*225;
+        unsafe{TIME=base*10;}
+        assert_eq!(call_start(),0);
+        for step in 1..=7 {
+            unsafe{TIME=(base+step*5)*10;}
+            assert_eq!(call_poll(),0);
+        }
+        unsafe{TIME=(base+60)*10;}
+        assert_eq!(call_poll(),0);
+        unsafe{TIME=(base+210)*10;}
+        assert_eq!(call_poll(),1);
+        unsafe {
+            assert_eq!(CHIP.as_ref().unwrap().fifo,vector());
+            assert!(CHIP.as_ref().unwrap().pa);
+            assert!(!SOTTO_TX29_ACTIVE && SOTTO_TX29_SNAPSHOT);
+            assert_eq!(CHIP.as_ref().unwrap().events.iter().filter(|e|matches!(e,Event::Pa(_,true))).count(),1);
+            assert_eq!(CHIP.as_ref().unwrap().events.iter().filter(|e|matches!(e,Event::Reg(_,0x5f,_))).count(),((frame+1)*33) as usize);
+        }
+    }
+    unsafe {
+        mod_tx_off();
+        assert_eq!(CHIP.as_ref().unwrap().events.iter().filter(|e|matches!(e,Event::CarrierOff(_))).count(),1);
+        assert!(!CHIP.as_ref().unwrap().pa);
+        assert_eq!(CHIP.as_ref().unwrap().regs[0x3f],0x0100);
+    }
+}
+
+#[cfg(k6_sotto_fsk_coop_preload)]
+#[test]
+fn coop_explicit_abort_mid_preload_never_keys_rf(){
+    reset(AIR_MS,33,None);
+    assert_eq!(call_start(),0);
+    unsafe{TIME=50;}
+    assert_eq!(call_poll(),0);
+    unsafe{TIME=100;}
+    assert_eq!(unsafe{mod_sotto_abort_for_test()},0);
+    unsafe {
+        assert!(!CHIP.as_ref().unwrap().pa && !MOD_CTX.tx);
+        assert!(SOTTO_TX29_PRELOAD_PTR.is_null());
+        assert!(CHIP.as_ref().unwrap().tx_start.is_none());
+    }
+}
+#[cfg(k6_sotto_fsk_coop_preload)]
+unsafe fn mod_sotto_abort_for_test()->i32 {
+    mod_sotto_async_fsk(2,std::ptr::null(),0)
 }

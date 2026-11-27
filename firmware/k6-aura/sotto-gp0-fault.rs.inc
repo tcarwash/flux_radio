@@ -123,7 +123,11 @@ unsafe extern "C" fn mod_sotto_resource_read_traced(
 unsafe extern "C" fn mod_sotto_async_fsk_traced(
     op:u32, words:*const u16, n:u32)->i32 {
     #[cfg(k6_sotto_gp0_timing)]
-    let timed=op==0 && unsafe{GP0_FAULT_TRACE.active() && GP0_FAULT_TRACE.state&4!=0};
+    #[cfg(k6_sotto_fsk_coop_preload)]
+    let is_preload=op==0 || (op==1 && unsafe{SOTTO_TX29_ACTIVE && SOTTO_TX29_PRELOAD_STEP!=0});
+    #[cfg(not(k6_sotto_fsk_coop_preload))]
+    let is_preload=op==0;
+    let timed=is_preload && unsafe{GP0_FAULT_TRACE.active() && GP0_FAULT_TRACE.state&4!=0};
     #[cfg(k6_sotto_gp0_timing)]
     let t0=if timed{mod_tick()}else{0};
     let r=unsafe{mod_sotto_async_fsk(op,words,n)};
@@ -131,7 +135,9 @@ unsafe extern "C" fn mod_sotto_async_fsk_traced(
     if timed {
         let dt=mod_tick().wrapping_sub(t0).min(65535) as u16;
         unsafe {
-            GP0_TIMING.fsk_preloads=GP0_TIMING.fsk_preloads.saturating_add(1);
+            // Count distinct packets, not the seven staged op=1 callbacks.
+            // The peak is the longest foreground SPI callback under either mode.
+            if op==0 { GP0_TIMING.fsk_preloads=GP0_TIMING.fsk_preloads.saturating_add(1); }
             GP0_TIMING.fsk_preload_peak_100us=GP0_TIMING.fsk_preload_peak_100us.max(dt);
         }
     }

@@ -302,6 +302,93 @@ class LiveTx(Emu):
         uc.reg_write(a.UC_ARM_REG_R0,ret&0xffffffff)
 
 
+class CooperativeFskLiveTx(LiveTx):
+    """Experimental API29 split-preload timing model, NOT compiled Rust.
+
+    Matches the seven guarded register-write phases of the opt-in host
+    callback. Packet bits, decoder and ARM codec still use real compiled C.
+    The per-RFIC-register latency is the explicit fd_us model parameter.
+    """
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.preload_ptr=None
+        self.preload_step=0
+        self.preload_start_at=None
+
+    def cleanup(self):
+        self.preload_ptr=None
+        self.preload_step=0
+        self.preload_start_at=None
+        super().cleanup()
+
+    def async_fsk(self,op,ptr,n):
+        if not self.keyed:return -1
+        if op==0:
+            if self.saved is not None or n!=33 or ptr%2 or not self.scr<=ptr<=self.scr+self.scratch-66:
+                self.cleanup();return -1
+            data=bytes(self.mu.mem_read(ptr,66))
+            if data[-2:]!=b"\x5a\xa5":self.cleanup();return -1
+            # Real callback snapshots 9 RFIC registers before PA enable.
+            self.saved=[self.fd_regs.get(r,0) for r in REGS]
+            self.tick(9*self.fd_us*96)
+            if not self.keyed:self.cleanup();return -1
+            self.preload_ptr=ptr
+            self.preload_step=1
+            self.deadline=self.cyc+FCPU*.2
+            return 0
+        if op!=1 or self.saved is None:return -1
+        if self.cyc>self.deadline:self.cleanup();return -1
+        if self.preload_step:
+            p=self.preload_ptr
+            if p is None or p%2 or not self.scr<=p<=self.scr+self.scratch-66:
+                self.cleanup();return -1
+            data=bytes(self.mu.mem_read(p,66))
+            if data[-2:]!=b"\x5a\xa5":self.cleanup();return -1
+            stage=self.preload_step
+            if stage==1:
+                writes=[(0x59,0xf8),(2,0),*list(zip(REGS[:4],VALS[:4]))]
+            elif stage==2:
+                writes=[*list(zip(REGS[4:],VALS[4:])),(0x59,0x80f8),(0x59,0xf8)]
+            elif 3<=stage<=6:
+                words=struct.unpack('<33H',data)
+                i=(stage-3)*8
+                writes=[(0x5f,w) for w in words[i:i+8]]
+            elif stage==7:
+                words=struct.unpack('<33H',data)
+                writes=[(0x5f,words[32])]
+            else:
+                self.cleanup();return -1
+            for r,v in writes:
+                if not self.wr(r,v):self.cleanup();return -1
+            if stage==7:
+                pending=self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1
+                self.tick(self.fd_us*96)
+                if pending or not self.keyed:self.cleanup();return -1
+                self.preload_ptr=None
+                self.preload_step=0
+                self.preload_start_at=self.cyc+FCPU*.02
+                self.deadline=self.cyc+FCPU*.2
+                return 0
+            self.preload_step+=1
+            return 0
+        if self.preload_start_at is not None:
+            if self.cyc<self.preload_start_at:return 0
+            if not self.wr(0x59,0x8f8):self.cleanup();return -1
+            if self.tx_backend.active is None:self.cleanup();return -1
+            # No expected packet injection: the real RF backend receives
+            # only the 33 FIFO words actually written in the seven stages.
+            if self.capture is not None:self.pre_release+=1
+            if self.first_rf_ms is None and self.capture_start is not None:
+                self.first_rf_ms=(self.cyc-self.capture_start)/96000
+            self.deadline=self.cyc+FCPU*.7
+            self.preload_start_at=None
+            return 0
+        done=self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1
+        self.tick(self.fd_us*96)
+        if done:self.cleanup();return 1
+        return 0
+
+
 def decode_session(frames):
     """Independent strict FDV1 control and L64 CRC check; no expected payload."""
     good=[];offsets=[];bad=0
@@ -357,13 +444,14 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False,fsk_cooperative_model=False):
     if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
     t=time.perf_counter()
     try:
-        e=LiveTx(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us)
+        tx_cls=CooperativeFskLiveTx if fsk_cooperative_model else LiveTx
+        e=tx_cls(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us)
         result=e.run()
         if result is None:raise RuntimeError("live module exceeded virtual deadline")
         ret,stack=result
@@ -399,6 +487,8 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 codec_frames=len(codec)//6,codec_exact=codec==artifact["reference"],
                 wire_decoder_agrees=True,
                 logs=e.said,wall_seconds=round(time.perf_counter()-t,3))
+    if fsk_cooperative_model:
+        summary['fsk_cooperative_model']=True
     if capture_codec:
         # Only requested captures expose binary voice frames; default is JSON-safe.
         summary["received_codec_bytes"]=codec

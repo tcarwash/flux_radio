@@ -391,7 +391,12 @@ typedef struct k6_api {
   int (*resource_open)(uint32_t slot);
   int (*resource_read)(uint32_t kind, uint32_t off, void *buf, uint32_t n);
   /* Level 29: guarded 33-word finite FSK start(0)/poll(1)/abort(2). Caller
-     owns a bounded TX lease. No refilling or continuous RF is implied. */
+     owns a bounded TX lease. No refilling or continuous RF is implied.
+     In opt-in cooperative-preload hosts, start(0) retains the caller's
+     scratch-backed words pointer and reads it during subsequent poll(1)
+     calls. The 33 words MUST remain aligned, inside authorized module scratch,
+     stable and immutable until poll returns 1 or an explicit abort. Existing
+     Sotto sl_peek slots satisfy this rule; temporary/transient buffers do not. */
   int (*fsk_async)(uint32_t op, const uint16_t *words, uint32_t n);
   /* Level 30: typed 644-byte microphone ISR ring (start0/stop1/peak2/PTT3).
      Requires independently guarded timer vector, cable/PTT and PA checks. */
