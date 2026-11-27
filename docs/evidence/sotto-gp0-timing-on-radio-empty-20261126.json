@@ -1,0 +1,42 @@
+{
+  "fault": {
+    "boot_local": true,
+    "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+    "failure_classes": [],
+    "fsk_errors": 0,
+    "gp0_capture_started": false,
+    "gp0_dma_error": 0,
+    "gp0_irq_count": 0,
+    "gp0_missed_halves": 0,
+    "gp0_peak_isr_ticks": 0,
+    "last_fsk_error": 0,
+    "module_return": 0,
+    "module_serial": 0,
+    "pcm_lost": false,
+    "read_only": true,
+    "resource_errors": 0,
+    "saturating_16bit_counters": true,
+    "valid": false,
+    "version": "GPF1"
+  },
+  "timing": {
+    "boot_local": true,
+    "fsk_preload_peak_100us_ticks": 0,
+    "fsk_preload_peak_approx_ms": 0.0,
+    "fsk_preloads": 0,
+    "gp0_code3_reason": "none_or_unclassified",
+    "gp0_code3_reason_id": 0,
+    "module_serial": 0,
+    "pcm_backlog_at_stop_blocks": 0,
+    "pcm_offset_at_stop_samples": 0,
+    "read_only": true,
+    "resource_peak_approx_us": 0.0,
+    "resource_peak_tim17_ticks": 0,
+    "resource_reads": 0,
+    "resource_timer_resolution": "96MHz nominal; 16-bit counter wraps every ~682.7us",
+    "resource_timing_qualifier": "individual calls spanning >=1 TIM17 counter wrap are ambiguous; values are not definitive wall times",
+    "resource_total_tim17_ticks_modulo": 0,
+    "valid": false,
+    "version": "GPT1"
+  }
+}
