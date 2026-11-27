@@ -1,0 +1,61 @@
+{
+  "aa3_flag_enabled": true,
+  "calibration": {
+    "cpu_clock_nominal_hz": 96000000,
+    "dma_halves_per_sec_nominal": 10907.5
+  },
+  "capture_time_utc": "2026-11-27T04:30:16Z",
+  "firmware_sha256": "cff8ee3308fd0cf65a07dac28513bd33f7c86556073a59b6ec2281568de83e56",
+  "image_bytes": 118448,
+  "module_slot24_serial": 1795751383,
+  "raw_readback": {
+    "decode_error": null,
+    "fault": {
+      "boot_local": true,
+      "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+      "failure_classes": [
+        "pcm_dma"
+      ],
+      "fsk_errors": 0,
+      "gp0_capture_started": true,
+      "gp0_dma_error": 3,
+      "gp0_irq_count": 2619,
+      "gp0_missed_halves": 0,
+      "gp0_peak_isr_ticks": 3488,
+      "last_fsk_error": 0,
+      "module_return": -12,
+      "module_serial": 1795751383,
+      "pcm_lost": true,
+      "read_only": true,
+      "resource_errors": 0,
+      "saturating_16bit_counters": true,
+      "valid": true,
+      "version": "GPF1"
+    },
+    "fault_raw_hex": "47504631d7fd086bf4ffffff27000000000000000000000000000000030000003b0a0000a00d000000000000",
+    "timing": {
+      "boot_local": true,
+      "fsk_preload_peak_100us_ticks": 24,
+      "fsk_preload_peak_approx_ms": 2.4,
+      "fsk_preloads": 1,
+      "gp0_code3_reason": "pcm_queue_full",
+      "gp0_code3_reason_id": 2,
+      "module_serial": 1795751383,
+      "pcm_backlog_at_stop_blocks": 3,
+      "pcm_backlog_qualifier": "sampled on op1 stop, not at IRQ failure; foreground may consume queued blocks before stop",
+      "pcm_offset_at_stop_samples": 0,
+      "read_only": true,
+      "resource_peak_approx_us": 304.23,
+      "resource_peak_tim17_ticks": 29206,
+      "resource_reads": 1034,
+      "resource_timer_resolution": "96MHz nominal; 16-bit counter wraps every ~682.7us",
+      "resource_timing_qualifier": "individual calls spanning >=1 TIM17 counter wrap are ambiguous; values are not definitive wall times",
+      "resource_total_tim17_ticks_modulo": 6913531,
+      "valid": true,
+      "version": "GPT1"
+    },
+    "timing_raw_hex": "47505431d7fd086b010000000a04000016720000fb7d690018000000010000000200000003000000"
+  },
+  "source": "First post-PTT GPF1/GPT1 read-only physical capture, before cable-session end",
+  "test_date_local": "2026-11-26 America/Los_Angeles"
+}
