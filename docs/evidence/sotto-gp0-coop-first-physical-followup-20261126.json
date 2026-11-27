@@ -1,0 +1,115 @@
+{
+  "date": "2026-11-26 Pacific",
+  "observed_operator_result": {
+    "reported_lcd": "GP0 ENGINE",
+    "brief_rf_and_modulation_reported": true,
+    "independent_iq_capture_available": false,
+    "valid_sotto_packet_decoded": false,
+    "live_gp0_error_cause_confirmed": false,
+    "module_code_bytes": 9784,
+    "module_serial": 1795730062
+  },
+  "installed_and_tested_firmware": {
+    "bytes": 117052,
+    "sha256": "ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a",
+    "gp0_fast_isr": false,
+    "fast_spi": false,
+    "gp0_fault_trace": false,
+    "gp0_timing_trace": false,
+    "cooperative_fsk_preload": true
+  },
+  "previous_actual_hardware_evidence": {
+    "fault": "PCM producer-consumer queue full",
+    "queue_at_failure_blocks": 4,
+    "queue_capacity_blocks": 4,
+    "successful_dma_half_interrupts": 1746,
+    "estimated_capture_ms": 160.1,
+    "resource_reads": 506,
+    "resource_total_elapsed_ms": 32.709,
+    "synchronous_fsk_preload_ms": 14.8,
+    "source": "docs/evidence/sotto-gp0-foreground-live-timing-20261126.json",
+    "this_current_attempt_cause_proven": false
+  },
+  "offline_combination": {
+    "feature_flags": [
+      "K6_SOTTO_FSK_COOP_PRELOAD=1",
+      "K6_SOTTO_FAST_SPI=1",
+      "K6_SOTTO_GP0_FAST_ISR=1",
+      "K6_SOTTO_GP0_TRACE=1",
+      "K6_SOTTO_GP0_TIMING=1"
+    ],
+    "optimized_no_trace": {
+      "path_on_dev_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-offline-20261126/coop-optimized-no-trace.bin",
+      "bytes": 117356,
+      "sha256": "9dd86d1e9fdfbdbe7eb4886ac4954b8e1f40db4aa4f7cc21a127af29b707f4b6"
+    },
+    "diagnostic": {
+      "path_on_dev_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-offline-20261126/coop-gpf1-gpt1.bin",
+      "bytes": 118408,
+      "sha256": "c69a87428a4b72192f4a9ac22bd17c5fe40da159ebe818880a2a5b04ca7f03ec"
+    },
+    "diagnostic_elf": {
+      "path_on_dev_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-offline-20261126/coop-gpf1-gpt1.elf",
+      "bytes": 2027300,
+      "sha256": "269f9737f287cb22f937763f9943935cb794c96ade50362772c618d480b4bca3"
+    },
+    "diagnostic_flash_free_bytes": 4472,
+    "diag_ram0": {
+      "arena_base": "0x20001930",
+      "arena_bytes": 14976,
+      "ram0_used": 3816,
+      "ram0_free": 24,
+      "stack_reservation": 2812
+    },
+    "no_trace_ram0": {
+      "arena_base": "0x20001930",
+      "arena_bytes": 14976,
+      "ram0_used": 3776,
+      "ram0_free": 64,
+      "stack_reservation": 2812
+    },
+    "module_arena_unchanged": true,
+    "callback_registration_test_updated_for_trace_wrapper": true,
+    "status": "OFFLINE_ONLY"
+  },
+  "alternative_encoder_module": {
+    "artifact": {
+      "path_on_dev_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-offline-20261126/optimized-sotto-gp0-module-unsigned.bin",
+      "bytes": 9784,
+      "sha256": "9834e44bb81595a69c354c39fdc14b2a945e2fdc653a46293dd618b14e4e5bc0"
+    },
+    "scratch_margin": 48,
+    "signed": false,
+    "installed": false,
+    "source_optimizations": [
+      "fast_div",
+      "fast_history_copy",
+      "fast_cb_pair",
+      "fast_lag_pair"
+    ]
+  },
+  "recovery": {
+    "known_good_flash_sha256": "8d38e8973e89d32099791c34a5c9d7c68520869564bffc004c08d4695fa4827d",
+    "spi_backup_sha256": "18fd1d3cb118c36eecf6111ec805f77ff70bd1732ed7576d459183f341d74dbd"
+  },
+  "safety": {
+    "radio_modified_during_followup": false,
+    "new_firmware_flashed": false,
+    "module_slot24_changed": false,
+    "hardware_tx_attempted_by_agent": false,
+    "automatic_flash_approved": false,
+    "future_hw_status": "REQUIRES_OPERATOR_AUTHORIZATION_AND_ATTENDED_REVIEW"
+  },
+  "regression": {
+    "status": "PASS",
+    "tests_passed": 70,
+    "tests_failed": 0,
+    "full_suite_seconds": 124.94,
+    "linked_arm_cooperative_host": true,
+    "linked_arm_gp0_irq_service": true,
+    "traced_and_untraced_callback_registration_checked": true,
+    "independent_virtual_iq_packet_verified": true,
+    "physical_rf_tested": false,
+    "test_log_on_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-offline-20261126/tests-fixed-gate.log"
+  }
+}
