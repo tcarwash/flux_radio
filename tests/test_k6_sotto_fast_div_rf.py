@@ -29,6 +29,7 @@ def actual_modules(tmp_path_factory):
         ('fast_div',{'fast_div':True}),
         ('fast_history',{'fast_history_copy':True}),
         ('combined',{'fast_div':True,'fast_history_copy':True}),
+        ('combined_cb_pair',{'fast_div':True,'fast_history_copy':True,'fast_cb_pair':True}),
     ):
         code,entry=build(host_resources=True,gp0_irq_tx=True,**kw)
         assert original['entry']==entry
@@ -128,3 +129,22 @@ def test_combined_fast_math_passes_moderate_and_fails_closed_at_extreme_load(act
     assert extreme['samples']==2560 and extreme['module_return']==-12
     assert not extreme['tx']['active'] and not extreme['session']['complete']
     assert extreme['gp0_starts']==1 and extreme['gp0_stops']==1
+
+
+def test_paired_codebook_score_preserves_exact_voice_and_improves_extreme_progress(actual_modules):
+    combined=actual_modules['combined']
+    paired=actual_modules['combined_cb_pair']
+    nominal=replay(paired,cpi=3,adc=3000)
+    assert accepted(nominal),nominal
+    assert nominal['samples']==nominal['samples_expected']==8293
+    assert nominal['codec_exact'] and nominal['codec_frames']==26
+    assert nominal['session']['complete'] and nominal['session']['valid']==6
+    assert nominal['session']['invalid']==0 and nominal['wire_decoder_agrees']
+    assert not nominal['tx']['active'] and not nominal['lease_expired']
+    a=replay(combined,cpi=3,adc=4000)
+    b=replay(paired,cpi=3,adc=4000)
+    assert a['pcm_lost'] and b['pcm_lost']
+    assert a['samples']==2560 and b['samples']==2880 and b['samples']>a['samples']
+    assert b['pcm_highwater']==4 and b['module_return']==-12
+    assert b['gp0_starts']==1 and b['gp0_stops']==1
+    assert not b['tx']['active'] and not b['session']['complete']

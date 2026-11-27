@@ -78,26 +78,27 @@ The optional `fast_history_copy=True` / `--fast-history-copy` build path adapts 
 | Fielded baseline | 9,784 | 4,128 B | 48 B |
 | Fast divider | 9,772 | 4,140 B | 60 B |
 | Fast history copy | 9,748 | 4,164 B | 84 B |
-| Combined | **9,736** | **4,176 B** | **96 B** |
+| Divider + history copy | 9,736 | 4,176 B | 96 B |
+| Divider + history + paired score | **9,756** | **4,156 B** | **76 B** |
 
-The combined image is **48 bytes smaller than the fielded image**, while preserving the same entry offset and 14,976-byte arena. The resource codebook and IVF deck are unchanged.
+The final three-optimization image is **28 bytes smaller than the fielded image**, while preserving the same entry offset and 14,976-byte arena. The resource codebook and IVF deck are unchanged. The paired-score-only build would leave just 28 bytes of margin, so the builder now rejects that combination unless the other optimizations preserve at least the required 48-byte margin.
 
 ### 1.04-second virtual GP0 comparison
 
 The same 8,293-sample 320Hz + 870Hz fixture, measured SPI model (6.1921us read setup + 0.9404us/byte), and real compiled Cortex-M0 module were used for all variants. CPI and ADC ISR cycles are simulation assumptions, not measured K6 averages.
 
-| CPI / ADC cycles per sample | Baseline | Fast divider | Fast history | Combined |
-|---|---:|---:|---:|---:|
-| 1.5 / 4,000 | 8,293 pass | 8,293 pass | 8,293 pass | 8,293 pass |
-| 2.5 / 4,000 | 1,920 then overflow | 8,293 pass | 2,880 then overflow | **8,293 pass** |
-| 3.0 / 3,000 | 1,600 then overflow | 8,293 pass | 2,240 then overflow | **8,293 pass** |
-| 3.0 / 4,000 | 1,200 then overflow | 1,920 then overflow | 1,280 then overflow | 2,560 then overflow |
+| CPI / ADC cycles per sample | Baseline | Fast divider | Fast history | Divider + history | All three |
+|---|---:|---:|---:|---:|---:|
+| 1.5 / 4,000 | 8,293 pass | 8,293 pass | 8,293 pass | 8,293 pass | 8,293 pass |
+| 2.5 / 4,000 | 1,920 then overflow | 8,293 pass | 2,880 then overflow | 8,293 pass | **8,293 pass** |
+| 3.0 / 3,000 | 1,600 then overflow | 8,293 pass | 2,240 then overflow | 8,293 pass | **8,293 pass** |
+| 3.0 / 4,000 | 1,200 then overflow | 1,920 then overflow | 1,280 then overflow | 2,560 then overflow | **2,880 then overflow** |
 
-The history-copy change alone improves progress under contention but is not sufficient to sustain the stream. Together, the two optimizations complete the 1.04-second session at CPI 2.5 / 4,000 and CPI 3.0 / 3,000. At the harsher CPI 3.0 / 4,000 point the combined candidate still fills the 4-block queue and returns the normal `-12` failure; it dekeys and cleans up rather than leaving TX active. This is an explicit remaining throughput limit, not a pass.
+The history-copy change alone improves progress under contention but is not sufficient to sustain the stream. The paired codebook-score loop preserves arithmetic order and adds 20 bytes to the combined module; at the harshest CPI 3.0 / 4,000 point it advances the failure from 2,560 to 2,880 samples (12.5%) but still does not complete the stream. The all-three candidate completes the 1.04-second session at CPI 2.5 / 4,000 and CPI 3.0 / 3,000. At CPI 3.0 / 4,000 it still fills the 4-block queue and returns the normal `-12` failure; it dekeys and cleans up rather than leaving TX active. This remains an explicit throughput limit, not a pass.
 
 Every completed session remains bit-exact against the native codec reference: 26 codec frames, six valid RF packets, zero invalid packets, agreement with the independent compiled ARM wire decoder, and PCM queue high-water no greater than two blocks. The history-only variant was separately checked at nominal CPI for exact output.
 
-New offline regression coverage extends `tests/test_k6_sotto_fast_div.py` and `tests/test_k6_sotto_fast_div_rf.py`. The focused optimization suite passes **13 tests**; a broader 10-file Sotto/GP0 regression batch passes **69 tests**. The candidate CLI was also exercised end-to-end: it emitted a 9,736-byte module, the expected 4,182-byte IVF deck, a manifest with both experimental flags set, and a 96-byte scratch margin. No radio access, flash, PTT, or RF transmission was used.
+New offline regression coverage extends `tests/test_k6_sotto_fast_div.py` and `tests/test_k6_sotto_fast_div_rf.py`. The focused optimization suite passes **15 tests**; a broader 10-file Sotto/GP0 regression batch passes **71 tests**. The candidate CLI was also exercised end-to-end: it emitted a 9,756-byte module, the expected 4,182-byte IVF deck, a manifest with all three experimental flags set, and a 76-byte scratch margin. No radio access, flash, PTT, or RF transmission was used.
 
 Evidence JSON: `docs/evidence/sotto-gp0-fast-throughput-ablation-20261126.json`.
 

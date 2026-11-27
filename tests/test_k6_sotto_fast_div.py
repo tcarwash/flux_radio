@@ -92,7 +92,8 @@ def modules():
     fast,fast_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=True)
     history,history_entry=build(host_resources=True,gp0_irq_tx=True,fast_history_copy=True)
     both,both_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=True,fast_history_copy=True)
-    return (base,base_entry,fast,fast_entry,history,history_entry,both,both_entry)
+    score_pair,score_pair_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=True,fast_history_copy=True,fast_cb_pair=True)
+    return (base,base_entry,fast,fast_entry,history,history_entry,both,both_entry,score_pair,score_pair_entry)
 
 
 def _margin(code):
@@ -115,11 +116,18 @@ def test_fast_div_preserves_arena_and_gains_scratch(modules):
 
 
 def test_history_copy_and_combined_builds_shrink_and_preserve_margin(modules):
-    base,base_entry,fast,fast_entry,history,history_entry,both,both_entry=modules
+    base,base_entry,fast,fast_entry,history,history_entry,both,both_entry=modules[:8]
     assert history_entry==fast_entry==both_entry==base_entry==16
     assert len(history)==9748 and _margin(history)==84
     assert len(both)==9736 and _margin(both)==96
     assert len(history)<len(base) and len(both)<len(fast)
+
+
+def test_paired_codebook_score_variant_fits_only_with_prior_optimizations(modules):
+    score_pair,entry=modules[8:]
+    assert entry==16 and len(score_pair)==9756 and _margin(score_pair)==76
+    with pytest.raises(ValueError,match="at least 48 are required"):
+        build(host_resources=True,gp0_irq_tx=True,fast_cb_pair=True)
 
 def test_fast_div_is_opt_in_and_no_upstream_codec_edits():
     src=HEADER.read_text()
@@ -130,6 +138,8 @@ def test_fast_div_is_opt_in_and_no_upstream_codec_edits():
     assert 'while (bit)' in src
     assert 'fast_div=False' in builder
     assert 'fast_history_copy=False' in builder
+    assert 'fast_cb_pair=False' in builder
+    assert 'paired codebook widths' in builder
     assert 'slim_history_shift' in builder
     assert 'SOTTO_FAST_MEMMOVE' not in src
     assert '["-DSOTTO_FAST_DIV=1"] if fast_div else []' in builder

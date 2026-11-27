@@ -71,6 +71,17 @@
       "margin_bytes": 96,
       "ivf_deck_bytes": 4182,
       "ivf_deck_sha256": "5d05fa9fb0194eee04356c3cb4b15471c780d0a915ee67063ed91a54e64ce9f6"
+    },
+    {
+      "name": "fast_div_plus_history_copy_plus_paired_score",
+      "module_bytes": 9756,
+      "entry": 16,
+      "sha256": "23f15706c9c958188674141c0dd655bd0aeb8fac883ea6cb3d5fbead7c0691c8",
+      "scratch_available_bytes": 4156,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 76,
+      "ivf_deck_bytes": 4182,
+      "ivf_deck_sha256": "5d05fa9fb0194eee04356c3cb4b15471c780d0a915ee67063ed91a54e64ce9f6"
     }
   ],
   "results": [
@@ -129,6 +140,19 @@
           "session_invalid": 0,
           "wire_decoder_agrees": true,
           "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
         }
       ]
     },
@@ -167,6 +191,19 @@
         },
         {
           "variant": "combined",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
           "samples": 8293,
           "pcm_highwater": 2,
           "pcm_lost": false,
@@ -225,6 +262,19 @@
           "session_invalid": 0,
           "wire_decoder_agrees": true,
           "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
         }
       ]
     },
@@ -263,15 +313,23 @@
           "pcm_lost": true,
           "module_return": -12,
           "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 2880,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
         }
       ]
     }
   ],
-  "interpretation": "The fast history copy is bit-exact and improves queue progress by itself, but it is not sufficient. Combined with fast division it sustains the full fixture at CPI 2.5/4000 and CPI 3.0/3000. At CPI 3.0/4000 the combined candidate still overflows, dekeys, and returns -12.",
+  "interpretation": "The fast history copy is bit-exact and improves queue progress by itself, but it is not sufficient. Combined with fast division it sustains the full fixture at CPI 2.5/4000 and CPI 3.0/3000. The paired codebook-score loop preserves exact output, adds 20 module bytes, and improves the CPI 3.0/4000 failure point from 2560 to 2880 samples, but the queue still fills and the module returns -12 with TX off.",
   "evidence_scope": "Compiled Cortex-M0 module + virtual RF/GP0 model with physical SPI timing fit; not physical on-radio qualification.",
   "test_results": {
-    "focused_optimization_tests": 13,
-    "broader_regression_tests": 69,
+    "focused_optimization_tests": 15,
+    "broader_regression_tests": 71,
     "broader_test_files": [
       "tests/test_k6_sotto_fast_div.py",
       "tests/test_k6_sotto_fast_div_rf.py",
@@ -285,11 +343,14 @@
       "tests/test_k6_sotto_fft_zero.py"
     ],
     "candidate_cli_build": {
-      "module_bytes": 9736,
+      "module_bytes": 9756,
       "entry": 16,
       "scratch_required_bytes": 4080,
-      "scratch_available_bytes": 4176,
-      "scratch_margin_bytes": 96,
+      "scratch_available_bytes": 4156,
+      "scratch_margin_bytes": 76,
+      "fast_div_experimental": true,
+      "fast_history_copy_experimental": true,
+      "fast_cb_pair_experimental": true,
       "rf_enabled_in_artifact": true,
       "signed": false,
       "installed": false
