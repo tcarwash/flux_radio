@@ -49,3 +49,20 @@ Replaying *these actual recorded counts* through the exact compiled Rust decimat
 | FIR11 | 0.39544 | 0.03602 | 17.80 dB | +1.27 dB |
 
 This is the first **actual source-data** demonstration of a clear, strong GP0 tone and pre-decimator filtering benefits. The earlier nominal 500 Hz original PCM AIR capture was ~0.41 full-scale peak; near agreement with the 0.39844 reconstructed peak now supports the raw group acquisition path. 44 ms does not prove robustness over speech-length signals; the noise changes are not yet sufficient evidence to enable AA3 on the physical MCU. As previous offline frequency response showed, AA3 can attenuate ~2.8 kHz by ~4.6 dB, so an attended 1 kHz raw capture and voice-band tests are still recommended before selecting it. No firmware changes or automated transmissions occurred during this analysis.
+
+## 1 kHz physical raw capture — CRC-partial but scientifically useful
+
+The operator set the signal generator to **1,000 Hz, 0.1 Vpp** and physically held PTT for the GP0 RAW AIR dump. The RTL-SDR detected all **86** frames but only **84** had valid CRCs. Packets **8 and 72** were corrupted, despite alternate offline symbol rate/phase searches. The original **35.072s** SDR IQ and the **84 byte-exact accepted frames** remain private. **No complete raw sample file was created.**
+
+There is a contiguous authenticated fragment of **3,024 group counts** (sequence 9–71, each 48 raw counts). The actual acquisition timer was **439 × 100 µs = 43.9 ms**, implying **93,303 groups/sec**; the 3,024-count segment spans ~32.41ms. Raw data independently fit a **1,000.184 Hz** sine at **3.453 counts peak**, residual STD **1.283 counts**, ~5.59dB SNR in the group domain. This confirms the strong generator input in the *new raw path*.
+
+Replay through the same compiled Rust decimator used for the earlier 500 Hz test, with prospective clock weight=7500 (not flashed):
+
+| Filter | Reconstructed 1 kHz peak (FS) | Noise residual RMS (FS) | SNR | Gain over baseline | Tone attenuation over baseline |
+|---|---:|---:|---:|---:|---:|
+| Original | 0.41907 | 0.04201 | 16.97 dB | — | — |
+| AA3 | 0.38602 | 0.03227 | 18.55 dB | **+1.58 dB** | **−0.71 dB** |
+| FIR11_LATE | 0.40854 | 0.03648 | 17.97 dB | +1.00 dB | −0.22 dB |
+| FIR11 | 0.40828 | 0.03647 | 17.97 dB | +1.00 dB | −0.23 dB |
+
+AA3 reduces reconstructed noise further but introduces more signal attenuation even at 1kHz. On the strong 500 Hz recording, AA3 gained ~2.45 dB versus FIR11 ~1.27 dB; at 1kHz, those gains were ~1.58 versus ~1.00 dB. **Do not deploy based only on these 32–44 ms tone recordings.** To resolve upper speech-band fidelity versus anti-alias rejection, a supervised **2,800 Hz 0.1 Vpp** raw capture is the useful next measurement, followed by human speech recordings. 2.8kHz is close to where earlier modeling predicted AA3 attenuation ~4.6 dB versus FIR11_LATE ~1.6 dB. The optional filters remain OFF on the radio. Exact packet/continuity analysis is saved in `docs/evidence/k6-gp0-1000hz-raw-physical-20261127.json` (derived metrics only).
