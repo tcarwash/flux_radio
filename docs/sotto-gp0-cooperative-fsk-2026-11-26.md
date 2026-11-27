@@ -46,10 +46,39 @@ Completed 1.20-second sessions returned 30 exact 6-byte codec frames, six valid 
 
 Machine-readable sensitivity sweep: [`docs/evidence/sotto-gp0-cooperative-fsk-20261126.json`](evidence/sotto-gp0-cooperative-fsk-20261126.json).
 
-**Offline validation:** 55/55 tests passed in the combined host/overlay/GP0 fault-timing/virtual-RF/encoder-regression selection. This includes seven Rust-native cooperative host cases, the nine-case default-host regression, the three-second mixed-signal RF test, and unchanged prior encoding/GP0 behavior. `sh -n`/Python syntax checks and `git diff --check` also passed. No ARM firmware image was built or installed; available tests do not establish full firmware flash headroom.
+**Offline validation:** 55/55 tests passed in the combined host/overlay/GP0 fault-timing/virtual-RF/encoder-regression selection. This includes seven Rust-native cooperative host cases, the nine-case default-host regression, the three-second mixed-signal RF test, and unchanged prior encoding/GP0 behavior. `sh -n`/Python syntax checks and `git diff --check` also passed. This was the initial prototype-only validation; the subsequent full target build and ELF-linked tests are documented below. No firmware was installed.
 
 ## Qualification boundary and next work
 
-1. **Do not use on physical radio yet.** The cooperative host has not had a full ARM flash-budget compilation, a real serial timing capture, an RFIC FIFO-integrity readback, an over-air/SDR packet comparison, or power-loss recovery qualification. The known 32-word FIFO truncation possibility remains and must not be masked by the virtual RF decoder.
+1. **Do not use on physical radio yet.** Full target ARM compilation and independent virtual IQ decoding now pass (see below); however, a real serial timing capture, physical RFIC FIFO-integrity check, dummy-load SDR packet comparison, and attended boot/recovery qualification remain outstanding. The known 32-word FIFO truncation possibility remains and must not be masked by the virtual RF decoder.
 2. If later testing is permitted, measure each `op=0`/`op=1` slice, 20 ms settle and total packet start latency separately; confirm PA behavior, 33-word guard visibility, bounded 25 s session, module cancellation and RX-register restoration on the dummy load. Preserve proven recovery firmware.
 3. Cooperative preload reduces the longest foreground stall but **does not** reduce total SPI work or fix worst-case `slim_analyse10`/envelope throughput. Keep the opt-in separate until both CPU and FSK start-time margins are supported by measurements.
+
+## Full target ARM compilation and linked FSK qualification (continued 2026-11-26)
+
+To avoid changing the installed development environment, the latest opt-in branch was built in a **new detached worktree** at `/storage5/dev/flux-sotto-coop-buildcheck-20261126`. It has pinned Sotto `598f1bce87c22ebada2b9d0d1fcfd89107b33a09` and pinned Aura `c3aeb17aec0fd09dccf931b52f6c7d5dbf72e7ac`. The normal `firmware/k6-aura/build-fd6818b.sh` script was run from pristine generated Aura code for each variant, with the exact earlier-recovered fielded profile (Sotto API30 GP0, resource service, FSK async, Data, KUL2, RAM0, font subset/raster boot, serial transport, no optional FSK4800 RX, no resident Sotto, no remote UI). **Only `K6_SOTTO_FSK_COOP_PRELOAD` differed**. No production firmware, user radio, SPI backup, or KUL2 library was modified.
+
+| Target build / firmware memory audit | Rebuilt default | Cooperative prototype |
+|---|---:|---:|
+| ARM application bytes | 116,796 | **117,052** |
+| Flash remaining under 122,880-byte limit | 6,084 | **5,828** |
+| Protected RAM0 used / free | 3,768 / 72 | **3,776 / 64** |
+| Module arena | 14,976 | 14,976 |
+| Reserved main stack | 2,812 | **2,812 (unchanged)** |
+| ARM cross-compile and linker audit | Pass | **Pass** |
+
+An early variant stored staging state in main `.bss`, reduced main stack reservation by four bytes and produced 117,036 bytes firmware. It was superseded before qualification. The final variant moves the 4-byte packet pointer and 1-byte staging counter, plus linker alignment, into protected `.ram0` (8 extra protected bytes), preserving the original main stack reservation. New statics reside at `0x20000F28` and `0x20000EED`, both within the protected region. The RFIC service, cache, screen, and main module arena remain otherwise unchanged.
+
+Reference firmware SHA256 is `8d38e8973e89d32099791c34a5c9d7c68520869564bffc004c08d4695fa4827d`. Rebuilt default SHA256 `fcc35fbd20545a2cb2cdde4b22309a284e422eeaf0dc73fd3b2b46bcf17b87a0` differs at **only eight bytes**, offsets `0x1C558..0x1C55F`: the GNU fast build ID. It contains no executable-code, data, or rodata changes. **Do not substitute the old ID** in the new image; dependent system-page binding may use it. Final experimental binary SHA256 is `ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a` (117,052 bytes).
+
+### Linked ARM tests: actual compiled host, separate physical RFIC model
+
+The new `tools/k6_sotto_fsk_coop_arm_gate.py` boots the actual candidate ELF, stages a C level-30 fixture using the built-in CRC32 development cable loader, and executes the **linked ARM** API29 FSK service and normal module stack-switch. All radio hardware is emulated. The successful case wrote all 33 FIFO words in **exact groups of 8 + 8 + 8 + 8 + 1** (proving the staged option was really compiled, not the default path), and enabled RF **20.39 ms after the last guard word** in this emulator. An independent virtual IQ receiver decoded the complete 66-byte packet **byte-for-byte**. RF ended inactive and restored PA. Additional cases for a bad guard, explicit abort and timeout transmitted no RF and ended with the PA off. The independent linked ARM GP0 DMA IRQ9 start/stop test also passed, including memory pointer, DMA enable, microphone route and interrupt-vector restoration.
+
+The real Cortex-M0 firmware and module are compiled/executed, but the FD6818B, clocks, GPIO/SPI side effects and RF medium are modeled; these results are **not physical-cycle measurements**, a bootloader qualification or a real on-air test. The linked test uses the development CRC32 cable ingress, **not** production SipHash authorization or flash installation. The older model-only 14.8-ms-versus-4.0-ms comparison is still a hypothesis for physical measurements, not a demonstrated hardware speedup.
+
+Full machine-readable evidence: [`docs/evidence/sotto-gp0-coop-target-build-20261126.json`](evidence/sotto-gp0-coop-target-build-20261126.json). Repeatable opt-in linked ARM test: `tests/test_k6_sotto_fsk_coop_arm_gate.py` with `K6_SIM_SOTTO_COOP=1`, `K6_SIM_SOTTO_COOP_ELF`, and `K6_SIM_SOTTO_COOP_IMAGE`; independent GP0 IRQ service test takes `K6_SIM_SOTTO_GP0=1` and the corresponding ELF/image environment variables. The path to the output file is an offline build artifact, **not** a signed release or installation instruction.
+
+**Full target regression:** **89/89 tests passed** with the matched cooperative ELF/image and actual linked GP0 IRQ + FSK gates enabled (126.97 seconds). This supersedes the earlier 55-test prototype selection; default API29 native-host compatibility and mixed-PCM/virtual-RF decoder checks remain included. No RF hardware was accessed.
+
+**Disposition: `OFFLINE_PASS_ATTENDED_REVIEW_ONLY`.** This does not approve unattended firmware flash, KUL2 migration, PTT transmission, or modem on-radio use. Before a controlled physical test, verify current bench lock and user attendance, current cable/boot state, validated full 2 MiB SPI backup, known-good firmware and stock bootloader recovery. With the radio on a dummy load, measure FSK start/poll slices and actual FIFO/guard integrity, plus independently received SDR packets. Abort and restore on anomalous PA/FSK state. Only hardware evidence can tell whether the cooperative preload solves the live PCM queue-full failure.

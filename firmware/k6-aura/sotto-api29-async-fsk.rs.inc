@@ -25,9 +25,13 @@ static mut SOTTO_TX29_UNTIL: u32 = 0;
 // Only while ACTIVE: the module-owned sl_peek slot remains immutable and
 // pinned until fsk_async poll reports completion and sl_ack advances it.
 // This is not a copy: the saved pointer must remain in module scratch.
+// Keep staging state out of main .bss / stack-reservation headroom.
+// This variant requires expanded protected RAM0, validated by the build gate.
 #[cfg(all(k6_sotto_async_fsk,k6_sotto_fsk_coop_preload))]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_PRELOAD_PTR:*const u16 = core::ptr::null();
 #[cfg(all(k6_sotto_async_fsk,k6_sotto_fsk_coop_preload))]
+#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]
 static mut SOTTO_TX29_PRELOAD_STEP:u8 = 0;
 #[cfg(k6_sotto_async_fsk)]
 const SOTTO_TX29_REGS:[u8;9] = [0x3f,0x59,0x58,0x70,0x72,0x5a,0x5b,0x5c,0x5d];

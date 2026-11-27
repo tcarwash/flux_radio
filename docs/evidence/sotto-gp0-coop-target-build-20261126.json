@@ -1,0 +1,237 @@
+{
+  "date": "2026-11-26 America/Los_Angeles",
+  "pinned_sotto_revision": "598f1bce87c22ebada2b9d0d1fcfd89107b33a09",
+  "pinned_aura_revision": "c3aeb17aec0fd09dccf931b52f6c7d5dbf72e7ac",
+  "build_profile": "recovered exact fielded K6 feature and API30 TX-only profile; only cooperative flag varied",
+  "feature_on": [
+    "K6_MODE_REGISTRY",
+    "K6_PACKET_MAILBOX",
+    "K6_SOTTO_RESOURCES",
+    "K6_SOTTO_ASYNC_FSK",
+    "K6_SOTTO_MIC",
+    "K6_USER_STORE",
+    "K6_RAM0=1",
+    "K6_CONFIG_FSK",
+    "K6_LEAN_TXDOG",
+    "K6_FONT_SUBSET",
+    "K6_RASTER_BOOT",
+    "K6_SERIAL_TRANSPORT",
+    "K6_SCAN_SERVICE",
+    "K6_FSK_RX_SERVICE"
+  ],
+  "feature_off": [
+    "K6_MEMORY_BANK",
+    "K6_EL_POWER",
+    "K6_HEALTH_TELEMETRY",
+    "K6_NATIVE_FM",
+    "K6_LIVE_SERIAL",
+    "K6_REMOTE_UI",
+    "K6_SOTTO_SERVICE",
+    "K6_FSK4800_RX",
+    "K6_SERIAL_LAB",
+    "K6_OTA_SERVICE",
+    "K6_SOTTO_FAST_SPI",
+    "K6_SOTTO_SPI_BENCH",
+    "K6_SOTTO_GP0_TRACE",
+    "K6_SOTTO_GP0_FAST_ISR"
+  ],
+  "default": {
+    "bytes": 116796,
+    "sha256": "fcc35fbd20545a2cb2cdde4b22309a284e422eeaf0dc73fd3b2b46bcf17b87a0",
+    "flash_free": 6084,
+    "ram0": {
+      "arena_base": "0x20001930",
+      "arena_bytes": 14976,
+      "ram0_used": 3768,
+      "ram0_free": 72,
+      "stack_reservation": 2812
+    },
+    "binary_matches_known_good_except_gnu_build_id": true,
+    "different_byte_offsets": [
+      "0x1c558",
+      "0x1c559",
+      "0x1c55a",
+      "0x1c55b",
+      "0x1c55c",
+      "0x1c55d",
+      "0x1c55e",
+      "0x1c55f"
+    ],
+    "known_good_sha256": "8d38e8973e89d32099791c34a5c9d7c68520869564bffc004c08d4695fa4827d"
+  },
+  "experimental_cooperative": {
+    "build_flag": "K6_SOTTO_FSK_COOP_PRELOAD=1",
+    "bytes": 117052,
+    "sha256": "ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a",
+    "flash_free": 5828,
+    "bytes_added_over_default": 256,
+    "ram0": {
+      "arena_base": "0x20001930",
+      "arena_bytes": 14976,
+      "ram0_used": 3776,
+      "ram0_free": 64,
+      "stack_reservation": 2812
+    },
+    "ram0_statics_in_protected_region": true,
+    "main_stack_reservation_preserved": true
+  },
+  "compiled_arm_fsk_gate": {
+    "result": "PASS",
+    "firmware_sha256": "ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a",
+    "firmware_bytes": 117052,
+    "linked_arm_host": true,
+    "api_level": 30,
+    "real_crc32_development_cable": true,
+    "production_siphash_not_tested": true,
+    "hardware_used": false,
+    "physical_dma_timing_tested": false,
+    "physical_rf_tested": false,
+    "rf_simulated_only": true,
+    "cases": [
+      {
+        "case": "success",
+        "module_return": 9,
+        "cable_chunks": 4,
+        "real_arm_dispatcher": true,
+        "words_written": 33,
+        "fifo_batch_sizes": [
+          8,
+          8,
+          8,
+          8,
+          1
+        ],
+        "rf_bursts": 1,
+        "virtual_status": {
+          "completed": 1,
+          "aborted": 0,
+          "rejected": 0,
+          "overflows": 0,
+          "active": false,
+          "fifo_words": 0,
+          "reason": null
+        },
+        "independent_iq_packet_exact": true,
+        "independent_iq_frames": 1,
+        "milliseconds_from_fifo_guard_to_rf": 20.39,
+        "tx_ended_inactive": true
+      },
+      {
+        "case": "bad_guard",
+        "module_return": -20,
+        "cable_chunks": 4,
+        "real_arm_dispatcher": true,
+        "words_written": 0,
+        "fifo_batch_sizes": [],
+        "rf_bursts": 0,
+        "virtual_status": {
+          "completed": 0,
+          "aborted": 0,
+          "rejected": 0,
+          "overflows": 0,
+          "active": false,
+          "fifo_words": 0,
+          "reason": null
+        },
+        "independent_iq_packet_exact": false,
+        "independent_iq_frames": 0,
+        "milliseconds_from_fifo_guard_to_rf": null,
+        "tx_ended_inactive": true
+      },
+      {
+        "case": "abort_early",
+        "module_return": 8,
+        "cable_chunks": 4,
+        "real_arm_dispatcher": true,
+        "words_written": 0,
+        "fifo_batch_sizes": [],
+        "rf_bursts": 0,
+        "virtual_status": {
+          "completed": 0,
+          "aborted": 0,
+          "rejected": 0,
+          "overflows": 0,
+          "active": false,
+          "fifo_words": 0,
+          "reason": null
+        },
+        "independent_iq_packet_exact": false,
+        "independent_iq_frames": 0,
+        "milliseconds_from_fifo_guard_to_rf": null,
+        "tx_ended_inactive": true
+      },
+      {
+        "case": "timeout",
+        "module_return": -12,
+        "cable_chunks": 5,
+        "real_arm_dispatcher": true,
+        "words_written": 0,
+        "fifo_batch_sizes": [],
+        "rf_bursts": 0,
+        "virtual_status": {
+          "completed": 0,
+          "aborted": 0,
+          "rejected": 0,
+          "overflows": 0,
+          "active": false,
+          "fifo_words": 0,
+          "reason": null
+        },
+        "independent_iq_packet_exact": false,
+        "independent_iq_frames": 0,
+        "milliseconds_from_fifo_guard_to_rf": null,
+        "tx_ended_inactive": true
+      }
+    ]
+  },
+  "compiled_arm_gp0_irq_gate": {
+    "result": "PASS",
+    "firmware_sha256": "ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a",
+    "firmware_bytes": 117052,
+    "module_bytes": 216,
+    "api_level": 30,
+    "real_arm_firmware": true,
+    "successful_irq_service_start_and_stop": true,
+    "route_restored": true,
+    "vector_restored": true,
+    "pcm_and_dma_pointers_cleared": true,
+    "observation_before_stop": {
+      "route_before_cleanup": 12,
+      "mic_adc_enabled": true,
+      "pcm_ptr": 536877600,
+      "raw_ptr": 536891312,
+      "dma_ccr": 12463,
+      "dma_ndtr": 1024,
+      "vector": 134310893,
+      "tim17_cr1": 1,
+      "pa": 34
+    },
+    "physical_dma_timing_tested": false,
+    "actual_sotto_codec_tested": false
+  },
+  "safety": {
+    "physical_hardware_used": false,
+    "transmitted_rf": false,
+    "flashed": false,
+    "signed_release": false,
+    "safe_to_flash_automatically": false,
+    "status": "OFFLINE_PASS_ATTENDED_REVIEW_ONLY",
+    "qualification_limits": [
+      "CPU/emulator host not cycle-accurate for physical FD6818B",
+      "no physical FIFO fullness or guard readback",
+      "no dummy-load SDR packet test",
+      "new GNU build ID may require dependent system-page binding review",
+      "no operator-attended boot/recovery evidence"
+    ]
+  },
+  "base_revision_before_ram0_source_fix": "530d6759127e345a4d14849bfe140daead3e083a",
+  "compiled_cooperative_rust_source_sha256": "1e1d06cd36a75c1a52dc60eb9d36071768fd77aa88f9eba336e6250146f68a20",
+  "source_evidence": "Full image compiled from the base revision with the recorded four-line protected-RAM0 source change; byte-identical source is being committed on the experiment branch.",
+  "regression": {
+    "status": "PASS",
+    "passed": 89,
+    "failed": 0,
+    "command": "pytest -q on 14 selected Sotto, GP0, API29, linked ARM and virtual RF test files, with explicit ELF/image opt-in",
+    "log_path_on_build_host": "/tmp/flux-sotto-coop-target-regression-20261126.log"
+  }
+}

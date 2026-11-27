@@ -46,3 +46,7 @@ def test_coop_build_flag_is_off_by_default_and_requires_correct_host():
     assert '[ "$K6_SOTTO_MIC" = 1 ]' in build
     assert '[ "${K6_RAM0:-0}" = 1 ]' in build
     assert 'k6_sotto_fsk_coop_preload' in (ROOT/'firmware/k6-aura/sotto-gp0-fault.rs.inc').read_text()
+    # Prevent the optional staged scratch pointer from eating the
+    # fielded stack reservation: both statics belong in protected RAM0.
+    host=(ROOT/'firmware/k6-aura/sotto-api29-async-fsk.rs.inc').read_text()
+    assert host.count('#[cfg_attr(k6_sotto_ram0_state, link_section=".ram0")]')>=4
