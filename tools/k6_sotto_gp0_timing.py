@@ -55,8 +55,6 @@ def decode_timing(raw:bytes, fault:dict)->dict:
     offset=(packed>>8)&255
     if backlog>4:
         raise ValueError('GPT1 impossible queue occupancy exceeds four blocks')
-    if cause==2 and backlog<4:
-        raise ValueError('GPT1 queue-full reason without four pending blocks')
     if cause==3 and offset<80:
         raise ValueError('GPT1 invalid-offset reason without invalid offset')
     if offset>79 and cause!=3:
@@ -76,29 +74,56 @@ def decode_timing(raw:bytes, fault:dict)->dict:
         'gp0_code3_reason':CAUSES[cause],
         'gp0_code3_reason_id':cause,
         'pcm_backlog_at_stop_blocks':backlog,
+        'pcm_backlog_qualifier':'sampled on op1 stop, not at IRQ failure; foreground may consume queued blocks before stop',
         'pcm_offset_at_stop_samples':offset,
         'read_only':True,'boot_local':True,
     }
 
-def run(port:str)->dict:
+def run(port:str, *, save:Path|None=None)->dict:
+    """Read raw records first; write evidence BEFORE the cable session reboots.
+
+    Even if the host decoder rejects a valid firmware report, save the exact
+    raw bytes and all successfully decoded fields. The physical boot-local
+    record cannot be recovered after c.end() resets the radio.
+    """
     from k6_install import Cable,CABLE_HANDSHAKE,open_port
     from k6_port_lock import serial_lock
     from types import SimpleNamespace
+    record={
+        'fault_raw_hex':None, 'timing_raw_hex':None,
+        'fault':None, 'timing':None, 'decode_error':None,
+    }
     with serial_lock(port):
         with open_port(SimpleNamespace(port=port)) as dev:
             c=Cable(dev,print)
-            if not c.handshake(CABLE_HANDSHAKE,wait=10):
-                raise RuntimeError('radio did not respond to cable session')
             try:
+                if not c.handshake(CABLE_HANDSHAKE,wait=10):
+                    raise RuntimeError('radio did not respond to cable session')
                 info=c.info()
                 if info.get('protocol')!=5 or info.get('arena')!=14976:
                     raise RuntimeError('unexpected firmware protocol or arena')
-                # Both before end(): end() reboots and loses RAM-only evidence.
-                basic=decode_fault(c.call(0x75))
-                timing=decode_timing(c.call(0x76),basic)
-                return {'fault':basic,'timing':timing}
+                # Both reads must precede end() to preserve this boot's data.
+                raw_fault=c.call(0x75)
+                record['fault_raw_hex']=raw_fault.hex()
+                raw_timing=c.call(0x76)
+                record['timing_raw_hex']=raw_timing.hex()
+                record['fault']=decode_fault(raw_fault)
+                record['timing']=decode_timing(raw_timing,record['fault'])
+                return {'fault':record['fault'],'timing':record['timing']}
+            except Exception as exc:
+                record['decode_error']=f'{type(exc).__name__}: {exc}'
+                raise
             finally:
-                c.end()
+                # Persist in the same cable session, before c.end() resets
+                # the radio. Save even if one query or a decoder failed.
+                try:
+                    if save is not None and (
+                            record['fault_raw_hex'] is not None or
+                            record['timing_raw_hex'] is not None):
+                        with save.open('x') as output:
+                            output.write(json.dumps(record,indent=2,sort_keys=True)+'\n')
+                finally:
+                    c.end()
 
 def main()->None:
     p=argparse.ArgumentParser(description=__doc__)
@@ -107,10 +132,8 @@ def main()->None:
     p.add_argument('--save',type=Path,help='NEW JSON file only; never overwrite evidence')
     a=p.parse_args()
     if not a.ack_reboot:p.error('specify --ack-reboot to acknowledge cable-session restart')
-    obj=run(a.port)
+    obj=run(a.port,save=a.save)
     data=json.dumps(obj,indent=2,sort_keys=True)+'\n'
-    if a.save:
-        with a.save.open('x') as output:output.write(data)
     print(data,end='')
     if not obj['fault']['valid']:
         p.exit(2,'No completed GP0 module run in this boot; diagnostic is empty\n')

@@ -34,6 +34,15 @@ def test_positive_pcm_full_report():
     assert parsed['pcm_backlog_at_stop_blocks']==4
     assert parsed['pcm_offset_at_stop_samples']==0
 
+@pytest.mark.parametrize('backlog',[0,1,2,3,4])
+def test_queue_full_failure_reason_can_have_lower_backlog_at_stop(backlog):
+    # The firmware captures cause=2 at the failing IRQ, but the foreground
+    # encoder can consume a queued block before op1 shuts down the DMA.
+    r=decode_timing(gpt(cause=2,backlog=backlog,offset=0),fault())
+    assert r['gp0_code3_reason']=='pcm_queue_full'
+    assert r['pcm_backlog_at_stop_blocks']==backlog
+    assert 'not at IRQ failure' in r['pcm_backlog_qualifier']
+
 def test_empty_pretest_pair():
     basic=gpf_decode(b'GPF1'+bytes(40))
     x=decode_timing(b'GPT1'+bytes(36),basic)
@@ -118,3 +127,68 @@ def test_gate_requires_40_bytes_and_correct_gpt_signature(monkeypatch):
     for changes in ({'ram0_used':3792},{'ram0_free':31},{'arena_base':'0x20001950'}):
         p={**profile,**changes}
         assert G.audit(field,baseline,timed,REF_LAYOUT,REF_LAYOUT,p,module,timing=True)['status']=='STOP_DO_NOT_FLASH'
+
+def test_capture_saves_wire_evidence_before_cable_end_even_on_decode_failure(tmp_path,monkeypatch):
+    import contextlib
+    import json
+    import types
+    from k6_sotto_gp0_timing import run
+
+    raw_fault=b'GPF1'+struct.pack('<IiI2Ii4I',1795730062,-12,0x27,
+                                  0,0,0,3,1746,3188,0)
+    # Replicate the hardware observation: cause=2, but only two blocks
+    # remain by the time op1 stops DMA.
+    raw_timing=gpt(cause=2,backlog=2,offset=20)
+    saved=tmp_path/'physical.json'
+
+    class FakeCable:
+        def __init__(self,dev,printer):
+            self.dev=dev
+        def handshake(self,*a,**kw):return True
+        def info(self):return {'protocol':5,'arena':14976}
+        def call(self,code):
+            assert code in (0x75,0x76)
+            return raw_fault if code==0x75 else raw_timing
+        def end(self):
+            # Strong ordering guarantee: evidence exists BEFORE reboot.
+            assert saved.is_file()
+            record=json.loads(saved.read_text())
+            assert record['fault_raw_hex']==raw_fault.hex()
+            assert record['timing_raw_hex']==raw_timing.hex()
+            assert record['decode_error'] is None
+            assert record['timing']['gp0_code3_reason']=='pcm_queue_full'
+    monkeypatch.setitem(sys.modules,'k6_install',types.SimpleNamespace(
+        Cable=FakeCable,CABLE_HANDSHAKE=b'',open_port=lambda opts:contextlib.nullcontext(None)))
+    monkeypatch.setitem(sys.modules,'k6_port_lock',types.SimpleNamespace(
+        serial_lock=lambda port:contextlib.nullcontext()))
+    record=run('/dev/does-not-exist',save=saved)
+    assert record['timing']['pcm_backlog_at_stop_blocks']==2
+
+def test_malformed_timing_is_saved_raw_before_reboot(tmp_path,monkeypatch):
+    import contextlib
+    import json
+    import types
+    from k6_sotto_gp0_timing import run
+    raw_fault=b'GPF1'+struct.pack('<IiI2Ii4I',1795730062,-12,0x27,
+                                  0,0,0,3,1746,3188,0)
+    raw_timing=gpt(cause=2,backlog=6)
+    saved=tmp_path/'bad-report.json'
+    class FakeCable:
+        def __init__(self,*args):pass
+        def handshake(self,*a,**kw):return True
+        def info(self):return {'protocol':5,'arena':14976}
+        def call(self,code):return raw_fault if code==0x75 else raw_timing
+        def end(self):
+            assert saved.exists(), 'raw evidence must persist before reboot'
+    monkeypatch.setitem(sys.modules,'k6_install',types.SimpleNamespace(
+        Cable=FakeCable,CABLE_HANDSHAKE=b'',open_port=lambda opts:contextlib.nullcontext(None)))
+    monkeypatch.setitem(sys.modules,'k6_port_lock',types.SimpleNamespace(
+        serial_lock=lambda port:contextlib.nullcontext()))
+    with pytest.raises(ValueError,match='exceeds four'):
+        run('/dev/does-not-exist',save=saved)
+    evidence=json.loads(saved.read_text())
+    assert evidence['fault_raw_hex']==raw_fault.hex()
+    assert evidence['timing_raw_hex']==raw_timing.hex()
+    assert evidence['fault']['valid']
+    assert evidence['timing'] is None
+    assert evidence['decode_error'].startswith('ValueError:')
