@@ -51,3 +51,18 @@ Also study the codec table-read pattern and CPU-heavy codec code paths, since 50
 A worthwhile benchmark is a model ablation at measured SPI times and real op0 preload cost versus the zero/pre-staged op0 scenario, plus a trace of codec compute time if the first fix is inconclusive. Preserve the independent virtual RF decoder and error/dekey regressions.
 
 **Hardware state:** the radio remains on the previously installed GPF1+GPT1 temporary diagnostic firmware, and the unchanged signed SOTTO GP0 module is in catalog slot 24. The full verified 2 MiB SPI backup and known-good field firmware remain available. The bench has no owner, and the cable read session has ended/rebooted the radio normally.
+
+## Offline FSK preload sensitivity — not sufficient by itself
+
+Following the full hardware capture, an additional **offline compiled Cortex-M0 virtual RF replay** used the hardware-calibrated streaming SPI read costs and a 250ms synthesized 8kHz PCM stream. Its FSK model assigns a per-RFIC-register-write delay, not the exact device's asynchronous 20ms settle sequence; these are sensitivity experiments, **not a physical RFIC throughput measurement**. The model's assumed CPI/ISR costs are deliberately conservative and are not measured hardware averages.
+
+| CPI assumption | GP0 ISR cycles per PCM sample (model) | FSK write cost (model) | PCM samples before overflow | Complete? |
+|---:|---:|---:|---:|---|
+| 2.5 | 4,000 | 2 µs (nearly zero) | 1,920 | No |
+| 2.5 | 4,000 | 60 µs | 1,600 | No |
+| 2.5 | 4,000 | 300 µs | 1,120 | No |
+| 3.0 | 3,000 | 2 µs (nearly zero) | 1,600 | No |
+| 3.0 | 3,000 | 60 µs | 1,280 | No |
+| 3.0 | 3,000 | 300 µs | 1,120 | No |
+
+Source evidence: [`docs/evidence/sotto-gp0-fsk-preload-ablation-20261126.json`](evidence/sotto-gp0-fsk-preload-ablation-20261126.json). All six model runs reached a four-block PCM queue and returned -12. **Shortening the FSK preload helps** (~320 extra captured samples in both conservative test conditions from 60→2 µs per RFIC write), **but does not eliminate the sustained throughput problem** under these assumptions. Therefore work on cooperative FSK preload should be paired with optimization or profiling of actual codec computation/resource fetches rather than proposed as a complete fix in isolation.
