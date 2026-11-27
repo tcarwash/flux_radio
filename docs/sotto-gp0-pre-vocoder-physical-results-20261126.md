@@ -47,3 +47,26 @@ The 1kHz sine-fit residual RMS is **~0.04499** (~-26.94dBFS); relative to its 0.
 4. Do not interpret output WAV labeled 8kHz as physically 8kHz until source clock correction; this explains the ~937.5Hz precodec fundamental for an actual 1kHz generator.
 
 All physical run metadata was inspected from `recovery/pcm_air/gen-{off,500,1000}-01.json`. The 500/1000 WAVs were re-read and checked against their signed-PCM SHA256s. The generator-OFF IQ was decoded again with the independent blind RF framing and D9 CRC decoder, yielding 36/36 valid sequential packets. No radio serial, flashing, PTT or transmitter commands were issued in this analysis.
+
+## Second 500Hz run: physical confirmation (same evening)
+
+The operator made a fourth recording, `recovery/pcm_air/gen-500-02.c64` (28.032s of post-tune IQ, original 28,704,768-byte file preserved). The receiver's metadata says `complete_pcm: false`, because it received only packets **0–19 (20/67)**, with no missing packets in that *prefix*. Its real D9 CRC/session decoder recovered **480 genuine consecutive signed-16 PCM samples** (no filler, prediction, or synthetic silence); exactly 47 trailing RF packets are missing. This is consistent with a shortened transmission or physical PTT release, but *the reason for truncation is not established*. The module's LCD completion state was not recorded for this run.
+
+A separate offline re-decode and sine fit of those 480 samples yielded:
+
+| Measure | Second 500Hz (`-02`) | Earlier 500Hz (`-01`) | 1000Hz reference (`-01`) |
+|---|---:|---:|---:|
+| Present consecutive samples | 480/1600 | 1600/1600 | 1600/1600 |
+| Physical capture time from D9 header | 187.6ms (full capture completed even if RF incomplete) | 187.5ms | 187.6ms |
+| PCM production rate from MCU ticks | 8528.78 samples/s | 8533.33 | 8528.78 |
+| WAV-8k-equivalent measured pitch | **468.69Hz** | no robust tone | **937.50Hz** |
+| Pitch corrected by physical sample production rate | **499.67Hz** | not reliable | **999.47Hz** |
+| Dominant fitted sinusoid peak/full-scale | **0.40745** | ~0.00041 at clock-predicted tone | **0.41098** |
+| RMS of residual after fitted sine/full-scale | **0.04633** | ~0.0446 (noise-dominated) | **0.04499** |
+| Total PCM RMS/full-scale | **0.29147** | ~0.04463 | **0.29407** |
+| Max absolute PCM sample/full-scale | 0.48242 | 0.16113 | 0.51465 |
+| Near-full-scale clipped samples | 0 | 0 | 0 |
+
+**Conclusion:** The second 500Hz run is a strong authentic pre-vocoder signal. It agrees with the 1kHz reference in amplitude (tone ratio ~-0.08dB), similar residual broadband noise (~0.045 relative full scale), and corrected generator pitch within <1Hz. Thus the previous weak 500Hz take is **not reproducible** and cannot justify attributing a >40dB difference to GP0 hardware frequency response. The 6.6% fast PCM producer is independently corroborated at **two input frequencies**. The 480-sample window is only ~56ms wall time, so noise-spectrum detail and long-term drift remain uncertain.
+
+**Next hardware step, if a full replacement is desired:** make another attended 500Hz capture with a *new* name, generator output stable before launch and physical PTT **held until `67 packets sent`**. A complete second generator-OFF run remains useful for the original strict OFF/ON comparator. Do not delete, patch, or fabricate samples to satisfy its 1600-sample full-record gate. For clock remediation, run a firmware-free offline model first; all previous queue-overflow / ISR-cycle safety constraints remain applicable.
