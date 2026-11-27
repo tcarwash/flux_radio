@@ -34,6 +34,18 @@ The pinned `sotto/c/fixed/sotto_fx_slim.c` Sotto1200 **speech** encoder searches
 
 The decoded 2k tone has broad, changing peaks roughly 1.9–2.05kHz (and generated high frame content); this resembles the unstable high-frequency native codec response and is not a reliable oscillator frequency counter.
 
+## The codec alone reproduces much of the 500-vs-1k level difference
+
+The controlled *native* slim encoder/decoder also reveals that Sotto loses energy from a pure 1kHz digital input even with the microphone, RF and decoder web monitor **entirely absent**. At identical exact PCM sine peak amplitude, the decoder's output RMS levels were:
+
+| Clean digital PCM sine peak level | Native decoded 500Hz | Native decoded 1kHz | 1kHz lower by |
+|---|---:|---:|---:|
+| 0.08 full-scale | −27.78 dBFS | −31.67 dBFS | 3.89 dB |
+| 0.20 full-scale | −18.74 dBFS | −24.89 dBFS | **6.15 dB** |
+| 0.35 full-scale | −14.22 dBFS | −18.12 dBFS | 3.90 dB |
+
+The physical 500→1k difference is **5.65 dB**, within the range reproduced by the native speech codec alone. This strongly supports a **codec level/voicing response** as a substantial contributor to the apparent quiet 1k tone; it does **not establish** the real microphone's absolute frequency response or whether additional analog gain variation exists. Native PCM levels are fractions of signed full scale, not the generator's 0.1 Vpp electrical amplitude; do not equate them directly.
+
 ## Why the observed ~4% downward frequency offset is not yet explained
 
 The Rust GP0 implementation currently fixes `fs=87,260` groups per second for its fractional `group_phase += 8,000` converter and labels emitted PCM as **8,000Hz**. Earlier physical GP0 calibration observed **84,960 groups/s** during a 1k test and **87,770 groups/s** in another OFF/2k test; however, those earlier records are **not contemporaneous with the current five transmitted WAVs**, and the rate varies by about 3.3%.
