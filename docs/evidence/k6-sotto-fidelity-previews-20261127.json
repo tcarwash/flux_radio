@@ -1,0 +1,117 @@
+{
+  "clips": {
+    "long_17p16s": {
+      "duration_s": 17.16,
+      "original_highband_fraction": 0.2342,
+      "variants": {
+        "focused": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0707,
+          "peak_fs": 0.30103,
+          "rms_fs": 0.06162
+        },
+        "gentle": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1501,
+          "peak_fs": 0.29797,
+          "rms_fs": 0.06162
+        },
+        "original": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.2342,
+          "peak_fs": 0.31003,
+          "rms_fs": 0.06162
+        },
+        "presence": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1537,
+          "peak_fs": 0.30872,
+          "rms_fs": 0.06162
+        },
+        "strong": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0274,
+          "peak_fs": 0.31049,
+          "rms_fs": 0.06162
+        }
+      }
+    },
+    "medium_4p64s": {
+      "duration_s": 4.64,
+      "original_highband_fraction": 0.2058,
+      "variants": {
+        "focused": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0646,
+          "peak_fs": 0.77762,
+          "rms_fs": 0.07285
+        },
+        "gentle": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1387,
+          "peak_fs": 0.72778,
+          "rms_fs": 0.07285
+        },
+        "original": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.2058,
+          "peak_fs": 0.74326,
+          "rms_fs": 0.07285
+        },
+        "presence": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1416,
+          "peak_fs": 0.70819,
+          "rms_fs": 0.07285
+        },
+        "strong": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0235,
+          "peak_fs": 0.80496,
+          "rms_fs": 0.07285
+        }
+      }
+    },
+    "short_2p24s": {
+      "duration_s": 2.24,
+      "original_highband_fraction": 0.2701,
+      "variants": {
+        "focused": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0696,
+          "peak_fs": 0.58621,
+          "rms_fs": 0.06189
+        },
+        "gentle": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1619,
+          "peak_fs": 0.58524,
+          "rms_fs": 0.06189
+        },
+        "original": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.2701,
+          "peak_fs": 0.60248,
+          "rms_fs": 0.06189
+        },
+        "presence": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.1588,
+          "peak_fs": 0.56842,
+          "rms_fs": 0.06189
+        },
+        "strong": {
+          "clipped_samples": 0,
+          "highband_fraction": 0.0247,
+          "peak_fs": 0.58057,
+          "rms_fs": 0.06189
+        }
+      }
+    }
+  },
+  "date": "2026-11-27",
+  "decoded_audio_is_not_paired_clean_reference": true,
+  "human_listening_scores_not_collected": true,
+  "offline_only": true,
+  "schema": 1
+}
