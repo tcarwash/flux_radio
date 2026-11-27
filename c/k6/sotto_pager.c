@@ -18,6 +18,14 @@
 #error "SP_HISS builds on SP_LR with the K6 hiss layer: -DFX_HISS_LIGHT -DFX_HISS_FB -DSOTTO_V38"
 #endif
 #endif
+/* A 1200-only firmware rejects other voice codecs on receive.
+ * The 4800-baud RF transport remains unchanged. The v3.7 synthesis core is
+ * still required to decode the two halves of Sotto-1200 frames. */
+#ifdef SP_ONLY_1200
+#if !defined(SP_LR) || defined(SP_VLR) || defined(SP_HISS)
+#error "SP_ONLY_1200 requires Sotto-1200 without VLR or hiss"
+#endif
+#endif
 #include "../fixed/fx.h"            /* FX_OA_PACKED: whether fx_cs512's 2 KB table is in RAM */
 #ifdef SP_CABLE_DIAG
 extern void km_cable_diag(uint8_t stage);
@@ -312,7 +320,11 @@ int sp_init(void *mem, unsigned bytes) {
 }
 
 static int voice_magic(int m) {
+#ifdef SP_ONLY_1200
+  return m == SP_MAGIC_LR;
+#else
   return m == SP_MAGIC || m == SP_MAGIC_LR || m == SP_MAGIC_600 || m == SP_MAGIC_400;
+#endif
 }
 /* a voice packet, or a voice codec's parity packet */
 static int pager_magic(int m) { return voice_magic(m & ~PARITY); }
@@ -493,7 +505,12 @@ int sp_packet(const uint8_t *payload, int len) {
   S.st.good_packets++;
   if (!S.max_frames) return SP_DUP;
   {
-    uint8_t m = last_pkt[0], prof = (uint8_t)((len == SP_PAYLOAD_XL ? 'X' : 'L') | ((m & ~PARITY) != SP_MAGIC ? 0x20 : 0));
+    uint8_t m = last_pkt[0];
+#ifdef SP_ONLY_1200
+    uint8_t prof = (uint8_t)((len == SP_PAYLOAD_XL ? 'X' : 'L') | 0x20);
+#else
+    uint8_t prof = (uint8_t)((len == SP_PAYLOAD_XL ? 'X' : 'L') | ((m & ~PARITY) != SP_MAGIC ? 0x20 : 0));
+#endif
     r = m & PARITY ? parity(last_pkt, fpp_of(len), prof) : packet(last_pkt, fpp_of(len), prof);
   }
   return r;
