@@ -1,0 +1,23 @@
+# Sotto combined API29 TX / API31 RX K6 physical checkpoint — Nov 26, 2026
+
+**Hardware outcome:** A new **107,520-byte** K6 MCU firmware, SHA256 `1903449a0b99daf1b65acb8fa35e60b770be4aeb991493cb0bae887778153d7f`, was successfully flashed through stock UPDATE (all **105/105** 1KiB blocks acknowledged). Radio rebooted on VFO **443.500 MHz**, protocol 5, build ID `f666ced065f41ac3`, module API maximum **31**, native FSK RX capability enabled, arena **14,976B**, battery approximately 7.65V, **TX off** after each test. The SPI KUL2 library was **not modified**.
+
+The firmware enables `K6_LIVE_SERIAL=1`, the API29 `SOTTO SYNTH` native 8kHz time-paced PCM/optimized encoder/FSK transmitter, and the API31 RFIC receive primitive, but **turns off GP0 physical microphone capture and the resident speaker decoder**. The separate `SOTTO RX` module remained in slot28, `SOTTO SYNTH` in temporary slot22 (the original `LED DEMO` is backed up). The lean image lacks live bulk SPI read, so the complete catalog was **not independently read back**, but both installed modules loaded and returned when launched; restoring LED DEMO later is a separate explicit operation.
+
+## Offline safety qualification before flash
+
+Memory audit: protected RAM0 3,676/3,840B (164B free); full stack reservation 2,780B (exact required minimum); flash 107,520/122,880B (15,360B free). No extra host decoder flash. Test run **24/24 passed**. The five-case matched linked ARM/virtual-RF gate passed after explicitly distinguishing pre-FIFO **PA-on** and FSK start strobe: 33 FIFO words load before register 0x59 `0x08f8` actually starts FSK, TX dekeys even on errors. Normal TX and RX→TX→RX both had independently decoded virtual RF packets; invalid guard rejected without RF; early abort and delayed poll never started RF.
+
+This API29 build's PA becomes active after the guarded TX lease, **before** FIFO preload. Earlier API29 gate assumed PA enabled *after* preload and was inapplicable; the modified gate uses explicit `--pa-sequence preload` and continues enforcing no RF strobe before word33. This is not permission to relax the TX watchdog, band restrictions or errors. The receiver is the existing API31 native RFIC packet primitive, not a voice/PCM decoder.
+
+## Physical results
+
+- `SOTTO RX` slot **28**, API31, loaded **10,838 code bytes**, returned **-8** (no packet received), returned control without cancellation. No external Sotto packet was provided. Radio returned idle in RX with TX off. **This does not prove successful over-the-air RX.**
+- `SOTTO SYNTH` slot **22**, API29, returned **26 codec frames**; reports `SYN:M:00000065` (peak encoder callback **10.1ms**), `SYN:Q:00000001` (peak queued PCM blocks **1/4**); no cancellation, returned standby with TX off. The physical TX result is a valid module completion but **is not yet independently SDR-decoded RF**.
+- Attempted independent RTL-SDR capture with a receive-only Soapy harness. The SDR enumerated correctly (`Generic RTL2832U OEM`, serial `00000001`) but Soapy `Device.make()` refused to open it. The capture script therefore aborted **before triggering any TX**; no raw IQ or false bit-exact claim was produced. The separate successful TX test above remains the single successful TX regression on this new build.
+
+Original MCU rollback image, older GP0 diagnostics, original full 2MiB SPI backup, and exact slot22 `LED DEMO` envelope remain available. See [machine-readable evidence](evidence/sotto-synth-rx31-first-physical-20261126.json). Detailed local logs are in `/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/duplex-sotto1200-size-audit-20261126/api31-synthetic-host/`.
+
+## Remaining work to call this a full on-radio voice modem
+
+The K6 module API has `fsk4800_rx()` and `fsk_async()` but no PCM-to-speaker output callback. `K6_SOTTO_SERVICE=1` with full Sotto1200 decoder resident in MCU flash was built separately and failed flash gating at **149,540B**, 26,660B above the limit. The 1200-only packet filter and half-duplex decoder arena reuse are verified and committed in `optimize/sotto1200-exclusive-lean-pool-20261126` commit `8b20c0de`; they do not make the resident decoder fit. The decoder needs a code page or loadable SPI-backed module plus a small bounded PCM output API and correctly scheduled 8kHz audio PWM. The TX counterpart also needs real GP0 microphone/serial coexistence and PCM queue deadline fixes. Next hardware milestone: recover at least one packet via API31 while an external station transmits, independently validate FDV1 CRC, then implement speaker playback from the full 1200 decoder without bloating the MCU.

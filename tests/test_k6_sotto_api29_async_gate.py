@@ -15,7 +15,8 @@ def test_actual_arm_fsk29_success_preload_and_half_duplex_iq():
     elf=os.environ.get("K6_SIM_SOTTO_RX31_ELF")
     if not image or not elf or os.environ.get("K6_SIM_SOTTO_ASYNC_FSK")!="1":
         pytest.skip("Explicit K6_SOTTO_ASYNC_FSK=1 matched ELF/image required")
-    result=run(Path(elf),Path(image),ROOT)
+    result=run(Path(elf),Path(image),ROOT,
+               pa_sequence=os.environ.get("K6_SIM_PA_SEQUENCE","after_fifo"))
     assert result["result"]=="PASS"
     assert result["arm_module_runner"]
     assert not result["hardware_used"] and result["rf_simulated_only"]
@@ -38,9 +39,9 @@ def test_actual_arm_fsk29_success_preload_and_half_duplex_iq():
     assert cases["bad_guard"]["air_bursts"]==0
     assert cases["bad_guard"]["words_written"]==0
     assert cases["abort_early"]["module_return"]==8
-    assert cases["abort_early"]["virtual_fsk"]["aborted"]==1
+    assert cases["abort_early"]["virtual_fsk"]["aborted"]==(0 if os.environ.get("K6_SIM_PA_SEQUENCE")=="preload" else 1)
     assert cases["abort_early"]["virtual_fsk"]["active"] is False
     assert cases["timeout_poll"]["module_return"]==-12
-    assert cases["timeout_poll"]["virtual_fsk"]["completed"]==1
+    assert cases["timeout_poll"]["virtual_fsk"]["completed"]==(0 if os.environ.get("K6_SIM_PA_SEQUENCE")=="preload" else 1)
     assert cases["timeout_poll"]["virtual_fsk"]["active"] is False
     assert cases["timeout_poll"]["pa_off"]
