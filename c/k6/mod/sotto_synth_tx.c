@@ -5,7 +5,7 @@
  * it detects the same four-PCM-block backlog pressure as a live producer,
  * without substituting a software-only FSK acknowledgment.
  * SPDX-License-Identifier: MIT */
-#define K6_MODULE_LEVEL 30
+#define K6_MODULE_LEVEL 29
 #define K6_MODULE_OPT z
 #include "../k6_mod.h"
 #include "sotto_m0rt.h"
@@ -105,7 +105,7 @@ static void report(const k6_api_t*a,char category,uint32_t number){
 }
 #endif
 int k6_main(const k6_api_t *a){
-    if(!a||a->abi!=1||a->level<30)return -3;
+    if(!a||a->abi!=1||a->level<29)return -3;
 #if !SOTTO_SYNTH_TX_ARMED
     a->say("SOTTO SYNTH inert");return -9;
 #else

@@ -199,7 +199,7 @@ def main():
               "arena_14976_scratch_upper":scratch_available,
               "scratch_margin":scratch_available-SOTTO_LIVE_SCRATCH_REQUIRED if selected else None,
               "library":[{"id":"sotto-gp0-irq" if a.gp0_irq_tx else "sotto-synthetic" if a.synthetic_tx else "sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO GP0" if a.gp0_irq_tx else "SOTTO SYNTH" if a.synthetic_tx else "SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
-                          "file":"module.bin","level":30 if (a.live_tx or a.gp0_irq_tx or a.synthetic_tx) else 31 if a.tone_tx else 5}],
+                          "file":"module.bin","level":29 if a.synthetic_tx else 30 if (a.live_tx or a.gp0_irq_tx) else 31 if a.tone_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),

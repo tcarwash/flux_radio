@@ -25,6 +25,23 @@ for file,anchor in insert.items():
         updates[file]=s
     else:
         updates[file]=s.replace(anchor,prefix+anchor,1)
+# API29 modules in this deliberately mic-free synthetic test profile use
+# the same PA-muted FIFO path as API30. The normal firmware's API30-only
+# admission and analog TX behavior remain byte-for-byte unchanged.
+# Check both exact guards before writing *any* modified generated file.
+pager=work/'src/app/pager.rs'
+s=updates[pager]
+guards=(
+ ('if new_tail && (!cfg!(k6_sotto_async_fsk) || !matches!(unsafe{*arena::base().add(12)},30|31)) {',
+  'if new_tail && (!cfg!(k6_sotto_async_fsk) || !matches!(unsafe{*arena::base().add(12)},29|30|31)) {'),
+ ('let digital=cfg!(k6_sotto_async_fsk) && unsafe{*arena::base().add(12)>=30};',
+  'let digital=cfg!(k6_sotto_async_fsk) && unsafe{*arena::base().add(12)>=29};'),
+)
+for before,after in guards:
+    if s.count(before)!=1 or s.count(after)!=0:
+        raise SystemExit('Synthetic-only API29 FSK admission anchor missing or ambiguous')
+    s=s.replace(before,after,1)
+updates[pager]=s
 for file,s in updates.items():
     if file.read_text()!=s:file.write_text(s)
-print('Placed bounded module context and cooperative cancellation state in protected RAM0')
+print('Placed bounded live state in RAM0 and allowed synthetic API29 FSK with PA muted')
