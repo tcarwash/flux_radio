@@ -26,7 +26,7 @@ SOTTO_ARENA_BYTES=14976
 SOTTO_SCRATCH_RESERVE=1040
 SOTTO_MODULE_OVERHEAD=24
 
-def adapt(text, *, fast_history_copy=False, fast_cb_pair=False):
+def adapt(text, *, fast_history_copy=False, fast_cb_pair=False, fast_lag_pair=False):
     def once(old,new):
         nonlocal text
         if text.count(old)!=1:raise ValueError("Unexpected upstream context: "+old)
@@ -118,9 +118,21 @@ static int32_t cb_hn(const signed char *y, const int16_t *t, int n) {
   return hsum;
 }"""
         once(old,new)
+    if fast_lag_pair:
+        # Source is the pinned fixed profile: W4=120 and SUB2=2.
+        # Preserve each product's independent shift/round and the original
+        # serial accumulation order; only eliminate half the loop branches.
+        once('  for (L = LMIN - 1; L <= LMAX + 1; L++) {',
+             '  _Static_assert(SUB2 == 2 && W4 % (2 * SUB2) == 0, "paired lag stride");\n'
+             '  for (L = LMIN - 1; L <= LMAX + 1; L++) {')
+        once('    for (i = 0; i < W4; i += SUB2) r += ((int32_t)p0[i] * p1[i]) >> sh;',
+             '    for (i = 0; i < W4; i += 2 * SUB2) {\n'
+             '      r += ((int32_t)p0[i] * p1[i]) >> sh;\n'
+             '      r += ((int32_t)p0[i + SUB2] * p1[i + SUB2]) >> sh;\n'
+             '    }')
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fast_div=False,fast_history_copy=False,fast_cb_pair=False):
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fast_div=False,fast_history_copy=False,fast_cb_pair=False,fast_lag_pair=False):
     selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx))
     if selected>1:
         raise ValueError("Select exactly one Sotto TX input implementation")
@@ -131,18 +143,18 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fa
     if rev!=PIN:raise ValueError("Unexpected Sotto pin; requalify codec and SPI tables")
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
-        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),fast_history_copy=fast_history_copy,fast_cb_pair=fast_cb_pair))
+        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),fast_history_copy=fast_history_copy,fast_cb_pair=fast_cb_pair,fast_lag_pair=fast_lag_pair))
         source=(SRC.with_name("sotto_gp0_irq_tx.c") if gp0_irq_tx else
                 SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c")) if selected else SRC
         code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
             "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []) + (["-DSOTTO_FAST_DIV=1"] if fast_div else []))
-    if selected and fast_cb_pair:
+    if selected and (fast_cb_pair or fast_lag_pair):
         scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
         scratch_margin=scratch_available-SOTTO_LIVE_SCRATCH_REQUIRED
         if scratch_margin<48:
-            raise ValueError(f"paired codebook scoring leaves only {scratch_margin} scratch bytes; at least 48 are required")
+            raise ValueError(f"experimental encoder loop optimizations leave only {scratch_margin} scratch bytes; at least 48 are required")
     if entry!=k6mod.bin_entry(code):raise ValueError("Unexpected module entry")
     return code,entry
 
@@ -156,8 +168,9 @@ def main():
     p.add_argument("--fast-div",action="store_true",help="EXPERIMENTAL shorter normalized ARMv6-M software divide; default off")
     p.add_argument("--fast-history-copy",action="store_true",help="EXPERIMENTAL aligned word copies for the two rolling PCM histories; default off")
     p.add_argument("--fast-cb-pair",action="store_true",help="EXPERIMENTAL paired codebook-score loop; default off")
+    p.add_argument("--fast-lag-pair",action="store_true",help="EXPERIMENTAL paired exact lag-correlation loop; default off")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair,fast_lag_pair=a.fast_lag_pair)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
@@ -170,6 +183,7 @@ def main():
               "fast_div_experimental":a.fast_div,
               "fast_history_copy_experimental":a.fast_history_copy,
               "fast_cb_pair_experimental":a.fast_cb_pair,
+              "fast_lag_pair_experimental":a.fast_lag_pair,
               "build_id":"0000000000000000",
               "scratch_required":SOTTO_LIVE_SCRATCH_REQUIRED if selected else 0,
               "arena_14976_scratch_upper":scratch_available,
