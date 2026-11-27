@@ -66,3 +66,20 @@ Replay through the same compiled Rust decimator used for the earlier 500 Hz test
 | FIR11 | 0.40828 | 0.03647 | 17.97 dB | +1.00 dB | −0.23 dB |
 
 AA3 reduces reconstructed noise further but introduces more signal attenuation even at 1kHz. On the strong 500 Hz recording, AA3 gained ~2.45 dB versus FIR11 ~1.27 dB; at 1kHz, those gains were ~1.58 versus ~1.00 dB. **Do not deploy based only on these 32–44 ms tone recordings.** To resolve upper speech-band fidelity versus anti-alias rejection, a supervised **2,800 Hz 0.1 Vpp** raw capture is the useful next measurement, followed by human speech recordings. 2.8kHz is close to where earlier modeling predicted AA3 attenuation ~4.6 dB versus FIR11_LATE ~1.6 dB. The optional filters remain OFF on the radio. Exact packet/continuity analysis is saved in `docs/evidence/k6-gp0-1000hz-raw-physical-20261127.json` (derived metrics only).
+
+## 2.8 kHz physical raw capture — high-frequency passband discrimination
+
+After 500Hz and 1kHz measurements, the operator set the generator to **2,800 Hz at 0.1Vpp, output ON**, with physical PTT held manually. The radio sent **86/86 CRC-valid packets**, yielding exactly **4,096 popcounts** and the complete original **35.072s** RTL-SDR IQ. Those source files remain private in `recovery/gp0_raw/`, with **no missing samples** or interpolation. Capture timer 439 ticks = 43.9ms, inferred raw-group rate 93,303/s. Source SHA256 `f5c21e5b8b586f2c0441023ef4b23f770126db703f92a92b96045251b1026764`. Fitted raw tone **2,799.994Hz**, **3.199 group counts peak**, **1.264 counts residual RMS**.
+
+Actual Rust group-decimator variants, all replayed offline against *identical* source group counts with the prospective weight 7500:
+
+| Filter | PCM 2.8kHz peak FS | Residual noise RMS FS | SNR | Signal attenuation vs original | SNR change vs original |
+|---|---:|---:|---:|---:|---:|
+| Original (no prefilter) | 0.321649 | 0.039845 | 15.130 dB | — | — |
+| AA3 | 0.188929 | 0.029348 | 13.164 dB | **−4.622 dB** | **−1.966 dB** |
+| FIR11_LATE | 0.267206 | 0.034652 | 14.732 dB | **−1.611 dB** | **−0.398 dB** |
+| FIR11 | 0.266975 | 0.034643 | 14.727 dB | **−1.618 dB** | **−0.403 dB** |
+
+This real physical capture confirms the synthetic upper-voice-band prediction: AA3 trades too much high-frequency signal power for low-frequency noise suppression. AA3 is **not** a general-purpose voice-quality fix. FIR11_LATE preserves considerably more 2.8kHz amplitude while still reducing reconstructed noise; it is a more promising candidate for subjective listening trials, but its SNR at this single 2.8kHz tone is still slightly lower than the original boxcar's. The original configuration may remain preferable without further input-specific speech testing. **Do not enable filters on hardware from these tests alone**; previously measured MCU IRQ timing and only 24 bytes of protected RAM0 headroom remain constraints. More useful offline next steps include analysis of possible lighter FIR coefficients, high-frequency equalization after decimation, and evaluating those with saved real GP0 counts and speech recordings.
+
+Derived-only machine-readable source: `docs/evidence/k6-gp0-2800hz-raw-physical-20261127.json`.
