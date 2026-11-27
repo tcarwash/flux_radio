@@ -63,6 +63,18 @@ else
   OUT=${K6_OUT:-"$ROOT/c/k6/build"}
   LR=
 fi
+# In an explicitly Sotto-1200-only voice firmware, drop acceptance of v3.7,
+# 600 and 400 packet magics. This is separate from the 4800-baud RF carrier.
+# Do not silently change mixed-mode builds or their receiver compatibility.
+case "${K6_SOTTO1200_ONLY:-0}" in
+  0) ;;
+  1)
+    [ "${K6_CODEC:-}" = 1200 ] && [ "${K6_HISS:-0}" = 0 ] || {
+      echo "K6_SOTTO1200_ONLY requires K6_CODEC=1200 and no hiss" >&2; exit 1;
+    }
+    LR="$LR -DSP_ONLY_1200" ;;
+  *) echo "K6_SOTTO1200_ONLY must be 0 or 1" >&2; exit 1 ;;
+esac
 # K6_VOICE=0: the EXPLORE image's library (firmware/k6-aura/build.sh aura-explore), the voice
 # decoder left out (c/k6/sp_novoice.c stands in for it), into c/k6/build-explore
 if [ "${K6_VOICE:-1}" = 0 ]; then

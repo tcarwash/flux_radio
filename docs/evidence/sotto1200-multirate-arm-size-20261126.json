@@ -1,0 +1,44 @@
+[
+  {
+    "name": "1200",
+    "sections": {
+      ".text": 18572,
+      ".rodata": 37977,
+      ".data": 20,
+      ".bss": 284
+    },
+    "flash_bytes": 56569,
+    "static_ram_bytes": 304,
+    "contains_vlr": false,
+    "contains_1200": true,
+    "sha256": "fe593fb0fcb9cd36d6fe940da1ac2358a8e0d8bae0e9be32f6078c93370ae2f9"
+  },
+  {
+    "name": "only1200",
+    "sections": {
+      ".text": 18548,
+      ".rodata": 37977,
+      ".data": 20,
+      ".bss": 284
+    },
+    "flash_bytes": 56545,
+    "static_ram_bytes": 304,
+    "contains_vlr": false,
+    "contains_1200": true,
+    "sha256": "aad4adca9ff11afdc258f926d51d9966c51a2541e35ce904a84a7a515951a007"
+  },
+  {
+    "name": "vlr",
+    "sections": {
+      ".text": 21344,
+      ".rodata": 60292,
+      ".data": 24,
+      ".bss": 300
+    },
+    "flash_bytes": 81660,
+    "static_ram_bytes": 324,
+    "contains_vlr": true,
+    "contains_1200": true,
+    "sha256": "229b7e401bf42c903616bb9140effa5aa97ae58175b1b0c273ffd8423ec529f3"
+  }
+]

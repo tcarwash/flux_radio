@@ -17,6 +17,14 @@ PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import va
 PYTHONPATH="$ROOT/tools" python3 -c 'import sys; from k6_feature_packs import validate_tx_profile; validate_tx_profile(sys.argv[1])' "$K6_TX_PROFILE"
 K6_OTA_SERVICE=${K6_OTA_SERVICE:-0}
 K6_SOTTO_SERVICE=${K6_SOTTO_SERVICE:-0}
+case "${K6_SOTTO1200_ONLY:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_SERVICE" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO1200_ONLY requires K6_SOTTO_SERVICE=1 and expanded RAM0=1" >&2; exit 1;
+    } ;;
+  *) echo "K6_SOTTO1200_ONLY must be 0 or 1" >&2; exit 1 ;;
+esac
 # Screenshots and logical UI keys are part of the standard live serial
 # interface; an explicit K6_REMOTE_UI=0 still disables them for tiny builds.
 K6_REMOTE_UI=${K6_REMOTE_UI:-${K6_LIVE_SERIAL:-0}}
@@ -132,6 +140,10 @@ python3 "$HERE/apply-ota-service.py"
 python3 "$HERE/trim-generated-host.py"
 python3 "$HERE/apply-pack-service-gates.py"
 K6_SOTTO_SERVICE="$K6_SOTTO_SERVICE" python3 "$HERE/apply-sotto-service.py"
+# Correct the lean host's skipped decoder-pool init only for a true Sotto 1200 voice profile.
+if [ "${K6_SOTTO1200_ONLY:-0}" = 1 ]; then
+  python3 "$HERE/apply-sotto1200-exclusive-pool.py"
+fi
 if [ "${K6_MODULE_REMOVE:-1}" = 1 ]; then
   python3 "$HERE/apply-library-erase.py"
 fi
@@ -316,16 +328,22 @@ cp "$K6_FLUX_ART_DIR/splash.bin" "$OUT/flux-boot-logo.bin"
 K6_EXPLORE_HOST=0
 case ",$FEATURES," in *,blowfang-host,*) K6_EXPLORE_HOST=1 ;; esac
 K6_VOICE=0
+K6_CODEC=
 if [ "$K6_SOTTO_SERVICE" = 1 ]; then
   K6_VOICE=1
+  # When the voice profile explicitly targets 1200 only, enable the native
+  # 1200 LR decoder rather than accidentally building the legacy v3.7 core.
+  if [ "${K6_SOTTO1200_ONLY:-0}" = 1 ]; then K6_CODEC=1200; fi
 fi
 K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PKT_YIELD=0 K6_VOICE="$K6_VOICE" K6_CB=spi \
+  K6_CODEC="$K6_CODEC" K6_SOTTO1200_ONLY="${K6_SOTTO1200_ONLY:-0}" \
   K6_MODE_REGISTRY="$K6_MODE_REGISTRY" K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX" K6_FSK4800_RX="$K6_FSK4800_RX" \
   K6_SOTTO_RESOURCES="$K6_SOTTO_RESOURCES" K6_SOTTO_ASYNC_FSK="$K6_SOTTO_ASYNC_FSK" K6_SOTTO_MIC="$K6_SOTTO_MIC" \
   K6_OUT="$OUT/c-build" sh "$ROOT/tools/k6_build.sh"
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
+if [ "${K6_SOTTO1200_ONLY:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_1200_only"; fi
 if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"; fi
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbox"; fi
 if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
