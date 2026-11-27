@@ -32,3 +32,20 @@ Keep `recovery/gp0_raw/*.c64`, `*.bin`, `*.json` private; only derived **nonreve
 ## Next attended physical check
 
 Before another long raw-data transmission, confirm the external generator at **500Hz / 0.1Vpp / output ON** is reaching the radio's microphone input. A short analog FM transmit into the dummy load, with an independent receiver/SDR monitoring the output, can check the cable and microphone route; do not transmit unattended. Then request an additional **500Hz raw-group capture**, followed by **1kHz**. Receiver must be started first; physically hold PTT until `GP0 RAW TX DONE / 86 packets sent`. If either raw capture again lacks a tone while analog FM confirms the generator, investigate the new API9 pre-decimator raw capture path and sampling mode before inferring frequency or anti-alias improvements.
+
+## Third take — 500 Hz after operator reseated generator probes (successful)
+
+A second retry while the signal generator had timed out produced **no RF frames** (35 seconds of noise-only IQ); its raw IQ was retained privately. The operator identified the signal generator timeout, re-enabled the generator, and supervised another capture at 500 Hz and 0.1 Vpp.
+
+The third 500 Hz take recovered **all 86/86 guarded CRC-valid RF packets**, yielding **4,096 complete raw group counts** (`recovery/gp0_raw/gen-500-20261127-03.bin`, source SHA256 `26a871d9af716673b09adfc2542ad91f010edc21f392a175d3842fc68e8ff3c2`). Independent 500 Hz sine fitting measured **500.0795 Hz**, **3.22255 raw counts peak**, **1.29336 counts residual RMS**, and a 500 Hz raw-domain SNR of approximately **4.92 dB**. This is **~52 times** the earlier weak-tone group's amplitude. The 43.9 ms acquisition timer again implied ~93,303 GP0 groups per second.
+
+Replaying *these actual recorded counts* through the exact compiled Rust decimator with the **offline-only** 7500 fractional clock correction produced:
+
+| Filter | 500 Hz PCM peak (FS) | Residual noise RMS (FS) | 500 Hz SNR | Gain vs original |
+|---|---:|---:|---:|---:|
+| Original boxcar | 0.39844 | 0.04203 | 16.52 dB | — |
+| AA3 | 0.38994 | 0.03104 | 18.97 dB | **+2.45 dB** |
+| FIR11_LATE | 0.39572 | 0.03604 | 17.80 dB | +1.28 dB |
+| FIR11 | 0.39544 | 0.03602 | 17.80 dB | +1.27 dB |
+
+This is the first **actual source-data** demonstration of a clear, strong GP0 tone and pre-decimator filtering benefits. The earlier nominal 500 Hz original PCM AIR capture was ~0.41 full-scale peak; near agreement with the 0.39844 reconstructed peak now supports the raw group acquisition path. 44 ms does not prove robustness over speech-length signals; the noise changes are not yet sufficient evidence to enable AA3 on the physical MCU. As previous offline frequency response showed, AA3 can attenuate ~2.8 kHz by ~4.6 dB, so an attended 1 kHz raw capture and voice-band tests are still recommended before selecting it. No firmware changes or automated transmissions occurred during this analysis.

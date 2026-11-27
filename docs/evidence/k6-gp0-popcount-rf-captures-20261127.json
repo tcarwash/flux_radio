@@ -13,6 +13,45 @@
     "rf_crc_complete": true,
     "source_sha256": "4ae51ec0173e25c77f69d115fddfa554dc2e02d38dff416c1bb226fd9cb01fc7"
   },
+  "capture_500hz_after_probes_reseated": {
+    "500hz_fit_frequency_hz": 500.0795,
+    "500hz_fitted_raw_peak_counts": 3.22255,
+    "capture_ticks_100us": 439,
+    "crc_valid_packets": 86,
+    "measured_gp0_group_rate_hz": 93302.96,
+    "offline_filter_test_only": true,
+    "previous_take_raw_500hz_peak_counts": 0.06237,
+    "raw_group_noise_rms_counts": 1.29336,
+    "raw_groups": 4096,
+    "real_rust_decimator_replay": {
+      "aa3": {
+        "500hz_pcm_peak_full_scale": 0.389942,
+        "fit_residual_rms_full_scale": 0.031037,
+        "snr_gain_vs_legacy_db": 2.447,
+        "tone_snr_db": 18.972
+      },
+      "fir11": {
+        "500hz_pcm_peak_full_scale": 0.395437,
+        "fit_residual_rms_full_scale": 0.036024,
+        "snr_gain_vs_legacy_db": 1.274,
+        "tone_snr_db": 17.799
+      },
+      "fir11_late": {
+        "500hz_pcm_peak_full_scale": 0.395718,
+        "fit_residual_rms_full_scale": 0.03604,
+        "snr_gain_vs_legacy_db": 1.277,
+        "tone_snr_db": 17.802
+      },
+      "legacy": {
+        "500hz_pcm_peak_full_scale": 0.398438,
+        "fit_residual_rms_full_scale": 0.042034,
+        "snr_gain_vs_legacy_db": 0.0,
+        "tone_snr_db": 16.525
+      }
+    },
+    "rf_crc_complete": true,
+    "source_sha256": "26a871d9af716673b09adfc2542ad91f010edc21f392a175d3842fc68e8ff3c2"
+  },
   "capture_off": {
     "continuous_tail_groups": 2944,
     "continuous_tail_mean": 32.20720108695652,
