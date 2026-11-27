@@ -22,11 +22,12 @@ FIXED=ROOT/"c/fixed"
 SRC=ROOT/"c/k6/mod/sotto_tx_selftest.c"
 PIN="598f1bce87c22ebada2b9d0d1fcfd89107b33a09"
 SOTTO_LIVE_SCRATCH_REQUIRED=4080
+SOTTO_MICRO_SCRATCH_SAVED=196  # RAM micro saved from pinned Sotto on ARMv6-M
 SOTTO_ARENA_BYTES=14976
 SOTTO_SCRATCH_RESERVE=1040
 SOTTO_MODULE_OVERHEAD=24
 
-def adapt(text, *, fast_history_copy=False, fast_cb_pair=False, fast_lag_pair=False):
+def adapt(text, *, ram_micro=False, fast_history_copy=False, fast_cb_pair=False, fast_lag_pair=False):
     def once(old,new):
         nonlocal text
         if text.count(old)!=1:raise ValueError("Unexpected upstream context: "+old)
@@ -75,6 +76,20 @@ struct slim_enc {
         raise ValueError("Unexpected zero-imaginary FFT precondition")
     once("      t = im[i], im[i] = im[j], im[j] = t;",
          "      /* skip swapping two known-zero imaginary samples */")
+    if ram_micro:
+        # Proven memory-only optimization from research/k6-codec-micro-20261126:
+        # a[] and q[] do not overlap their FFT/search lifetimes. Constrain the
+        # 4kHz history to the safe lower bound; no alteration to Sotto 1200 wire
+        # data or the pinned upstream submodule.
+        once("#define NX4 240                    /* 4 kHz history */",
+             "#define NX4 222                    /* tight history; minimum 221 */")
+        once("  int16_t a[MAXH];",
+             "  /* a[] reuses FFT-dead low bins or spare lag-prefix workspace. */")
+        once("  int16_t *re = e->w, *im = e->w + NW, *a = e->a, rk[K];",
+             "  int16_t *re = e->w, *im = e->w + NW, *a = e->w, rk[K];")
+        once("  int16_t *q = e->a;",
+             "  int16_t *q = e->w + 2 * (S4 + 1);\n"
+             "  _Static_assert(2 * (S4 + 1) + NL <= 2 * NW, \"lag workspace\");")
     if fast_history_copy:
         # These two rolling histories are 4-byte aligned and shift forward
         # by an even number of int16_t samples. A word loop is overlap-safe
@@ -132,7 +147,7 @@ static int32_t cb_hn(const signed char *y, const int16_t *t, int n) {
              '    }')
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,synthetic_tx=False,synth_profile=1,synth_hz=443500000,fast_div=False,fast_history_copy=False,fast_cb_pair=False,fast_lag_pair=False):
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,synthetic_tx=False,synth_profile=1,synth_hz=443500000,ram_micro=False,fast_div=False,fast_history_copy=False,fast_cb_pair=False,fast_lag_pair=False):
     if isinstance(synth_profile,bool) or synth_profile not in range(4):
         raise ValueError("Synthetic PCM profile must be 0..3")
     if synth_hz not in (433500000,443500000):
@@ -147,7 +162,7 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,sy
     if rev!=PIN:raise ValueError("Unexpected Sotto pin; requalify codec and SPI tables")
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
-        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),fast_history_copy=fast_history_copy,fast_cb_pair=fast_cb_pair,fast_lag_pair=fast_lag_pair))
+        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),ram_micro=ram_micro,fast_history_copy=fast_history_copy,fast_cb_pair=fast_cb_pair,fast_lag_pair=fast_lag_pair))
         source=(SRC.with_name("sotto_gp0_irq_tx.c") if gp0_irq_tx else
                 SRC.with_name("sotto_synth_tx.c") if synthetic_tx else
                 SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c")) if selected else SRC
@@ -155,9 +170,10 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,sy
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
             "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []) + (["-DSOTTO_SYNTH_TX_ARMED=1",f"-DSOTTO_SYNTH_PROFILE={synth_profile}",f"-DSYNTH_HZ={synth_hz}u"] if synthetic_tx else []) + (["-DSOTTO_FAST_DIV=1"] if fast_div else []))
-    if selected and (fast_cb_pair or fast_lag_pair):
+    scratch_required=SOTTO_LIVE_SCRATCH_REQUIRED - (SOTTO_MICRO_SCRATCH_SAVED if ram_micro else 0)
+    if selected and (fast_cb_pair or fast_lag_pair or ram_micro):
         scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
-        scratch_margin=scratch_available-SOTTO_LIVE_SCRATCH_REQUIRED
+        scratch_margin=scratch_available-scratch_required
         if scratch_margin<48:
             raise ValueError(f"experimental encoder loop optimizations leave only {scratch_margin} scratch bytes; at least 48 are required")
     if entry!=k6mod.bin_entry(code):raise ValueError("Unexpected module entry")
@@ -173,21 +189,24 @@ def main():
     p.add_argument("--synthetic-tx",action="store_true",help="EXPERIMENTAL timed mock 8-kHz PCM into real Sotto codec and FSK TX; no microphone")
     p.add_argument("--synth-profile",type=int,choices=range(4),default=1,help="mock PCM: 0 silence, 1 multitone, 2 chirp, 3 bursts")
     p.add_argument("--synth-hz",type=int,choices=(433500000,443500000),default=443500000,help="strict 70cm dummy-load bench frequency")
+    p.add_argument("--ram-micro",action="store_true",help="EXPERIMENTAL exact 196B Sotto state reduction via phase-exclusive scratch reuse")
     p.add_argument("--fast-div",action="store_true",help="EXPERIMENTAL shorter normalized ARMv6-M software divide; default off")
     p.add_argument("--fast-history-copy",action="store_true",help="EXPERIMENTAL aligned word copies for the two rolling PCM histories; default off")
     p.add_argument("--fast-cb-pair",action="store_true",help="EXPERIMENTAL paired codebook-score loop; default off")
     p.add_argument("--fast-lag-pair",action="store_true",help="EXPERIMENTAL paired exact lag-correlation loop; default off")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,synthetic_tx=a.synthetic_tx,synth_profile=a.synth_profile,synth_hz=a.synth_hz,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair,fast_lag_pair=a.fast_lag_pair)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,synthetic_tx=a.synthetic_tx,synth_profile=a.synth_profile,synth_hz=a.synth_hz,ram_micro=a.ram_micro,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair,fast_lag_pair=a.fast_lag_pair)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
     for f,b in files.items():(a.out/f).write_bytes(b)
     selected=a.live_tx or a.tone_tx or a.gp0_irq_tx or a.synthetic_tx
     scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
-    if selected and scratch_available<SOTTO_LIVE_SCRATCH_REQUIRED:
-        raise ValueError(f"Sotto live TX needs {SOTTO_LIVE_SCRATCH_REQUIRED} scratch bytes; arena provides {scratch_available}")
+    scratch_required=SOTTO_LIVE_SCRATCH_REQUIRED-(SOTTO_MICRO_SCRATCH_SAVED if a.ram_micro else 0)
+    if selected and scratch_available<scratch_required:
+        raise ValueError(f"Sotto live TX needs {scratch_required} scratch bytes; arena provides {scratch_available}")
     manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto autonomous mock PCM TX" if a.synthetic_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
+              "ram_micro_experimental":a.ram_micro,
               "fast_div_experimental":a.fast_div,
               "fast_history_copy_experimental":a.fast_history_copy,
               "fast_cb_pair_experimental":a.fast_cb_pair,
@@ -195,9 +214,9 @@ def main():
               "synthetic_profile":a.synth_profile if a.synthetic_tx else None,
               "synthetic_hz":a.synth_hz if a.synthetic_tx else None,
               "build_id":"0000000000000000",
-              "scratch_required":SOTTO_LIVE_SCRATCH_REQUIRED if selected else 0,
+              "scratch_required":scratch_required if selected else 0,
               "arena_14976_scratch_upper":scratch_available,
-              "scratch_margin":scratch_available-SOTTO_LIVE_SCRATCH_REQUIRED if selected else None,
+              "scratch_margin":scratch_available-scratch_required if selected else None,
               "library":[{"id":"sotto-gp0-irq" if a.gp0_irq_tx else "sotto-synthetic" if a.synthetic_tx else "sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO GP0" if a.gp0_irq_tx else "SOTTO SYNTH" if a.synthetic_tx else "SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
                           "file":"module.bin","level":29 if a.synthetic_tx else 30 if (a.live_tx or a.gp0_irq_tx) else 31 if a.tone_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
