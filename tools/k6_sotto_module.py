@@ -77,7 +77,7 @@ struct slim_enc {
          "      /* skip swapping two known-zero imaginary samples */")
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False):
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fast_div=False):
     selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx))
     if selected>1:
         raise ValueError("Select exactly one Sotto TX input implementation")
@@ -94,7 +94,7 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False):
         code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
-            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []))
+            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []) + (["-DSOTTO_FAST_DIV=1"] if fast_div else []))
     if entry!=k6mod.bin_entry(code):raise ValueError("Unexpected module entry")
     return code,entry
 
@@ -105,8 +105,9 @@ def main():
     p.add_argument("--live-tx",action="store_true",help="EXPERIMENTAL live Sotto TX level30, no RF on install")
     p.add_argument("--tone-tx",action="store_true",help="OPT-IN 1 kHz Sotto PCM TX; only a deliberate RUN transmits")
     p.add_argument("--gp0-irq-tx",action="store_true",help="EXPERIMENTAL Sotto TX using physical GP0 DMA IRQ9 microphone capture")
+    p.add_argument("--fast-div",action="store_true",help="EXPERIMENTAL shorter normalized ARMv6-M software divide; default off")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,fast_div=a.fast_div)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
@@ -116,6 +117,7 @@ def main():
     if selected and scratch_available<SOTTO_LIVE_SCRATCH_REQUIRED:
         raise ValueError(f"Sotto live TX needs {SOTTO_LIVE_SCRATCH_REQUIRED} scratch bytes; arena provides {scratch_available}")
     manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
+              "fast_div_experimental":a.fast_div,
               "build_id":"0000000000000000",
               "scratch_required":SOTTO_LIVE_SCRATCH_REQUIRED if selected else 0,
               "arena_14976_scratch_upper":scratch_available,
