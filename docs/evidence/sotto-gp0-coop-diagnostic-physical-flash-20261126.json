@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-26 America/Los_Angeles",
+  "firmware_only_flash": true,
+  "source_branch": "experiment/sotto-cooperative-fsk-preload-20261126",
+  "tested_source_commit": "0a83fbcc",
+  "image_bytes": 118408,
+  "sha256": "c69a87428a4b72192f4a9ac22bd17c5fe40da159ebe818880a2a5b04ca7f03ec",
+  "stock_bootloader_update_handshake": true,
+  "bootloader_acknowledged_blocks": 116,
+  "bootloader_expected_blocks": 116,
+  "flasher_exit_code": 0,
+  "postflash_protocol": 5,
+  "postflash_catalog_verified": true,
+  "module_unchanged": true,
+  "retained_slots": {
+    "24": {
+      "name": "SOTTO GP0",
+      "bytes": 9784,
+      "serial": 1795730062
+    },
+    "25": {
+      "name": "MIC IRQ",
+      "bytes": 3771,
+      "serial": 1795641552
+    },
+    "30": {
+      "name": "SOTTO MIC",
+      "bytes": 9780,
+      "serial": 1795626699
+    }
+  },
+  "fault_baseline": {
+    "gp0_module_run_since_reboot": false,
+    "gpf1_valid": false,
+    "gpt1_valid": false,
+    "raw_gpf1_hex_bytes": 44,
+    "raw_gpt1_hex_bytes": 40,
+    "decoder_error": null,
+    "host_reader_exit_status": "expected nonzero for empty run"
+  },
+  "feature_flags": {
+    "cooperative_fsk_preload": true,
+    "fast_spi": true,
+    "gp0_fast_isr": true,
+    "gpf1": true,
+    "gpt1": true
+  },
+  "offline_tests_passed": 70,
+  "ram0_free_bytes": 24,
+  "arena_bytes": 14976,
+  "main_stack_reservation_bytes": 2812,
+  "spi_backup_sha256": "18fd1d3cb118c36eecf6111ec805f77ff70bd1732ed7576d459183f341d74dbd",
+  "on_radio_sotto_ptt_tested_after_flash": false,
+  "mcu_byte_readback_verified": false,
+  "rf_transmitted_by_agent": false,
+  "artifacts_on_workstation": {
+    "firmware": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/coop-gpf1-gpt1.bin",
+    "bootloader_log": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/bootloader-flash.log",
+    "postflash_catalog": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/postflash-catalog.log",
+    "empty_diag_json": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/postflash-empty-gpf1-gpt1.json"
+  },
+  "status": "FIRMWARE_FLASH_BOOT_CATALOG_AND_EMPTY_DIAGNOSTIC_CHECK_PASS; LIVE_PTT_NOT_TESTED"
+}
