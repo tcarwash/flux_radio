@@ -41,6 +41,20 @@ This experiment does not justify a base MCU flash. The old signed voice module i
 4. Run twice with unique file names: **generator OFF** (mic electrical connection unchanged, output off) and **500Hz or 1kHz at 0.1Vpp**. A third 1k/500 pair isolates the frequency response. The captures are only 200ms each but consist of *full-resolution, pre-vocoder signed PCM*.
 5. Compare precode PCM vs previous Sotto Monitor WAV: tone frequency/PCM clock, RMS, peak, clipping counts, 300–3.9kHz PSD, and noise floor. Use precode PCM to simulate AA3/CIC3 and potential cheap IIR/FIR anti-alias filters against a **measured** rather than synthesized PDM noise model. A 200ms PCM capture cannot reveal high-rate PDM spectral alias origins already folded; do not claim that it uniquely identifies GP0/PDM noise source. If the precode PCM is clean but decoded Sotto noisy, investigate pitch/codec and RF before a new TX filter flash.
 
+## Ready-to-run offline PCM OFF-versus-ON analysis
+
+After two **complete**, CRC-verified captures (generator OFF and known tone ON, each with its own new .wav and .json files), use:
+
+`python tools/k6_gp0_pcm_compare.py --off-wav OFF.wav --off-json OFF.json --on-wav ON.wav --on-json ON.json --nominal-tone-hz 500 --json-out comparison-500-new.json`
+
+This command is **read-only on all source files**, writes only a fresh JSON result, and refuses altered/mismatched WAV hashes, invalid sample counts, invalid capture time, or reuse of the same session token. It fits a sine wave to the 1,600-sample PCM record, estimates its dominant component and residual, compares tone RMS against the independent OFF noise RMS, and reports the **actual produced PCM samples per MCU-clock wall second** using 100µs timing ticks. It also calculates the physical generator frequency inferred from the combination of decoded raw PCM frequency and measured PCM sample cadence. This inference is conditional on the MCU clock being accurate, and the short 200ms window limits frequency/noise confidence. The result bypasses Sotto entirely.
+
+The synthetic test suite now includes a deliberately **faster 8,300Hz physical PCM clock** with a nominal physical **500Hz sine** that appears near **482Hz when labeled as 8,000Hz**. The analysis recovers approximately **500Hz** after using the physical capture tick count, guarding the important inverse clock/pitch relationship. Run:
+
+`python -m pytest -q tests/test_k6_gp0_pcm_air.py tests/test_k6_gp0_pcm_air_rx.py tests/test_k6_gp0_pcm_compare.py`
+
+This analysis also complements—but is not a substitute for—the original 87,260Hz GP0/64bit-density hardware calibration: it directly measures the *end of the 8kHz producer* and cannot recover which higher-frequency PDM aliases already folded into 8kHz.
+
 ## Next qualitative on-air improvement candidate
 
 A **separate, default-bypass Sotto Monitor browser-only receiver clarity filter** has been developed offline in `/storage5/dev/sotto-monitor-rx-clarity-20261126` (branch `experiment/sotto-rx-clarity-filter-20261126`). A 4th-order Butterworth 1.6kHz voice-focus option suppressed decoded **generator-OFF noise by ~6.21dB** in a 48kHz-causal offline approximation, while attenuating speech-plus-noise by ~3.84dB; a less aggressive 2.2kHz option suppressed OFF noise by ~4.0dB. This is a reversible *listening* improvement candidate for a single later live voice A/B, **not** a demonstrated TX fidelity improvement. Preserve the raw original WAV, test Bypass vs Balanced vs Voice focus with the same RF packet stream and listen for consonants/intelligibility.
