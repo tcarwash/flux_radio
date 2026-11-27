@@ -32,6 +32,13 @@ const RAW_BYTES:usize=1024;
 const HALF:usize=512;
 const FS:u32=87260;
 const PERIOD_LIMIT:u32=9000; // 96MHz nominal; half period ~8.9k ticks
+// Optional diagnostic only: 4096 pre-decimation group popcounts (0..64)
+// into caller-owned arena bytes AFTER its unchanged 644-byte PCM ring.
+// No new persistent RAM0, ISR accesses only the owning module scratch.
+#[cfg(k6_sotto_gp0_popcount_air)]
+const POPCOUNT_MODE_FS:u32=87261;
+#[cfg(k6_sotto_gp0_popcount_air)]
+const POPCOUNT_SAMPLES:u32=4096;
 
 #[repr(C)]
 pub struct PcmRing {
@@ -375,6 +382,22 @@ pub unsafe extern "C" fn sotto_gp0_dma_irq(){
             acc=(acc&0x00ff_00ff)+((acc>>8)&0x00ff_00ff);
             (acc&0xffff)+(acc>>16)
         };
+        // Diagnostic capture mode records the input to the decimator,
+        // never its processed PCM. Its buffer is directly after the module's
+        // existing PcmRing, and is bounded by start() before DMA is armed.
+        #[cfg(k6_sotto_gp0_popcount_air)]
+        if (*st).dec.fs==POPCOUNT_MODE_FS {
+            let index=(*st).dec.samples;
+            if index<POPCOUNT_SAMPLES {
+                wrv((p as *mut u8).add(core::mem::size_of::<PcmRing>()+index as usize),bits as u8);
+                (*st).dec.samples=index+1;
+                if index+1==POPCOUNT_SAMPLES {
+                    compiler_fence(Ordering::Release);
+                    wrv(core::ptr::addr_of_mut!((*p).produced),1);
+                }
+            }
+            continue;
+        }
         let mut sample=0i16;
         match dec_push(&mut (*st).dec,bits,&mut sample){
             -1=>{
@@ -420,6 +443,11 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
             wr(RCC_APB2,old_apb2);wr(RCC_AHB,old_ahb);return false;
         }
         let raw=(super::arena::end().saturating_sub(RAW_BYTES)) as *mut u8;
+        #[cfg(k6_sotto_gp0_popcount_air)]
+        if fs==POPCOUNT_MODE_FS && (raw as usize)<(ptr as usize).saturating_add(
+             core::mem::size_of::<PcmRing>()+POPCOUNT_SAMPLES as usize) {
+            wr(RCC_APB2,old_apb2);wr(RCC_AHB,old_ahb);return false;
+        }
         if (raw as usize&3)!=0||(raw as usize)<ptr as usize+core::mem::size_of::<PcmRing>()
            ||super::arena::end().saturating_sub(1024)<super::arena::end().saturating_sub(1040)+16{
             wr(RCC_APB2,old_apb2);wr(RCC_AHB,old_ahb);return false;

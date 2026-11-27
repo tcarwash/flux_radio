@@ -54,17 +54,20 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
     mod_tx_guard();
     if op==1{sotto_mic_stop();return 0;}
     if op==2{return crate::hal::pcm_capture::peak() as i32;}
-    // Op8 starts the firmware-owned GP0/PB1 DMA1 IRQ9 producer. The module
-    // supplies only its normal 644-byte PCM queue and the measured sample
-    // density rate; DMA ring, IRQ vector and decimator live in firmware RAM0.
-    if op==8 {
+    // Op8 is unchanged. An explicit, opt-in op9 captures 4096 exact
+    // pre-decimator popcounts, writing after the normal ring into the
+    // caller's checked arena. Op9 is never enabled in ordinary firmware.
+    // No raw GPIO, SPI contents, or key material ever leave the device.
+    if op==8 || (cfg!(k6_sotto_gp0_popcount_air) && op==9) {
+        let popcount_mode=op==9;
         #[cfg(all(k6_live_serial,feature="spilib"))]
         if LIVE_ACTIVE.is_some(){return -1;}
         let start=ptr as usize;
-        if !SOTTO_MIC_ROUTE || SOTTO_GP0_ROUTE || !c.tx || n!=87260
+        if !SOTTO_MIC_ROUTE || SOTTO_GP0_ROUTE || !c.tx ||
+           (!popcount_mode && n!=87260) || (popcount_mode && n!=4096)
             || c.stack_from_arena || c.tlm_cap!=0
             || ptr.is_null() || start&3!=0 || start<c.scratch
-            || start.saturating_add(644)>scratch_end()
+            || start.saturating_add(644+(if popcount_mode{4096}else{0}))>scratch_end()
             || mod_fd_read(0)!=0x4829 || mod_tx_pa(0)!=0
             || !crate::hal::txdog::ready() {return -1;}
         SOTTO_GP0_SAVED=[mod_fd_read(0x33),mod_fd_read(0x34)];
@@ -76,7 +79,7 @@ unsafe extern "C" fn mod_sotto_mic_stream(op:u32,ptr:*mut u8,n:u32)->i32{
             app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]);
             return -3;
         }
-        if !crate::hal::gp0_capture::start(ptr,n) {
+        if !crate::hal::gp0_capture::start(ptr,if popcount_mode{87261}else{n}) {
             app.radio.fd6818.reg_write(syst,0x34,SOTTO_GP0_SAVED[1]);
             app.radio.fd6818.reg_write(syst,0x33,SOTTO_GP0_SAVED[0]);
             return -2;
