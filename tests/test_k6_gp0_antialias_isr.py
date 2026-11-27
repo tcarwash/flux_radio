@@ -47,7 +47,7 @@ fn main(){
     p=tmp_path_factory.mktemp('gp0-antialias-actual-rust')
     src=p/'decimator.rs';src.write_text(program)
     builds={}
-    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11'])]:
+    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11']),('fir11_late',['--cfg','k6_sotto_gp0_fir11_late'])]:
         exe=p/label
         subprocess.run(['rustc','--edition=2021','-O','--cfg','k6_sotto_gp0_fast_isr',*cfg,str(src),'-o',str(exe)],
                        check=True,timeout=45,capture_output=True,text=True)
@@ -97,7 +97,7 @@ def test_anti_alias_suppresses_nine_khz_before_downsampling(rust_programs):
 def test_arm_profile_is_explicit_opt_in():
     s=SRC.read_text();b=BUILD.read_text()
     assert '#[cfg(k6_sotto_gp0_aa3)]' in s
-    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]' in s
+    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late)))]' in s
     assert 'K6_SOTTO_GP0_AA3:-0' in b
     assert 'K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR' in b
     assert 'K6_SOTTO_GP0_FAST_ISR:-0' in b
@@ -148,5 +148,47 @@ def test_fir11_flag_gated_and_uncombined():
     assert "K6_SOTTO_GP0_AA3:-0" in b
     assert "k6_sotto_gp0_fir11" in s
     assert "fir_taps:[i8;11]" in s
-    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11))" in s
+    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))" in s
     assert 64*128*160000 < 2**31
+
+@pytest.mark.parametrize('fs',[35000,84960,87260,110000,160000])
+def test_delayed_fir11_exact_rust_fixed_point_matches_python(rust_programs,fs):
+    rng=np.random.default_rng(12787+fs)
+    bits=rng.binomial(64,.5,size=fs//4).astype(np.uint8)
+    bits[::23]=0
+    bits[::37]=64
+    bits[::89]=32
+    for fixture in (bits, np.full(fs//7,64,dtype=np.uint8),
+                    np.full(fs//7,0,dtype=np.uint8)):
+        got=run(rust_programs['fir11_late'],fixture,fs)
+        ref=decimate(fixture,fs=fs,fir11_late=True)
+        np.testing.assert_array_equal(got,ref)
+        assert len(got)==len(fixture)*8000//fs
+
+
+def test_delayed_fir11_preserves_spectral_response_and_scaling(rust_programs):
+    t=np.arange(int(FS*.85))/FS
+    for freq in (320,1000,2000,2800,3500,7000,9000,15000):
+        bits=np.rint(32+4*np.sin(2*np.pi*freq*t)).astype(np.uint8)
+        late=run(rust_programs['fir11_late'],bits)
+        reference=run(rust_programs['fir11'],bits)
+        legacy=run(rust_programs['legacy'],bits)
+        alias=abs((freq+4000)%8000-4000)
+        db_late=20*math.log10(max(phase_amp(late,alias),1e-9)/max(phase_amp(legacy,alias),1e-9))
+        db_ref=20*math.log10(max(phase_amp(reference,alias),1e-9)/max(phase_amp(legacy,alias),1e-9))
+        assert abs(db_late-db_ref)<1.0,(freq,db_late,db_ref)
+        if freq==2800:assert db_late > -3
+        if freq==9000:assert db_late < -16
+        if freq==15000:assert db_late < -20
+
+
+def test_delayed_fir11_flag_remains_off_and_exclusive():
+    b=BUILD.read_text(); s=SRC.read_text()
+    assert 'K6_SOTTO_GP0_FIR11_LATE:-0' in b
+    assert 'k6_sotto_gp0_fir11_late' in s
+    assert 'K6_SOTTO_GP0_FIR11_LATE requires GP0 mic, RAM0, fast ISR, FIR11=0, AA3=0' in b
+    assert 'remainder<<8' in s
+    # Worst-case unscaled weighted sum fits i32 at max accepted group rate.
+    assert 64*11*160000 < 2**31
+    # Post-normalization quotient/remainder fit 32-bit, without 64-bit math.
+    assert (160000-1)*256 < 2**32

@@ -55,18 +55,18 @@ struct Decimator {
     #[cfg(k6_sotto_gp0_aa3)] lp3:i32,
     // Prototype: running 11-count window, chosen to notch near 8kHz
     // while retaining more 2-3.5kHz speech than the AA3 three-pole IIR.
-    #[cfg(k6_sotto_gp0_fir11)] fir_sum:i16,
-    #[cfg(k6_sotto_gp0_fir11)] fir_head:u8,
-    #[cfg(k6_sotto_gp0_fir11)] fir_taps:[i8;11],
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_sum:i16,
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_head:u8,
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[i8;11],
 }
 impl Decimator {const fn empty()->Self{Self{
     fs:0,phase:0,area:0,dc:0,samples:0,clipped:0,
     #[cfg(k6_sotto_gp0_aa3)] lp1:0,
     #[cfg(k6_sotto_gp0_aa3)] lp2:0,
     #[cfg(k6_sotto_gp0_aa3)] lp3:0,
-    #[cfg(k6_sotto_gp0_fir11)] fir_sum:0,
-    #[cfg(k6_sotto_gp0_fir11)] fir_head:0,
-    #[cfg(k6_sotto_gp0_fir11)] fir_taps:[0;11],
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_sum:0,
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_head:0,
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[0;11],
 }}}
 
 #[repr(C)]
@@ -157,34 +157,56 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
         d.lp3+=(d.lp2-d.lp3)>>2;
         d.lp3
     };
-    #[cfg(k6_sotto_gp0_fir11)]
+    #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))]
     let x={
         let slot=d.fir_head as usize;
         let outgoing=d.fir_taps[slot] as i32;
         d.fir_taps[slot]=raw as i8; // raw is exactly [-64, 64].
         d.fir_sum=(d.fir_sum as i32+raw-outgoing) as i16;
         d.fir_head=if slot==10 {0} else {(slot+1) as u8};
-        // Keep Q7 sub-count precision. The /11 constant is an ARM
-        // compile-time reciprocal, not a general hardware divider.
-        (d.fir_sum as i32*128)/11
+        // Original FIR11 computes Q7 before the 87.26 kHz integration.
+        // The experimental delayed version avoids division inside the
+        // interrupt's high-rate group loop and retains raw_sum units.
+        #[cfg(k6_sotto_gp0_fir11)]
+        { (d.fir_sum as i32*128)/11 }
+        #[cfg(k6_sotto_gp0_fir11_late)]
+        { d.fir_sum as i32 }
     };
-    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late)))]
     let x=raw;
     let newphase=d.phase+8000;
     if newphase<d.fs{d.area+=x*8000;d.phase=newphase;return 0;}
     let left=d.fs-d.phase;
     let area=d.area+x*(left as i32);
     let mag=area.unsigned_abs();
-    // The legacy counts are integer-scaled; AA3/FIR11 states use signed Q7.
-    // Both reach the original signed Q8 centered sample before DC rejection.
-    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]
+    // Legacy raw counts, AA3/FIR11 Q7, or experimental FIR11 raw window sum.
+    // Every profile reconstructs the centered Q8 PCM value before DC removal.
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late)))]
     let num=mag<<8;
     #[cfg(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11))]
     let num=mag<<1;
-    #[cfg(k6_sotto_gp0_fast_isr)]
+    #[cfg(all(k6_sotto_gp0_fast_isr,not(k6_sotto_gp0_fir11_late)))]
     let q=(if d.fs==FS {gp0_div_87260(num)} else {udiv(num,d.fs)}) as i32;
-    #[cfg(not(k6_sotto_gp0_fast_isr))]
+    #[cfg(all(not(k6_sotto_gp0_fast_isr),not(k6_sotto_gp0_fir11_late)))]
     let q=udiv(num,d.fs) as i32;
+    #[cfg(k6_sotto_gp0_fir11_late)]
+    let q={
+        // FIR11 sum[-704,+704]. The integrated |area| is <= 704*fs,
+        // which fits signed i32 for every valid 35-160k group-rate.
+        // Exact Q8 = floor(256*|area|/(11*fs)). Compute a bounded
+        // quotient and remainder first to avoid 64-bit multiply/divide.
+        // The extra normalizations occur only at 8 kHz, not at 87 kHz.
+        #[cfg(k6_sotto_gp0_fast_isr)]
+        let whole=if d.fs==FS {gp0_div_87260(mag)} else {udiv(mag,d.fs)};
+        #[cfg(not(k6_sotto_gp0_fast_isr))]
+        let whole=udiv(mag,d.fs);
+        let remainder=mag-whole*d.fs;
+        #[cfg(k6_sotto_gp0_fast_isr)]
+        let fraction=if d.fs==FS {gp0_div_87260(remainder<<8)} else {udiv(remainder<<8,d.fs)};
+        #[cfg(not(k6_sotto_gp0_fast_isr))]
+        let fraction=udiv(remainder<<8,d.fs);
+        (((whole<<8)+fraction)/11) as i32
+    };
     let centered=if area<0{-q}else{q};
     d.dc+=((centered<<8)-d.dc)>>7;
     let mut sample=(centered-(d.dc>>8))*8;
@@ -335,9 +357,9 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
             #[cfg(k6_sotto_gp0_aa3)] lp1:0,
             #[cfg(k6_sotto_gp0_aa3)] lp2:0,
             #[cfg(k6_sotto_gp0_aa3)] lp3:0,
-            #[cfg(k6_sotto_gp0_fir11)] fir_sum:0,
-            #[cfg(k6_sotto_gp0_fir11)] fir_head:0,
-            #[cfg(k6_sotto_gp0_fir11)] fir_taps:[0;11],
+            #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_sum:0,
+            #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_head:0,
+            #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[0;11],
         };
         (*st).expect_tc=0;(*st).failed=0;(*st).armed=1;
         #[cfg(k6_sotto_gp0_timing)] {(*st).reason=0;}

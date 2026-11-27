@@ -15,25 +15,31 @@ FS=87260
 OUT=8000
 
 
-def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False) -> np.ndarray:
+def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False, fir11_late=False) -> np.ndarray:
     """Python reference for signed, 7-bit-fraction high-rate fixed-point filter.
 
     Match Rust truncation and DC IIR; divide exactly in Python without the
     optional Cortex-M0 reciprocal. Input is popcount from one 64-bit raw group.
     """
+    if (fir11 and fir11_late) or (poles and (fir11 or fir11_late)):
+        raise ValueError("select exactly one prefilter")
     phase=0;area=0;dc=0
     lp=[0,0,0]
     taps=[0]*11;tap_head=0;tap_sum=0
     out=[]
     for n in bits:
         x=2*int(n)-64
-        if fir11:
+        if fir11 or fir11_late:
             outgoing=taps[tap_head]
             taps[tap_head]=x
             tap_head=(tap_head+1)%11
             tap_sum+=x-outgoing
-            scaled=tap_sum*128
-            x=(-1 if scaled<0 else 1)*(abs(scaled)//11)
+            if fir11:
+                scaled=tap_sum*128
+                x=(-1 if scaled<0 else 1)*(abs(scaled)//11)
+            else:
+                # Raw signed 11-sample accumulator is normalized at 8 kHz.
+                x=tap_sum
         elif poles:
             v=x<<7
             for i in range(poles):
@@ -45,7 +51,8 @@ def decimate(bits: np.ndarray, *, poles=0,fs=FS, fir11=False) -> np.ndarray:
             area+=x*OUT;phase=newphase;continue
         left=fs-phase
         whole=area+x*left
-        q=((abs(whole)<<1) if poles or fir11 else (abs(whole)<<8))//fs
+        q=(abs(whole)*256)//(11*fs) if fir11_late else \
+          (((abs(whole)<<1) if poles or fir11 else (abs(whole)<<8))//fs)
         centered=-q if whole<0 else q
         dc+=((centered<<8)-dc)>>7
         sample=(centered-(dc>>8))*8
