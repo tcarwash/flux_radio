@@ -372,6 +372,18 @@ case "${K6_SOTTO_GP0_FAST_ISR:-0}" in
     PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fast_isr" ;;
   *) echo "K6_SOTTO_GP0_FAST_ISR must be 0 or 1" >&2; exit 1 ;;
 esac
+# Experimental pre-decimation anti-aliasing for GP0 PDM. Three 32-bit Q8
+# states plus only shifts and adds in the IRQ. Default remains unchanged.
+case "${K6_SOTTO_GP0_AA3:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_aa3" ;;
+  *) echo "K6_SOTTO_GP0_AA3 must be 0 or 1" >&2; exit 1 ;;
+esac
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
 if [ "${K6_RAM0:-0}" = 1 ] && {

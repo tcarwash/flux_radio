@@ -46,8 +46,20 @@ const _:()=assert!(core::mem::size_of::<PcmRing>()==644);
 
 #[repr(C)]
 #[derive(Clone,Copy)]
-struct Decimator {fs:u32,phase:u32,area:i32,dc:i32,samples:u32,clipped:u32}
-impl Decimator {const fn empty()->Self{Self{fs:0,phase:0,area:0,dc:0,samples:0,clipped:0}}}
+struct Decimator {
+    fs:u32,phase:u32,area:i32,dc:i32,samples:u32,clipped:u32,
+    // Three cheap high-rate poles BEFORE fractional 8kHz resampling. Never
+    // share AA state between mic sessions; default firmware remains exact.
+    #[cfg(k6_sotto_gp0_aa3)] lp1:i32,
+    #[cfg(k6_sotto_gp0_aa3)] lp2:i32,
+    #[cfg(k6_sotto_gp0_aa3)] lp3:i32,
+}
+impl Decimator {const fn empty()->Self{Self{
+    fs:0,phase:0,area:0,dc:0,samples:0,clipped:0,
+    #[cfg(k6_sotto_gp0_aa3)] lp1:0,
+    #[cfg(k6_sotto_gp0_aa3)] lp2:0,
+    #[cfg(k6_sotto_gp0_aa3)] lp3:0,
+}}}
 
 #[repr(C)]
 struct State {
@@ -121,13 +133,35 @@ fn gp0_div_87260(n:u32)->u32{
 #[inline(always)]
 fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     if d.fs<=16000||d.fs>160000||bits>64{return -1;}
-    let x=2*(bits as i32)-64;
+    let raw=2*(bits as i32)-64;
+    #[cfg(k6_sotto_gp0_aa3)]
+    let x={
+        // One raw popcount covers 64 PDM bits (~87.26kHz). An existing
+        // fractional boxcar on its own strongly aliases noise from 7-25kHz
+        // into the 0-4kHz speech band. Three Q8 one-pole IIRs (alpha 1/4)
+        // suppress that energy *before* decimation, without PCM-ring growth,
+        // heap use, extra divides, or any other peripheral/IRQ change.
+        // Q7 is intentional: max 64*128*160000=1.31e9 keeps signed
+        // weighted area within i32 across the entire permitted fs range.
+        // Signed shifts, three bounded 32-bit states; gain at 1kHz ~= unity.
+        d.lp1+=((raw<<7)-d.lp1)>>2;
+        d.lp2+=(d.lp1-d.lp2)>>2;
+        d.lp3+=(d.lp2-d.lp3)>>2;
+        d.lp3
+    };
+    #[cfg(not(k6_sotto_gp0_aa3))]
+    let x=raw;
     let newphase=d.phase+8000;
     if newphase<d.fs{d.area+=x*8000;d.phase=newphase;return 0;}
     let left=d.fs-d.phase;
     let area=d.area+x*(left as i32);
     let mag=area.unsigned_abs();
+    // The legacy raw counts are integer-scaled; AA3 states use signed Q7.
+    // Both reach the original signed Q8 centered sample before DC rejection.
+    #[cfg(not(k6_sotto_gp0_aa3))]
     let num=mag<<8;
+    #[cfg(k6_sotto_gp0_aa3)]
+    let num=mag<<1;
     #[cfg(k6_sotto_gp0_fast_isr)]
     let q=(if d.fs==FS {gp0_div_87260(num)} else {udiv(num,d.fs)}) as i32;
     #[cfg(not(k6_sotto_gp0_fast_isr))]
@@ -277,7 +311,12 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
         let old_priority=rd8(NVIC_IPR9);
         (*st).old_ahb=old_ahb;(*st).old_apb2=old_apb2;
         (*st).old_priority=old_priority;
-        (*st).dec=Decimator{fs,phase:0,area:0,dc:0,samples:0,clipped:0};
+        (*st).dec=Decimator{
+            fs,phase:0,area:0,dc:0,samples:0,clipped:0,
+            #[cfg(k6_sotto_gp0_aa3)] lp1:0,
+            #[cfg(k6_sotto_gp0_aa3)] lp2:0,
+            #[cfg(k6_sotto_gp0_aa3)] lp3:0,
+        };
         (*st).expect_tc=0;(*st).failed=0;(*st).armed=1;
         #[cfg(k6_sotto_gp0_timing)] {(*st).reason=0;}
         SOTTO_GP0_PCM_RING=ptr.cast::<PcmRing>();
