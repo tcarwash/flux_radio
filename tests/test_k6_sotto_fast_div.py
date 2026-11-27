@@ -88,23 +88,38 @@ def test_fast_div_exact_for_a_million_deterministic_pairs(division):
 
 @pytest.fixture(scope='module')
 def modules():
-    base,base_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=False)
+    base,base_entry=build(host_resources=True,gp0_irq_tx=True)
     fast,fast_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=True)
-    return base,base_entry,fast,fast_entry
+    history,history_entry=build(host_resources=True,gp0_irq_tx=True,fast_history_copy=True)
+    both,both_entry=build(host_resources=True,gp0_irq_tx=True,fast_div=True,fast_history_copy=True)
+    return (base,base_entry,fast,fast_entry,history,history_entry,both,both_entry)
+
+
+def _margin(code):
+    return SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-SOTTO_MODULE_OVERHEAD-len(code)-SOTTO_LIVE_SCRATCH_REQUIRED
+
 
 def test_default_gp0_module_remains_byte_identical_to_fielded(modules):
-    code,entry,_,_=modules
+    code,entry=modules[:2]
     assert len(code)==9784 and entry==16
     assert hashlib.sha256(code).hexdigest()==ORIGINAL_SHA
 
+
 def test_fast_div_preserves_arena_and_gains_scratch(modules):
-    base,base_entry,code,entry=modules
+    base,base_entry,code,entry=modules[:4]
     assert entry==base_entry
-    margin=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-SOTTO_MODULE_OVERHEAD-len(code)-SOTTO_LIVE_SCRATCH_REQUIRED
-    # No reduced-module-scratch experiment may consume the hard-won 48-byte
-    # physical stage-2 margin or require SPI module format changes.
-    assert margin>=48
-    assert len(code)<=len(base)
+    # No optimization may consume the hard-won 48-byte physical stage-2
+    # margin or require SPI module format changes.
+    assert _margin(code)>=48
+    assert len(code)<len(base)
+
+
+def test_history_copy_and_combined_builds_shrink_and_preserve_margin(modules):
+    base,base_entry,fast,fast_entry,history,history_entry,both,both_entry=modules
+    assert history_entry==fast_entry==both_entry==base_entry==16
+    assert len(history)==9748 and _margin(history)==84
+    assert len(both)==9736 and _margin(both)==96
+    assert len(history)<len(base) and len(both)<len(fast)
 
 def test_fast_div_is_opt_in_and_no_upstream_codec_edits():
     src=HEADER.read_text()
@@ -114,5 +129,8 @@ def test_fast_div_is_opt_in_and_no_upstream_codec_edits():
     assert 'while (d < n && !(d & 0x80000000u))' in src
     assert 'while (bit)' in src
     assert 'fast_div=False' in builder
+    assert 'fast_history_copy=False' in builder
+    assert 'slim_history_shift' in builder
+    assert 'SOTTO_FAST_MEMMOVE' not in src
     assert '["-DSOTTO_FAST_DIV=1"] if fast_div else []' in builder
     assert 'SOTTO_FAST_DIV' not in (ROOT/'c/fixed/sotto_fx_slim.c').read_text()

@@ -26,7 +26,7 @@ SOTTO_ARENA_BYTES=14976
 SOTTO_SCRATCH_RESERVE=1040
 SOTTO_MODULE_OVERHEAD=24
 
-def adapt(text):
+def adapt(text, *, fast_history_copy=False):
     def once(old,new):
         nonlocal text
         if text.count(old)!=1:raise ValueError("Unexpected upstream context: "+old)
@@ -75,9 +75,30 @@ struct slim_enc {
         raise ValueError("Unexpected zero-imaginary FFT precondition")
     once("      t = im[i], im[i] = im[j], im[j] = t;",
          "      /* skip swapping two known-zero imaginary samples */")
+    if fast_history_copy:
+        # These two rolling histories are 4-byte aligned and shift forward
+        # by an even number of int16_t samples. A word loop is overlap-safe
+        # here because destination is always below source; keep the generic
+        # ABI memmove untouched for every other caller.
+        helper = """typedef unsigned int slim_alias_u32 __attribute__((__may_alias__));
+_Static_assert(sizeof(slim_alias_u32) == 4, "32-bit history copy word");
+_Static_assert((__builtin_offsetof(struct slim_enc, x8) & 3u) == 0, "x8 alignment");
+_Static_assert((__builtin_offsetof(struct slim_enc, x4) & 3u) == 0, "x4 alignment");
+_Static_assert(((NX8 - HOP) & 1u) == 0 && ((NX4 - HOP / 2) & 1u) == 0, "history word counts");
+static void slim_history_shift(int16_t *dst, const int16_t *src, unsigned samples) {
+  slim_alias_u32 *d = (slim_alias_u32 *)(void *)dst;
+  const slim_alias_u32 *s = (const slim_alias_u32 *)(const void *)src;
+  for (samples >>= 1; samples; samples--) *d++ = *s++;
+}
+"""
+        once("unsigned slim_enc_bytes(void)", helper + "unsigned slim_enc_bytes(void)")
+        once("  memmove(e->x8, e->x8 + HOP, (NX8 - HOP) * sizeof(int16_t));",
+             "  slim_history_shift(e->x8, e->x8 + HOP, NX8 - HOP);")
+        once("  memmove(e->x4, e->x4 + HOP / 2, (NX4 - HOP / 2) * sizeof(int16_t));",
+             "  slim_history_shift(e->x4, e->x4 + HOP / 2, NX4 - HOP / 2);")
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fast_div=False):
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fast_div=False,fast_history_copy=False):
     selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx))
     if selected>1:
         raise ValueError("Select exactly one Sotto TX input implementation")
@@ -88,7 +109,7 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,fa
     if rev!=PIN:raise ValueError("Unexpected Sotto pin; requalify codec and SPI tables")
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
-        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text()))
+        inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),fast_history_copy=fast_history_copy))
         source=(SRC.with_name("sotto_gp0_irq_tx.c") if gp0_irq_tx else
                 SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c")) if selected else SRC
         code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,"-I"+d,
@@ -106,8 +127,9 @@ def main():
     p.add_argument("--tone-tx",action="store_true",help="OPT-IN 1 kHz Sotto PCM TX; only a deliberate RUN transmits")
     p.add_argument("--gp0-irq-tx",action="store_true",help="EXPERIMENTAL Sotto TX using physical GP0 DMA IRQ9 microphone capture")
     p.add_argument("--fast-div",action="store_true",help="EXPERIMENTAL shorter normalized ARMv6-M software divide; default off")
+    p.add_argument("--fast-history-copy",action="store_true",help="EXPERIMENTAL aligned word copies for the two rolling PCM histories; default off")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,fast_div=a.fast_div)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
@@ -118,6 +140,7 @@ def main():
         raise ValueError(f"Sotto live TX needs {SOTTO_LIVE_SCRATCH_REQUIRED} scratch bytes; arena provides {scratch_available}")
     manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
               "fast_div_experimental":a.fast_div,
+              "fast_history_copy_experimental":a.fast_history_copy,
               "build_id":"0000000000000000",
               "scratch_required":SOTTO_LIVE_SCRATCH_REQUIRED if selected else 0,
               "arena_14976_scratch_upper":scratch_available,

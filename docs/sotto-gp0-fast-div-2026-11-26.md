@@ -65,6 +65,42 @@ Evidence JSON:
 
 Unit and RF regression tests: `tests/test_k6_sotto_fast_div.py` and `tests/test_k6_sotto_fast_div_rf.py`, plus the existing Sotto GP0 module / end-to-end suites. The full selected suite finished **103 passed**, with the intentionally pinned `K6_SOTTO_GP0_RELEASE_IMAGE` set to the original known-good KUL2 firmware. An initial run using the test fixture's stale pre-KUL2 `/tmp` firmware failed the packaging test as designed; rerunning with the correct KUL2 image passed all 103 tests. All tests were offline with no radio access.
 
+## Follow-up: specialize the two rolling PCM history copies
+
+The instruction profile also attributed **1.56MHz** to `memmove`. Inspection of `slim_analyse10` found exactly two large rolling-history shifts: `x8` and `x4`. Both have compile-time 4-byte-aligned offsets, move forward (destination is below source), and have even sample counts. The generic byte-copy runtime is correct but unnecessarily expensive for these two known shapes.
+
+The optional `fast_history_copy=True` / `--fast-history-copy` build path adapts only those two generated call sites to a small 32-bit word-copy helper. Compile-time assertions guard both member alignments and even sample counts. The generic `memmove` ABI routine is unchanged, the default build remains byte-identical, and the pinned upstream Sotto source remains untouched.
+
+### Module sizes
+
+| Variant | Module bytes | Available scratch | Margin over 4,080-byte live requirement |
+|---|---:|---:|---:|
+| Fielded baseline | 9,784 | 4,128 B | 48 B |
+| Fast divider | 9,772 | 4,140 B | 60 B |
+| Fast history copy | 9,748 | 4,164 B | 84 B |
+| Combined | **9,736** | **4,176 B** | **96 B** |
+
+The combined image is **48 bytes smaller than the fielded image**, while preserving the same entry offset and 14,976-byte arena. The resource codebook and IVF deck are unchanged.
+
+### 1.04-second virtual GP0 comparison
+
+The same 8,293-sample 320Hz + 870Hz fixture, measured SPI model (6.1921us read setup + 0.9404us/byte), and real compiled Cortex-M0 module were used for all variants. CPI and ADC ISR cycles are simulation assumptions, not measured K6 averages.
+
+| CPI / ADC cycles per sample | Baseline | Fast divider | Fast history | Combined |
+|---|---:|---:|---:|---:|
+| 1.5 / 4,000 | 8,293 pass | 8,293 pass | 8,293 pass | 8,293 pass |
+| 2.5 / 4,000 | 1,920 then overflow | 8,293 pass | 2,880 then overflow | **8,293 pass** |
+| 3.0 / 3,000 | 1,600 then overflow | 8,293 pass | 2,240 then overflow | **8,293 pass** |
+| 3.0 / 4,000 | 1,200 then overflow | 1,920 then overflow | 1,280 then overflow | 2,560 then overflow |
+
+The history-copy change alone improves progress under contention but is not sufficient to sustain the stream. Together, the two optimizations complete the 1.04-second session at CPI 2.5 / 4,000 and CPI 3.0 / 3,000. At the harsher CPI 3.0 / 4,000 point the combined candidate still fills the 4-block queue and returns the normal `-12` failure; it dekeys and cleans up rather than leaving TX active. This is an explicit remaining throughput limit, not a pass.
+
+Every completed session remains bit-exact against the native codec reference: 26 codec frames, six valid RF packets, zero invalid packets, agreement with the independent compiled ARM wire decoder, and PCM queue high-water no greater than two blocks. The history-only variant was separately checked at nominal CPI for exact output.
+
+New offline regression coverage extends `tests/test_k6_sotto_fast_div.py` and `tests/test_k6_sotto_fast_div_rf.py`. The focused optimization suite passes **13 tests**; a broader 10-file Sotto/GP0 regression batch passes **69 tests**. The candidate CLI was also exercised end-to-end: it emitted a 9,736-byte module, the expected 4,182-byte IVF deck, a manifest with both experimental flags set, and a 96-byte scratch margin. No radio access, flash, PTT, or RF transmission was used.
+
+Evidence JSON: `docs/evidence/sotto-gp0-fast-throughput-ablation-20261126.json`.
+
 ## Candidate artifact and next gate
 
 The unsigned **offline** candidate code and manifest are staged at:
