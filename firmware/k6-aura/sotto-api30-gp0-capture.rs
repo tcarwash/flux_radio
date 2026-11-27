@@ -233,7 +233,15 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     // A CIC2 group represents 8 original high-rate PDM input groups.
     #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))]
     let group_weight=64000u32;
-    #[cfg(not(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)))]
+    // Experimental, default-OFF clock correction. In measured K6 GP0 AIR
+    // captures, the unpaced DMA producer generated ~8530 (not 8000) PCM/s.
+    // 8000 * (7500/8000) = 7500 fractional weight restores ~7997-8000
+    // physical PCM/s without changing the 87260 denominator, fast divider,
+    // queue layout, or work done per raw 64-bit-count group. This is NOT a
+    // universal DMA calibration. Strict build gate excludes CIC prefilters.
+    #[cfg(all(not(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)),k6_sotto_gp0_clock_7500))]
+    let group_weight=7500u32;
+    #[cfg(all(not(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)),not(k6_sotto_gp0_clock_7500)))]
     let group_weight=8000u32;
     let newphase=d.phase+group_weight;
     if newphase<d.fs{d.area+=x*(group_weight as i32);d.phase=newphase;return 0;}

@@ -445,6 +445,27 @@ case "${K6_SOTTO_GP0_CIC3:-0}" in
     PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_cic3" ;;
   *) echo "K6_SOTTO_GP0_CIC3 must be 0 or 1" >&2; exit 1 ;;
 esac
+# Experimental GP0 PCM sample-clock calibration, based on real 500Hz and
+# 1kHz pre-vocoder RF dumps (~8530 produced PCM/s on this one radio).
+# This is an offline-only candidate: opt-in, not universal hardware timing.
+# It changes only the fractional output count weight (8000 -> 7500), NOT the
+# 87260 denominator or its exact fast integer divider. Keep prefilters off
+# during qualification so ISR utilization/noise effects are not confounded.
+case "${K6_SOTTO_GP0_CLOCK_7500:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC2:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_CLOCK_7500 requires GP0 mic, RAM0=1, fast ISR and all GP0 prefilters OFF" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_clock_7500" ;;
+  *) echo "K6_SOTTO_GP0_CLOCK_7500 must be 0 or 1" >&2; exit 1 ;;
+esac
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.
 if [ "${K6_RAM0:-0}" = 1 ] && {
