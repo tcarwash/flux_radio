@@ -47,7 +47,7 @@ fn main(){
     p=tmp_path_factory.mktemp('gp0-antialias-actual-rust')
     src=p/'decimator.rs';src.write_text(program)
     builds={}
-    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11']),('fir11_late',['--cfg','k6_sotto_gp0_fir11_late']),('cic2',['--cfg','k6_sotto_gp0_cic2'])]:
+    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11']),('fir11_late',['--cfg','k6_sotto_gp0_fir11_late']),('cic2',['--cfg','k6_sotto_gp0_cic2']),('cic3',['--cfg','k6_sotto_gp0_cic3'])]:
         exe=p/label
         subprocess.run(['rustc','--edition=2021','-O','--cfg','k6_sotto_gp0_fast_isr',*cfg,str(src),'-o',str(exe)],
                        check=True,timeout=45,capture_output=True,text=True)
@@ -97,7 +97,7 @@ def test_anti_alias_suppresses_nine_khz_before_downsampling(rust_programs):
 def test_arm_profile_is_explicit_opt_in():
     s=SRC.read_text();b=BUILD.read_text()
     assert '#[cfg(k6_sotto_gp0_aa3)]' in s
-    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2)))]' in s
+    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)))]' in s
     assert 'K6_SOTTO_GP0_AA3:-0' in b
     assert 'K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR' in b
     assert 'K6_SOTTO_GP0_FAST_ISR:-0' in b
@@ -148,7 +148,7 @@ def test_fir11_flag_gated_and_uncombined():
     assert "K6_SOTTO_GP0_AA3:-0" in b
     assert "k6_sotto_gp0_fir11" in s
     assert "fir_taps:[i8;11]" in s
-    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2))" in s
+    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))" in s
     assert 64*128*160000 < 2**31
 
 @pytest.mark.parametrize('fs',[35000,84960,87260,110000,160000])
@@ -247,7 +247,7 @@ def test_cic2_config_is_default_off_rate_restricted_and_bounded():
     source=SRC.read_text(); build=BUILD.read_text()
     assert 'K6_SOTTO_GP0_CIC2:-0' in build
     assert 'k6_sotto_gp0_cic2' in source
-    assert 'd.cic_i1=d.cic_i1.wrapping_add(raw as u16)' in source
+    assert 'd.cic_i1=d.cic_i1.wrapping_add(v as u16)' in source
     assert 'd.cic_i2=d.cic_i2.wrapping_add(d.cic_i1)' in source
     assert 'let group_weight=64000u32;' in source
     assert 'let num=mag<<2;' in source
@@ -255,3 +255,82 @@ def test_cic2_config_is_default_off_rate_restricted_and_bounded():
     assert 64*64*160000*4 < 2**32
     with pytest.raises(ValueError,match='requires'):
         decimate(np.full(1000,32,dtype=np.uint8),fs=110000,cic2=True)
+
+@pytest.mark.parametrize("fixture",["random","silence","full","impulse"])
+def test_cic3_exact_rust_and_modulo_reference(rust_programs,fixture):
+    rng=np.random.default_rng(198933)
+    n=FS//3
+    if fixture=="random":counts=rng.binomial(64,.5,size=n).astype(np.uint8)
+    elif fixture=="silence":counts=np.zeros(n,dtype=np.uint8)
+    elif fixture=="full":counts=np.full(n,64,dtype=np.uint8)
+    else:
+        counts=np.full(n,32,dtype=np.uint8)
+        counts[0]=64;counts[::113]=0;counts[::317]=64
+    actual=run(rust_programs["cic3"],counts)
+    reference=decimate(counts,cic3=True)
+    np.testing.assert_array_equal(actual,reference)
+    assert len(actual)==len(counts)*8000//FS
+
+
+def test_cic3_output_mathematically_equals_third_order_8_sinc_interior():
+    import numpy as np
+    rng=np.random.default_rng(3073)
+    for raw in (rng.integers(-32,33,size=1600,dtype=np.int32),
+                np.full(1600,-32,dtype=np.int32),
+                np.full(1600,32,dtype=np.int32)):
+        i1=i2=i3=prev3=prev_c1=prev_c2=0
+        out=[]
+        for j,x in enumerate(raw):
+            i1=(i1+int(x))&65535
+            i2=(i2+i1)&65535
+            i3=(i3+i2)&65535
+            if j%8==7:
+                c1=(i3-prev3)&65535;prev3=i3
+                c2=(c1-prev_c1)&65535;prev_c1=c1
+                c3=(c2-prev_c2)&65535;prev_c2=c2
+                out.append(c3-65536 if c3>=32768 else c3)
+        kernel=np.ones(8,dtype=np.int64)
+        full=np.convolve(raw,np.convolve(kernel,np.convolve(kernel,kernel)),mode="full")
+        np.testing.assert_array_equal(out,full[7:len(raw):8])
+        assert max(abs(x) for x in out)<=16384
+
+
+def test_cic3_strongest_band_alias_metric_not_direct_8khz_alias(rust_programs):
+    import numpy as np
+    import math
+    for freq in (1000,2800,3500,7000,9000,15000,17000):
+        t=np.arange(int(FS*1.5))/FS
+        bits=np.rint(32+4*np.sin(2*np.pi*freq*t)).astype(np.uint8)
+        cic3=run(rust_programs["cic3"],bits)
+        legacy=run(rust_programs["legacy"],bits)
+        def strongest(x):
+            y=x.astype(float)[1600:]
+            window=np.hanning(len(y))
+            f=np.fft.rfftfreq(len(y),d=1/8000)
+            a=np.abs(np.fft.rfft(y*window))*2/window.sum()
+            a[(f<80)|(f>3900)]=0
+            peak=int(a.argmax())
+            return float(f[peak]),float(a[peak])
+        fout,amp=strongest(cic3)
+        _,base=strongest(legacy)
+        rejection=20*math.log10(max(amp,1e-9)/max(base,1e-9))
+        if freq==9000:
+            # CIC3 may push the 1.9k alias below quantization spurs.
+            # The correct metric is strongest in-band rejection, not the
+            # expected nominal sinusoidal alias frequency.
+            assert rejection<-14,(freq,fout,rejection)
+        if freq==1000:assert -2<rejection<.5,(freq,rejection)
+        if freq==2800:assert -7<rejection<0,(freq,rejection)
+
+
+def test_cic3_feature_is_gated_to_correct_fs_and_exclusive():
+    s=SRC.read_text();b=BUILD.read_text()
+    assert 'K6_SOTTO_GP0_CIC3:-0' in b
+    assert 'k6_sotto_gp0_cic3' in s
+    assert 'd.cic_i3=d.cic_i3.wrapping_add(d.cic_i2)' in s
+    assert 'let num=mag;' in s
+    assert 'if d.fs!=FS{return -1;}' in s
+    # CIC3 explicitly accepts 87,260 groups/s only, not arbitrary 160kHz.
+    assert 32*512*FS < 2**31
+    with pytest.raises(ValueError,match='requires'):
+        decimate(np.full(1000,32,dtype=np.uint8),fs=110000,cic3=True)

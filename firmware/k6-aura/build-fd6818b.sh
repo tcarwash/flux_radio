@@ -391,7 +391,8 @@ case "${K6_SOTTO_GP0_FIR11:-0}" in
   1)
     [ "${K6_SOTTO_MIC}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
     [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
-    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] && [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] || {
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] && [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
       echo "K6_SOTTO_GP0_FIR11 requires GP0 mic, RAM0, fast ISR, and AA3=0" >&2; exit 1;
     }
     PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fir11" ;;
@@ -421,11 +422,28 @@ case "${K6_SOTTO_GP0_CIC2:-0}" in
     [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
     [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
     [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
-    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] || {
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
       echo "K6_SOTTO_GP0_CIC2 requires GP0 mic, RAM0, fast ISR, AA3=FIR11=FIR11_LATE=0" >&2; exit 1;
     }
     PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_cic2" ;;
   *) echo "K6_SOTTO_GP0_CIC2 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental CIC3/R=8. Three wrapped integrators and combs, all bounded
+# to 16-bit state; 8k fractional output math runs once per 8 groups.
+case "${K6_SOTTO_GP0_CIC3:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC2:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_CIC3 requires GP0 mic, RAM0, fast ISR and all other prefilters OFF" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_cic3" ;;
+  *) echo "K6_SOTTO_GP0_CIC3 must be 0 or 1" >&2; exit 1 ;;
 esac
 # Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
 # persistent registers/context. Standard and RAM0=stack images are unchanged.

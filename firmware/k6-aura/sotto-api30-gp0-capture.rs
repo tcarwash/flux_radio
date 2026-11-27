@@ -60,11 +60,14 @@ struct Decimator {
     #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[i8;11],
     // CIC2 8: two 16-bit wrapping integrators and two delayed comb taps.
     // 8*8*64 max steady-state output is 4,096, safe as signed i16.
-    #[cfg(k6_sotto_gp0_cic2)] cic_i1:u16,
-    #[cfg(k6_sotto_gp0_cic2)] cic_i2:u16,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i1:u16,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i2:u16,
     #[cfg(k6_sotto_gp0_cic2)] cic_prev_i2:u16,
-    #[cfg(k6_sotto_gp0_cic2)] cic_prev_c1:u16,
-    #[cfg(k6_sotto_gp0_cic2)] cic_count:u8,
+    #[cfg(k6_sotto_gp0_cic3)] cic_i3:u16,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_i3:u16,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_c2:u16,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_prev_c1:u16,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_count:u8,
 }
 impl Decimator {const fn empty()->Self{Self{
     fs:0,phase:0,area:0,dc:0,samples:0,clipped:0,
@@ -74,11 +77,14 @@ impl Decimator {const fn empty()->Self{Self{
     #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_sum:0,
     #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_head:0,
     #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[0;11],
-    #[cfg(k6_sotto_gp0_cic2)] cic_i1:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_i2:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i1:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i2:0,
     #[cfg(k6_sotto_gp0_cic2)] cic_prev_i2:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_prev_c1:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_count:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_i3:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_i3:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_c2:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_prev_c1:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_count:0,
 }}}
 
 #[repr(C)]
@@ -154,17 +160,22 @@ fn gp0_div_87260(n:u32)->u32{
 fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     if d.fs<=16000||d.fs>160000||bits>64{return -1;}
     let raw=2*(bits as i32)-64;
-    #[cfg(k6_sotto_gp0_cic2)]
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))]
     {
-        // CIC2 integrates raw counts at 87,260 Hz, then runs two combs
-        // and the expensive 8kHz fractional resampler only every 8 groups.
-        // Use 16-bit modular arithmetic: linear CIC filters are exact modulo
-        // 2^16 when their bounded *output* fits i16 (here +/-4096).
-        // This prototype deliberately accepts ONLY the real GP0 group rate:
-        // decimation by 8 must still feed >8kHz into the last rate converter.
+        // R=8 CIC integrators operate in modular u16 arithmetic.
+        // CIC2 keeps full centered raw [-64,+64] (gain 64, output +/-4096).
+        // CIC3 uses exactly half raw (bits-32), since its gain is 512:
+        // the third-stage output remains within +/-16384 in signed i16.
+        // For both, the original Q8 PCM gain is recovered after decimation.
         if d.fs!=FS{return -1;}
-        d.cic_i1=d.cic_i1.wrapping_add(raw as u16);
+        #[cfg(k6_sotto_gp0_cic2)]
+        let v=raw;
+        #[cfg(k6_sotto_gp0_cic3)]
+        let v=bits as i32-32;
+        d.cic_i1=d.cic_i1.wrapping_add(v as u16);
         d.cic_i2=d.cic_i2.wrapping_add(d.cic_i1);
+        #[cfg(k6_sotto_gp0_cic3)]
+        { d.cic_i3=d.cic_i3.wrapping_add(d.cic_i2); }
         d.cic_count+=1;
         if d.cic_count<8{return 0;}
         d.cic_count=0;
@@ -207,12 +218,22 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
         d.cic_prev_c1=comb1;
         (result as i16) as i32
     };
-    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2)))]
+    #[cfg(k6_sotto_gp0_cic3)]
+    let x={
+        let c1=d.cic_i3.wrapping_sub(d.cic_prev_i3);
+        d.cic_prev_i3=d.cic_i3;
+        let c2=c1.wrapping_sub(d.cic_prev_c1);
+        d.cic_prev_c1=c1;
+        let c3=c2.wrapping_sub(d.cic_prev_c2);
+        d.cic_prev_c2=c2;
+        (c3 as i16) as i32
+    };
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)))]
     let x=raw;
     // A CIC2 group represents 8 original high-rate PDM input groups.
-    #[cfg(k6_sotto_gp0_cic2)]
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))]
     let group_weight=64000u32;
-    #[cfg(not(k6_sotto_gp0_cic2))]
+    #[cfg(not(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)))]
     let group_weight=8000u32;
     let newphase=d.phase+group_weight;
     if newphase<d.fs{d.area+=x*(group_weight as i32);d.phase=newphase;return 0;}
@@ -221,11 +242,14 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     let mag=area.unsigned_abs();
     // Legacy raw counts, AA3/FIR11 Q7, or experimental FIR11 raw window sum.
     // Every profile reconstructs the centered Q8 PCM value before DC removal.
-    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2)))]
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late,k6_sotto_gp0_cic2,k6_sotto_gp0_cic3)))]
     let num=mag<<8;
     // CIC2 gain is 8^2=64, so shift 2 produces the original Q8 scale.
     #[cfg(k6_sotto_gp0_cic2)]
     let num=mag<<2;
+    // CIC3 integrator input was halved: 8^3/2=256, already Q8.
+    #[cfg(k6_sotto_gp0_cic3)]
+    let num=mag;
     #[cfg(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11))]
     let num=mag<<1;
     #[cfg(all(k6_sotto_gp0_fast_isr,not(k6_sotto_gp0_fir11_late)))]
@@ -403,11 +427,14 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
             #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_sum:0,
             #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_head:0,
             #[cfg(any(k6_sotto_gp0_fir11,k6_sotto_gp0_fir11_late))] fir_taps:[0;11],
-    #[cfg(k6_sotto_gp0_cic2)] cic_i1:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_i2:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i1:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_i2:0,
     #[cfg(k6_sotto_gp0_cic2)] cic_prev_i2:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_prev_c1:0,
-    #[cfg(k6_sotto_gp0_cic2)] cic_count:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_i3:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_i3:0,
+    #[cfg(k6_sotto_gp0_cic3)] cic_prev_c2:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_prev_c1:0,
+    #[cfg(any(k6_sotto_gp0_cic2,k6_sotto_gp0_cic3))] cic_count:0,
         };
         (*st).expect_tc=0;(*st).failed=0;(*st).armed=1;
         #[cfg(k6_sotto_gp0_timing)] {(*st).reason=0;}
