@@ -53,12 +53,20 @@ struct Decimator {
     #[cfg(k6_sotto_gp0_aa3)] lp1:i32,
     #[cfg(k6_sotto_gp0_aa3)] lp2:i32,
     #[cfg(k6_sotto_gp0_aa3)] lp3:i32,
+    // Prototype: running 11-count window, chosen to notch near 8kHz
+    // while retaining more 2-3.5kHz speech than the AA3 three-pole IIR.
+    #[cfg(k6_sotto_gp0_fir11)] fir_sum:i16,
+    #[cfg(k6_sotto_gp0_fir11)] fir_head:u8,
+    #[cfg(k6_sotto_gp0_fir11)] fir_taps:[i8;11],
 }
 impl Decimator {const fn empty()->Self{Self{
     fs:0,phase:0,area:0,dc:0,samples:0,clipped:0,
     #[cfg(k6_sotto_gp0_aa3)] lp1:0,
     #[cfg(k6_sotto_gp0_aa3)] lp2:0,
     #[cfg(k6_sotto_gp0_aa3)] lp3:0,
+    #[cfg(k6_sotto_gp0_fir11)] fir_sum:0,
+    #[cfg(k6_sotto_gp0_fir11)] fir_head:0,
+    #[cfg(k6_sotto_gp0_fir11)] fir_taps:[0;11],
 }}}
 
 #[repr(C)]
@@ -138,7 +146,7 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
     let x={
         // One raw popcount covers 64 PDM bits (~87.26kHz). An existing
         // fractional boxcar on its own strongly aliases noise from 7-25kHz
-        // into the 0-4kHz speech band. Three Q8 one-pole IIRs (alpha 1/4)
+        // into the 0-4kHz speech band. Three Q7 one-pole IIRs (alpha 1/4)
         // suppress that energy *before* decimation, without PCM-ring growth,
         // heap use, extra divides, or any other peripheral/IRQ change.
         // Q7 is intentional: max 64*128*160000=1.31e9 keeps signed
@@ -149,18 +157,29 @@ fn dec_push(d:&mut Decimator,bits:u32,out:&mut i16)->i32{
         d.lp3+=(d.lp2-d.lp3)>>2;
         d.lp3
     };
-    #[cfg(not(k6_sotto_gp0_aa3))]
+    #[cfg(k6_sotto_gp0_fir11)]
+    let x={
+        let slot=d.fir_head as usize;
+        let outgoing=d.fir_taps[slot] as i32;
+        d.fir_taps[slot]=raw as i8; // raw is exactly [-64, 64].
+        d.fir_sum=(d.fir_sum as i32+raw-outgoing) as i16;
+        d.fir_head=if slot==10 {0} else {(slot+1) as u8};
+        // Keep Q7 sub-count precision. The /11 constant is an ARM
+        // compile-time reciprocal, not a general hardware divider.
+        (d.fir_sum as i32*128)/11
+    };
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]
     let x=raw;
     let newphase=d.phase+8000;
     if newphase<d.fs{d.area+=x*8000;d.phase=newphase;return 0;}
     let left=d.fs-d.phase;
     let area=d.area+x*(left as i32);
     let mag=area.unsigned_abs();
-    // The legacy raw counts are integer-scaled; AA3 states use signed Q7.
+    // The legacy counts are integer-scaled; AA3/FIR11 states use signed Q7.
     // Both reach the original signed Q8 centered sample before DC rejection.
-    #[cfg(not(k6_sotto_gp0_aa3))]
+    #[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]
     let num=mag<<8;
-    #[cfg(k6_sotto_gp0_aa3)]
+    #[cfg(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11))]
     let num=mag<<1;
     #[cfg(k6_sotto_gp0_fast_isr)]
     let q=(if d.fs==FS {gp0_div_87260(num)} else {udiv(num,d.fs)}) as i32;
@@ -316,6 +335,9 @@ pub fn start(ptr:*mut u8,fs:u32)->bool{
             #[cfg(k6_sotto_gp0_aa3)] lp1:0,
             #[cfg(k6_sotto_gp0_aa3)] lp2:0,
             #[cfg(k6_sotto_gp0_aa3)] lp3:0,
+            #[cfg(k6_sotto_gp0_fir11)] fir_sum:0,
+            #[cfg(k6_sotto_gp0_fir11)] fir_head:0,
+            #[cfg(k6_sotto_gp0_fir11)] fir_taps:[0;11],
         };
         (*st).expect_tc=0;(*st).failed=0;(*st).armed=1;
         #[cfg(k6_sotto_gp0_timing)] {(*st).reason=0;}

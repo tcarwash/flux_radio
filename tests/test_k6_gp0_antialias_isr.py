@@ -47,7 +47,7 @@ fn main(){
     p=tmp_path_factory.mktemp('gp0-antialias-actual-rust')
     src=p/'decimator.rs';src.write_text(program)
     builds={}
-    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3'])]:
+    for label,cfg in [('legacy',[]),('aa3',['--cfg','k6_sotto_gp0_aa3']),('fir11',['--cfg','k6_sotto_gp0_fir11'])]:
         exe=p/label
         subprocess.run(['rustc','--edition=2021','-O','--cfg','k6_sotto_gp0_fast_isr',*cfg,str(src),'-o',str(exe)],
                        check=True,timeout=45,capture_output=True,text=True)
@@ -97,7 +97,7 @@ def test_anti_alias_suppresses_nine_khz_before_downsampling(rust_programs):
 def test_arm_profile_is_explicit_opt_in():
     s=SRC.read_text();b=BUILD.read_text()
     assert '#[cfg(k6_sotto_gp0_aa3)]' in s
-    assert '#[cfg(not(k6_sotto_gp0_aa3))]' in s
+    assert '#[cfg(not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11)))]' in s
     assert 'K6_SOTTO_GP0_AA3:-0' in b
     assert 'K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR' in b
     assert 'K6_SOTTO_GP0_FAST_ISR:-0' in b
@@ -107,3 +107,46 @@ def test_arm_profile_is_explicit_opt_in():
     assert 'const HALF:usize=512;' in s
     # Full fixed-point area must fit i32 at 160kHz max even for all-one PDM.
     assert 64*(1<<7)*160000 < 2**31
+
+
+@pytest.mark.parametrize('fs',[87260,84960,110000,160000])
+def test_fir11_matches_real_rust_integer_samples_and_extremes(rust_programs,fs):
+    rng=np.random.default_rng(1984)
+    bits=rng.binomial(64,.5,size=fs//7).astype(np.uint8)
+    bits[::19]=0
+    bits[::37]=64
+    actual=run(rust_programs['fir11'],bits,fs)
+    reference=decimate(bits,fs=fs,fir11=True)
+    np.testing.assert_array_equal(actual,reference)
+    assert len(actual)==len(bits)*8000//fs
+
+
+def test_fir11_spectral_tradeoff_against_three_pole_aa3(rust_programs):
+    t=np.arange(int(FS*.75))/FS
+    for freq in (1000,2800,7000,9000,15000):
+        bits=np.rint(32+4*np.sin(2*np.pi*freq*t)).astype(np.uint8)
+        legacy=run(rust_programs['legacy'],bits)
+        fir11=run(rust_programs['fir11'],bits)
+        aa3=run(rust_programs['aa3'],bits)
+        alias=abs((freq+4000)%8000-4000)
+        base=phase_amp(legacy,alias)
+        db_fir=20*math.log10(max(phase_amp(fir11,alias),1e-9)/max(base,1e-9))
+        db_aa3=20*math.log10(max(phase_amp(aa3,alias),1e-9)/max(base,1e-9))
+        if freq==1000:
+            assert -1.0<db_fir<0.3,(freq,db_fir)
+        if freq==2800:
+            assert db_fir>db_aa3+2,(freq,db_fir,db_aa3)
+        if freq==9000:
+            assert db_fir < -16,(freq,db_fir)
+        if freq==15000:
+            assert db_fir < -20,(freq,db_fir)
+
+
+def test_fir11_flag_gated_and_uncombined():
+    s=SRC.read_text();b=BUILD.read_text()
+    assert "K6_SOTTO_GP0_FIR11:-0" in b
+    assert "K6_SOTTO_GP0_AA3:-0" in b
+    assert "k6_sotto_gp0_fir11" in s
+    assert "fir_taps:[i8;11]" in s
+    assert "not(any(k6_sotto_gp0_aa3,k6_sotto_gp0_fir11))" in s
+    assert 64*128*160000 < 2**31
