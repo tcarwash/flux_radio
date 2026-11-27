@@ -1,0 +1,435 @@
+{
+  "original_wav_files_preserved": true,
+  "rows": [
+    {
+      "above_off_baseline_db": 10.3,
+      "clipped_samples": 0,
+      "dc_offset": 3.6e-05,
+      "dominant_amplitude": 0.23484,
+      "dominant_hz": 237.79,
+      "dominant_to_nominal_ratio": 0.95116,
+      "duration_seconds": 6.88,
+      "file_basename": "250hz_at_.1vpp.wav",
+      "near_zero_fraction": 0.012318,
+      "noise_subtracted_snr_db": 9.87,
+      "nominal_input_hz": 250,
+      "peak_linear": 0.522858,
+      "rate_hz": 8000,
+      "rms_dbfs": -14.224,
+      "rms_linear": 0.1944535,
+      "samples": 55040,
+      "spectral_peaks": [
+        {
+          "amplitude": 0.23484,
+          "hz": 237.79
+        },
+        {
+          "amplitude": 0.0282,
+          "hz": 229.49
+        },
+        {
+          "amplitude": 0.02597,
+          "hz": 220.7
+        },
+        {
+          "amplitude": 0.02358,
+          "hz": 249.02
+        },
+        {
+          "amplitude": 0.01694,
+          "hz": 3328.61
+        },
+        {
+          "amplitude": 0.0155,
+          "hz": 3566.41
+        },
+        {
+          "amplitude": 0.01511,
+          "hz": 3804.2
+        },
+        {
+          "amplitude": 0.01505,
+          "hz": 475.59
+        },
+        {
+          "amplitude": 0.01361,
+          "hz": 3090.82
+        },
+        {
+          "amplitude": 0.01318,
+          "hz": 259.28
+        },
+        {
+          "amplitude": 0.01253,
+          "hz": 2377.69
+        },
+        {
+          "amplitude": 0.01251,
+          "hz": 2853.27
+        },
+        {
+          "amplitude": 0.01232,
+          "hz": 2615.48
+        },
+        {
+          "amplitude": 0.01204,
+          "hz": 2139.89
+        },
+        {
+          "amplitude": 0.01151,
+          "hz": 1902.1
+        },
+        {
+          "amplitude": 0.01102,
+          "hz": 1426.51
+        },
+        {
+          "amplitude": 0.01084,
+          "hz": 1664.31
+        },
+        {
+          "amplitude": 0.01071,
+          "hz": 211.91
+        },
+        {
+          "amplitude": 0.00979,
+          "hz": 1188.72
+        },
+        {
+          "amplitude": 0.00941,
+          "hz": 713.13
+        }
+      ],
+      "spectrum_duration_seconds": 2.0,
+      "spectrum_start_seconds": 0.4
+    },
+    {
+      "above_off_baseline_db": 12.52,
+      "clipped_samples": 0,
+      "dc_offset": -2.45e-05,
+      "dominant_amplitude": 0.24716,
+      "dominant_hz": 482.18,
+      "dominant_to_nominal_ratio": 0.96436,
+      "duration_seconds": 6.68,
+      "file_basename": "500hz_at_.1vpp.wav",
+      "near_zero_fraction": 0.010835,
+      "noise_subtracted_snr_db": 12.28,
+      "nominal_input_hz": 500,
+      "peak_linear": 0.495514,
+      "rate_hz": 8000,
+      "rms_dbfs": -11.998,
+      "rms_linear": 0.251252,
+      "samples": 53440,
+      "spectral_peaks": [
+        {
+          "amplitude": 0.24716,
+          "hz": 482.18
+        },
+        {
+          "amplitude": 0.04349,
+          "hz": 489.75
+        },
+        {
+          "amplitude": 0.04057,
+          "hz": 474.37
+        },
+        {
+          "amplitude": 0.02991,
+          "hz": 465.09
+        },
+        {
+          "amplitude": 0.02925,
+          "hz": 496.83
+        },
+        {
+          "amplitude": 0.02923,
+          "hz": 457.03
+        },
+        {
+          "amplitude": 0.02667,
+          "hz": 507.08
+        },
+        {
+          "amplitude": 0.01709,
+          "hz": 2893.07
+        },
+        {
+          "amplitude": 0.01677,
+          "hz": 3857.42
+        },
+        {
+          "amplitude": 0.01669,
+          "hz": 964.36
+        },
+        {
+          "amplitude": 0.01653,
+          "hz": 1928.71
+        },
+        {
+          "amplitude": 0.01586,
+          "hz": 3375.24
+        },
+        {
+          "amplitude": 0.01231,
+          "hz": 2410.89
+        },
+        {
+          "amplitude": 0.0104,
+          "hz": 1446.53
+        },
+        {
+          "amplitude": 0.00884,
+          "hz": 515.14
+        },
+        {
+          "amplitude": 0.00723,
+          "hz": 532.23
+        },
+        {
+          "amplitude": 0.00672,
+          "hz": 450.44
+        },
+        {
+          "amplitude": 0.00593,
+          "hz": 431.88
+        },
+        {
+          "amplitude": 0.00468,
+          "hz": 523.44
+        }
+      ],
+      "spectrum_duration_seconds": 2.0,
+      "spectrum_start_seconds": 0.4
+    },
+    {
+      "above_off_baseline_db": 6.87,
+      "clipped_samples": 0,
+      "dc_offset": -2.9e-06,
+      "dominant_amplitude": 0.10898,
+      "dominant_hz": 956.79,
+      "dominant_to_nominal_ratio": 0.95679,
+      "duration_seconds": 8.76,
+      "file_basename": "1khz_at_.1vpp.wav",
+      "near_zero_fraction": 0.034546,
+      "noise_subtracted_snr_db": 5.87,
+      "nominal_input_hz": 1000,
+      "peak_linear": 0.625549,
+      "rate_hz": 8000,
+      "rms_dbfs": -17.652,
+      "rms_linear": 0.131035,
+      "samples": 70080,
+      "spectral_peaks": [
+        {
+          "amplitude": 0.10898,
+          "hz": 956.79
+        },
+        {
+          "amplitude": 0.03943,
+          "hz": 1147.46
+        },
+        {
+          "amplitude": 0.02887,
+          "hz": 764.89
+        },
+        {
+          "amplitude": 0.01602,
+          "hz": 1912.6
+        },
+        {
+          "amplitude": 0.0155,
+          "hz": 3634.03
+        },
+        {
+          "amplitude": 0.01545,
+          "hz": 1338.62
+        },
+        {
+          "amplitude": 0.01517,
+          "hz": 3251.22
+        },
+        {
+          "amplitude": 0.01504,
+          "hz": 949.71
+        },
+        {
+          "amplitude": 0.01422,
+          "hz": 3825.2
+        },
+        {
+          "amplitude": 0.01416,
+          "hz": 3060.3
+        },
+        {
+          "amplitude": 0.0139,
+          "hz": 1721.68
+        },
+        {
+          "amplitude": 0.01379,
+          "hz": 3443.12
+        },
+        {
+          "amplitude": 0.01371,
+          "hz": 2869.14
+        },
+        {
+          "amplitude": 0.01276,
+          "hz": 1529.79
+        },
+        {
+          "amplitude": 0.01233,
+          "hz": 2486.57
+        },
+        {
+          "amplitude": 0.01164,
+          "hz": 2295.41
+        },
+        {
+          "amplitude": 0.01134,
+          "hz": 2104.25
+        },
+        {
+          "amplitude": 0.00967,
+          "hz": 966.55
+        },
+        {
+          "amplitude": 0.00948,
+          "hz": 2678.47
+        },
+        {
+          "amplitude": 0.00857,
+          "hz": 981.69
+        }
+      ],
+      "spectrum_duration_seconds": 2.0,
+      "spectrum_start_seconds": 0.4
+    },
+    {
+      "above_off_baseline_db": 10.79,
+      "clipped_samples": 0,
+      "dc_offset": -5.99e-05,
+      "dominant_amplitude": 0.0403,
+      "dominant_hz": 1968.02,
+      "dominant_to_nominal_ratio": 0.98401,
+      "duration_seconds": 8.76,
+      "file_basename": "2k_at_.1vpp.wav",
+      "near_zero_fraction": 0.020876,
+      "noise_subtracted_snr_db": 10.41,
+      "nominal_input_hz": 2000,
+      "peak_linear": 0.930847,
+      "rate_hz": 8000,
+      "rms_dbfs": -13.732,
+      "rms_linear": 0.2057879,
+      "samples": 70080,
+      "spectral_peaks": [
+        {
+          "amplitude": 0.0403,
+          "hz": 1968.02
+        },
+        {
+          "amplitude": 0.03814,
+          "hz": 1987.55
+        },
+        {
+          "amplitude": 0.03734,
+          "hz": 1948.0
+        },
+        {
+          "amplitude": 0.03575,
+          "hz": 1960.45
+        },
+        {
+          "amplitude": 0.03332,
+          "hz": 1954.1
+        },
+        {
+          "amplitude": 0.0329,
+          "hz": 1931.88
+        },
+        {
+          "amplitude": 0.03003,
+          "hz": 1979.25
+        },
+        {
+          "amplitude": 0.02915,
+          "hz": 2012.7
+        },
+        {
+          "amplitude": 0.02718,
+          "hz": 1906.74
+        },
+        {
+          "amplitude": 0.02695,
+          "hz": 1994.14
+        },
+        {
+          "amplitude": 0.02569,
+          "hz": 1895.75
+        },
+        {
+          "amplitude": 0.02469,
+          "hz": 1917.72
+        },
+        {
+          "amplitude": 0.02458,
+          "hz": 1925.29
+        },
+        {
+          "amplitude": 0.02199,
+          "hz": 1939.45
+        },
+        {
+          "amplitude": 0.02119,
+          "hz": 1889.16
+        },
+        {
+          "amplitude": 0.02075,
+          "hz": 1843.75
+        },
+        {
+          "amplitude": 0.02071,
+          "hz": 1880.62
+        },
+        {
+          "amplitude": 0.02021,
+          "hz": 1853.27
+        },
+        {
+          "amplitude": 0.01922,
+          "hz": 2037.11
+        },
+        {
+          "amplitude": 0.01834,
+          "hz": 2049.07
+        }
+      ],
+      "spectrum_duration_seconds": 2.0,
+      "spectrum_start_seconds": 0.4
+    },
+    {
+      "clipped_samples": 0,
+      "dc_offset": -2.79e-05,
+      "dominant_amplitude": 0.00481,
+      "dominant_hz": 3800.54,
+      "duration_seconds": 7.4,
+      "file_basename": "gen_off.wav",
+      "near_zero_fraction": 0.071807,
+      "peak_linear": 0.282257,
+      "rate_hz": 8000,
+      "rms_dbfs": -24.523,
+      "rms_linear": 0.0594102,
+      "samples": 59200,
+      "spectral_peaks": [
+        {
+          "amplitude": 0.00481,
+          "hz": 3800.54
+        }
+      ],
+      "spectrum_duration_seconds": 2.0,
+      "spectrum_start_seconds": 0.4
+    }
+  ],
+  "schema": 1,
+  "scope": "decoded Sotto monitor WAV output only; no RF or GP0 raw input",
+  "source_wav_bytes_included": false,
+  "statistical_warning": "Generator-off WAV is decoded noise, not proven ADC input. Baseline subtraction assumes stationary uncorrelated noise; no RF packet continuity data was available. Decoded tonal frequency can be pitch-quantized or a harmonic."
+}
