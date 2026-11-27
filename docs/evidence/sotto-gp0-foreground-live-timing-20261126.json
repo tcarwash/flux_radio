@@ -1,0 +1,48 @@
+{
+  "decode_error": null,
+  "fault": {
+    "boot_local": true,
+    "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+    "failure_classes": [
+      "pcm_dma"
+    ],
+    "fsk_errors": 0,
+    "gp0_capture_started": true,
+    "gp0_dma_error": 3,
+    "gp0_irq_count": 1746,
+    "gp0_missed_halves": 0,
+    "gp0_peak_isr_ticks": 3221,
+    "last_fsk_error": 0,
+    "module_return": -12,
+    "module_serial": 1795730062,
+    "pcm_lost": true,
+    "read_only": true,
+    "resource_errors": 0,
+    "saturating_16bit_counters": true,
+    "valid": true,
+    "version": "GPF1"
+  },
+  "fault_raw_hex": "475046318eaa086bf4ffffff2700000000000000000000000000000003000000d2060000950c000000000000",
+  "timing": {
+    "boot_local": true,
+    "fsk_preload_peak_100us_ticks": 148,
+    "fsk_preload_peak_approx_ms": 14.8,
+    "fsk_preloads": 1,
+    "gp0_code3_reason": "pcm_queue_full",
+    "gp0_code3_reason_id": 2,
+    "module_serial": 1795730062,
+    "pcm_backlog_at_stop_blocks": 3,
+    "pcm_backlog_qualifier": "sampled on op1 stop, not at IRQ failure; foreground may consume queued blocks before stop",
+    "pcm_offset_at_stop_samples": 0,
+    "read_only": true,
+    "resource_peak_approx_us": 261.03,
+    "resource_peak_tim17_ticks": 25059,
+    "resource_reads": 506,
+    "resource_timer_resolution": "96MHz nominal; 16-bit counter wraps every ~682.7us",
+    "resource_timing_qualifier": "individual calls spanning >=1 TIM17 counter wrap are ambiguous; values are not definitive wall times",
+    "resource_total_tim17_ticks_modulo": 3140064,
+    "valid": true,
+    "version": "GPT1"
+  },
+  "timing_raw_hex": "475054318eaa086b01000000fa010000e3610000e0e92f0094000000010000000200000003000000"
+}
