@@ -1,0 +1,204 @@
+{
+  "actual_clock_weight": 7500,
+  "actual_firmware_rust_decimator": true,
+  "alias_tone_response": {
+    "15000": {
+      "aa3": {
+        "reduction_vs_legacy_db": -9.85,
+        "strongest_voice_band_hz": 249.4
+      },
+      "fir11": {
+        "reduction_vs_legacy_db": -9.83,
+        "strongest_voice_band_hz": 249.4
+      },
+      "fir11_late": {
+        "reduction_vs_legacy_db": -9.81,
+        "strongest_voice_band_hz": 249.4
+      },
+      "legacy": {
+        "reduction_vs_legacy_db": 0.0,
+        "strongest_voice_band_hz": 994.7
+      }
+    },
+    "7500": {
+      "aa3": {
+        "reduction_vs_legacy_db": -15.39,
+        "strongest_voice_band_hz": 1649.7
+      },
+      "fir11": {
+        "reduction_vs_legacy_db": -14.1,
+        "strongest_voice_band_hz": 1649.7
+      },
+      "fir11_late": {
+        "reduction_vs_legacy_db": -14.1,
+        "strongest_voice_band_hz": 1649.7
+      },
+      "legacy": {
+        "reduction_vs_legacy_db": 0.0,
+        "strongest_voice_band_hz": 497.4
+      }
+    },
+    "9000": {
+      "aa3": {
+        "reduction_vs_legacy_db": -14.53,
+        "strongest_voice_band_hz": 149.3
+      },
+      "fir11": {
+        "reduction_vs_legacy_db": -14.57,
+        "strongest_voice_band_hz": 149.3
+      },
+      "fir11_late": {
+        "reduction_vs_legacy_db": -14.43,
+        "strongest_voice_band_hz": 149.3
+      },
+      "legacy": {
+        "reduction_vs_legacy_db": 0.0,
+        "strongest_voice_band_hz": 1003.0
+      }
+    }
+  },
+  "denominator": 87260,
+  "duration_seconds": 0.85,
+  "excluded_from_firmware_build_gate": true,
+  "input_group_rate_inferred_hz": 93050.0,
+  "model_not_physical": "input high-rate popcounts are synthetic; PDM shaping, analog noise and GPIO timing NOT measured",
+  "noise_models": {
+    "highpass": {
+      "aa3": {
+        "noise_rms_full_scale": 0.007787,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 5.11,
+        "tone_fit_residual_full_scale": 0.007891,
+        "tone_peak_full_scale": 0.358144,
+        "tone_to_noise_db": 30.13
+      },
+      "fir11": {
+        "noise_rms_full_scale": 0.009375,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 3.87,
+        "tone_fit_residual_full_scale": 0.009627,
+        "tone_peak_full_scale": 0.378895,
+        "tone_to_noise_db": 28.89
+      },
+      "fir11_late": {
+        "noise_rms_full_scale": 0.009477,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 3.87,
+        "tone_fit_residual_full_scale": 0.009629,
+        "tone_peak_full_scale": 0.37916,
+        "tone_to_noise_db": 28.89
+      },
+      "legacy": {
+        "noise_rms_full_scale": 0.015279,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.0,
+        "tone_fit_residual_full_scale": 0.015383,
+        "tone_peak_full_scale": 0.387863,
+        "tone_to_noise_db": 25.02
+      }
+    },
+    "inband": {
+      "aa3": {
+        "noise_rms_full_scale": 0.136357,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.54,
+        "tone_fit_residual_full_scale": 0.136025,
+        "tone_peak_full_scale": 0.35654,
+        "tone_to_noise_db": 5.36
+      },
+      "fir11": {
+        "noise_rms_full_scale": 0.149092,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.25,
+        "tone_fit_residual_full_scale": 0.148775,
+        "tone_peak_full_scale": 0.377287,
+        "tone_to_noise_db": 5.07
+      },
+      "fir11_late": {
+        "noise_rms_full_scale": 0.149239,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.25,
+        "tone_fit_residual_full_scale": 0.148833,
+        "tone_peak_full_scale": 0.377511,
+        "tone_to_noise_db": 5.07
+      },
+      "legacy": {
+        "noise_rms_full_scale": 0.157186,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.0,
+        "tone_fit_residual_full_scale": 0.156846,
+        "tone_peak_full_scale": 0.386213,
+        "tone_to_noise_db": 4.82
+      }
+    },
+    "white": {
+      "aa3": {
+        "noise_rms_full_scale": 0.035604,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 2.13,
+        "tone_fit_residual_full_scale": 0.035794,
+        "tone_peak_full_scale": 0.360204,
+        "tone_to_noise_db": 17.04
+      },
+      "fir11": {
+        "noise_rms_full_scale": 0.041423,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 1.3,
+        "tone_fit_residual_full_scale": 0.041693,
+        "tone_peak_full_scale": 0.381062,
+        "tone_to_noise_db": 16.21
+      },
+      "fir11_late": {
+        "noise_rms_full_scale": 0.041573,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 1.3,
+        "tone_fit_residual_full_scale": 0.04171,
+        "tone_peak_full_scale": 0.381335,
+        "tone_to_noise_db": 16.21
+      },
+      "legacy": {
+        "noise_rms_full_scale": 0.0497,
+        "pcm_samples": 6797,
+        "snr_gain_vs_unfiltered_db": 0.0,
+        "tone_fit_residual_full_scale": 0.049562,
+        "tone_peak_full_scale": 0.390222,
+        "tone_to_noise_db": 14.91
+      }
+    }
+  },
+  "offline_only": true,
+  "output_rate_model_hz": 7997.651,
+  "schema": 1,
+  "speech_band_tone_response": {
+    "1000": {
+      "aa3": -0.7,
+      "fir11": -0.2,
+      "fir11_late": -0.2,
+      "legacy": 0.0
+    },
+    "2000": {
+      "aa3": -2.58,
+      "fir11": -0.81,
+      "fir11_late": -0.81,
+      "legacy": 0.0
+    },
+    "2800": {
+      "aa3": -4.64,
+      "fir11": -1.62,
+      "fir11_late": -1.61,
+      "legacy": 0.0
+    },
+    "3200": {
+      "aa3": -5.78,
+      "fir11": -2.14,
+      "fir11_late": -2.14,
+      "legacy": 0.0
+    },
+    "500": {
+      "aa3": -0.2,
+      "fir11": -0.06,
+      "fir11_late": -0.05,
+      "legacy": 0.0
+    }
+  }
+}
