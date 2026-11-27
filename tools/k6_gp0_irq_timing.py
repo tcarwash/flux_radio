@@ -24,8 +24,15 @@ PCM_BLOCKS = 4
 class GP0InterruptBudget:
     """Virtual GP0 ISR schedule, with 8 PDM groups per handled half-buffer."""
 
-    def __init__(self, start_cycles: float, irq_cycles: float):
-        self.period_cycles = CPU_HZ * GROUPS_PER_IRQ / PDM_GROUPS_PER_SECOND
+    def __init__(self, start_cycles: float, irq_cycles: float, *,
+                 actual_group_rate_hz: float=PDM_GROUPS_PER_SECOND):
+        # This is the physically occurring PDM group rate, not the
+        # firmware's fixed 87260Hz divisor. They must remain independent.
+        if (not math.isfinite(actual_group_rate_hz) or
+                not 70_000 <= actual_group_rate_hz <= 100_000):
+            raise ValueError("GP0 actual PDM group rate must be finite and plausible")
+        self.actual_group_rate_hz = float(actual_group_rate_hz)
+        self.period_cycles = CPU_HZ * GROUPS_PER_IRQ / self.actual_group_rate_hz
         if not math.isfinite(start_cycles) or start_cycles < 0:
             raise ValueError("invalid GP0 capture start")
         if (not math.isfinite(irq_cycles) or irq_cycles < 0 or
@@ -40,12 +47,14 @@ class GP0InterruptBudget:
         if end_cycles < self.start_cycles:
             return 0
         return max(0, int(math.floor(
-            (end_cycles - self.start_cycles) * PDM_GROUPS_PER_SECOND /
+            (end_cycles - self.start_cycles) * self.actual_group_rate_hz /
             (CPU_HZ * GROUPS_PER_IRQ) + 1e-9)))
 
     @property
     def pcm_samples(self) -> int:
-        # The 8kHz fractional boxcar emits on this aggregate PDM count.
+        # The physical PDM IRQ clock can vary, but the *firmware* is still
+        # dividing by its nominal constant 87260 and labeling output 8kHz.
+        # For real observed rates != nominal, the produced sample clock drifts.
         return self.irq_count * GROUPS_PER_IRQ * PCM_HZ // PDM_GROUPS_PER_SECOND
 
     def advance(self, now_cycles: float, cpu_cycles: float, *, wall_sleep=False) -> float:

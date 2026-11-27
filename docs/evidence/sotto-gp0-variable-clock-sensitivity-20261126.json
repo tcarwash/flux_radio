@@ -1,0 +1,51 @@
+{
+  "elapsed_pcm_formula": "actual_PCM_samples_per_wall_second = 8000 * actual_GP0_groups_per_sec / 87260",
+  "note": "The last clock is NOT measured: assumes a pure input sine and transparent codec, which Sotto is not.",
+  "offline_only": true,
+  "physical_measurements_age": "from distinct Nov 25 attended GP0 diagnostics, not contemporaneous with Nov 26 tone WAVs",
+  "pitch_formula": "played_hz = physical_input_hz * 87260 / actual_GP0_groups_per_sec",
+  "scenarios": [
+    {
+      "actual_group_rate_hz": 84960.0,
+      "expected_output_over_input_factor": 1.0270716,
+      "expected_pcm_playback_peak_hz": 513.5358,
+      "firmware_group_divisor_hz": 87260.0,
+      "input_sine_hz": 500.0,
+      "label": "earlier_1k_diagnostic",
+      "nominal_pcm_header_hz": 8000.0,
+      "output_pcm_samples_per_wall_second": 7789.1359
+    },
+    {
+      "actual_group_rate_hz": 87770.0,
+      "expected_output_over_input_factor": 0.9941894,
+      "expected_pcm_playback_peak_hz": 497.0947,
+      "firmware_group_divisor_hz": 87260.0,
+      "input_sine_hz": 500.0,
+      "label": "earlier_generator_off_or_2k_diagnostic",
+      "nominal_pcm_header_hz": 8000.0,
+      "output_pcm_samples_per_wall_second": 8046.7568
+    },
+    {
+      "actual_group_rate_hz": 87260.0,
+      "expected_output_over_input_factor": 1.0,
+      "expected_pcm_playback_peak_hz": 500.0,
+      "firmware_group_divisor_hz": 87260.0,
+      "input_sine_hz": 500.0,
+      "label": "firmware_nominal",
+      "nominal_pcm_header_hz": 8000.0,
+      "output_pcm_samples_per_wall_second": 8000.0
+    },
+    {
+      "actual_group_rate_hz": 90484.88116,
+      "expected_output_over_input_factor": 0.96436,
+      "expected_pcm_playback_peak_hz": 482.18,
+      "firmware_group_divisor_hz": 87260.0,
+      "input_sine_hz": 500.0,
+      "label": "inferred_if_500_to_482_is_entirely_clock_error_NOT_MEASURED",
+      "nominal_pcm_header_hz": 8000.0,
+      "output_pcm_samples_per_wall_second": 8295.6572
+    }
+  ],
+  "schema": 1,
+  "warning": "A slower physical ADC/group clock makes decoded playback pitch HIGHER with a fixed 8000Hz header; a faster clock makes it LOWER. No real PDM waveform is executed by the virtual-link simulator."
+}

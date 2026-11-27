@@ -116,7 +116,7 @@ PCM=np.array([(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)],dt
 
 
 class LiveTx(Emu):
-    def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,gp0_irq_cycles=None):
+    def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,gp0_irq_cycles=None,gp0_actual_group_rate_hz=87260):
         self.gp0=artifact.get('gp0',False)
         self.gp0_route=False
         self.gp0_starts=0
@@ -125,7 +125,7 @@ class LiveTx(Emu):
         if self.pcm is None:self.pcm=PCM
         self.capture=None;self.capture_start=None;self.sample=0;self.highwater=0
         self.adc_cycles=adc_cycles;self.wall_delay=False
-        self.gp0_irq_cycles=gp0_irq_cycles;self.gp0_pacer=None;self.pcm_overflow_ms=None
+        self.gp0_irq_cycles=gp0_irq_cycles;self.gp0_actual_group_rate_hz=gp0_actual_group_rate_hz;self.gp0_pacer=None;self.pcm_overflow_ms=None
         self.lost=False;self.lease_expired=False;self.keyed=False;self.lease_end=0;self.saved=None
         self.pre_release=0;self.spi_reads=0;self.spi_us=spi_us;self.spi_byte_us=spi_byte_us;self.spi_read_bytes=0;self.keyed_read_bytes=0;self.tx_frames=[]
         self.cache=OrderedDict();self.cache_bytes=cache_bytes;self.cache_used=0
@@ -282,7 +282,7 @@ class LiveTx(Emu):
             elif r0==8 and self.gp0 and self.keyed and self.gp0_route and r2==87260 and r1%4==0 and self.scr<=r1<=self.scr+self.scratch-644:
                 self.capture=r1;self.capture_start=self.cyc;self.gp0_starts+=1
                 if self.gp0_irq_cycles is not None:
-                    self.gp0_pacer=GP0InterruptBudget(self.cyc,self.gp0_irq_cycles)
+                    self.gp0_pacer=GP0InterruptBudget(self.cyc,self.gp0_irq_cycles,actual_group_rate_hz=self.gp0_actual_group_rate_hz)
             elif r0==1:
                 self.capture=None
                 if self.gp0_route:self.gp0_stops+=1
@@ -454,18 +454,20 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False,fsk_cooperative_model=False,gp0_irq_cycles=None):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False,fsk_cooperative_model=False,gp0_irq_cycles=None,gp0_actual_group_rate_hz=87260):
     if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     if gp0_irq_cycles is not None:
         if not artifact.get('gp0') or adc_cycles:
             raise ValueError('periodic GP0 IRQ mode requires GP0 module and adc_cycles=0')
-        GP0InterruptBudget(0,gp0_irq_cycles)  # Validate bounded per-IRQ cost
+        GP0InterruptBudget(0,gp0_irq_cycles,actual_group_rate_hz=gp0_actual_group_rate_hz)
+    elif gp0_actual_group_rate_hz!=87260:
+        raise ValueError("non-nominal GP0 clock requires periodic gp0_irq_cycles mode")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
     t=time.perf_counter()
     try:
         tx_cls=CooperativeFskLiveTx if fsk_cooperative_model else LiveTx
-        e=tx_cls(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us,gp0_irq_cycles=gp0_irq_cycles)
+        e=tx_cls(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us,gp0_irq_cycles=gp0_irq_cycles,gp0_actual_group_rate_hz=gp0_actual_group_rate_hz)
         result=e.run()
         if result is None:raise RuntimeError("live module exceeded virtual deadline")
         ret,stack=result
@@ -495,6 +497,8 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 channel=channel.__dict__,samples=e.sample,samples_expected=len(e.pcm),pcm_highwater=e.highwater,pcm_lost=e.lost,lease_expired=e.lease_expired,
                 gp0=e.gp0,gp0_starts=e.gp0_starts,gp0_stops=e.gp0_stops,
                 gp0_irq_cycles=gp0_irq_cycles,
+                gp0_actual_group_rate_hz=gp0_actual_group_rate_hz if gp0_irq_cycles is not None else None,
+                gp0_effective_pcm_rate_hz=round(8000*gp0_actual_group_rate_hz/87260,2) if gp0_irq_cycles is not None else None,
                 gp0_virtual_irq_count=e.gp0_pacer.irq_count if e.gp0_pacer is not None else None,
                 gp0_virtual_irq_charged_cycles=e.gp0_pacer.charged_cycles if e.gp0_pacer is not None else None,
                 pcm_overflow_ms=e.pcm_overflow_ms,

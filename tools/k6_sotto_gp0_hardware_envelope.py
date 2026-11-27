@@ -21,7 +21,7 @@ import tempfile
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import numpy as np
-from tools.k6_gp0_irq_timing import CPU_HZ, GROUPS_PER_IRQ, PDM_GROUPS_PER_SECOND, PCM_HZ
+from tools.k6_gp0_irq_timing import CPU_HZ, GROUPS_PER_IRQ, PDM_GROUPS_PER_SECOND, PCM_HZ, GP0InterruptBudget
 
 ROOT = Path(__file__).resolve().parents[1]
 AA3_RECORD = ROOT / "docs/evidence/sotto-gp0-aa3-first-physical-queue-overflow-20261126.json"
@@ -61,7 +61,7 @@ def read_aa3(path:Path=AA3_RECORD)->dict:
             "module_serial":f["module_serial"]}
 
 
-def envelope(*,cpi=(2.5,3.0),peak_fractions=(0.75,1.0),execute=True,fixture_samples=3280):
+def envelope(*,cpi=(2.5,3.0),peak_fractions=(0.75,1.0),execute=True,fixture_samples=3280,actual_group_rate_hz=PDM_GROUPS_PER_SECOND):
     aa3=read_aa3()
     if not 800<=fixture_samples<=24000:
         raise ValueError("fixture_samples must be 0.1–3 seconds at 8kHz")
@@ -72,13 +72,17 @@ def envelope(*,cpi=(2.5,3.0),peak_fractions=(0.75,1.0),execute=True,fixture_samp
         raise ValueError("peak fractions cannot exceed hardware-measured peak")
     if len(cpi)*len(peak_fractions)>16:
         raise ValueError("maximum 16 timing combinations per image")
-    period=CPU_HZ*GROUPS_PER_IRQ/PDM_GROUPS_PER_SECOND
+    period=GP0InterruptBudget(0,0,actual_group_rate_hz=actual_group_rate_hz).period_cycles
     profiles={"working_unfiltered":KNOWN_GOOD, "aa3_failure":aa3}
     record={"schema":1,"offline_only":True,
             "test_type":"constant-IRQ-cost sensitivity study, not cycle-accurate hardware replay",
             "module_sha256_expected":MODULE_SHA256,
             "hardware":profiles,
-            "irq_rate_hz":PDM_GROUPS_PER_SECOND/GROUPS_PER_IRQ,
+            "irq_rate_hz":actual_group_rate_hz/GROUPS_PER_IRQ,
+            "gp0_actual_group_rate_hz":actual_group_rate_hz,
+            "gp0_nominal_firmware_divisor":PDM_GROUPS_PER_SECOND,
+            "gp0_effective_pcm_samples_per_wall_second":round(PCM_HZ*actual_group_rate_hz/PDM_GROUPS_PER_SECOND,5),
+            "gp0_playback_pitch_factor":round(PDM_GROUPS_PER_SECOND/actual_group_rate_hz,7),
             "irq_period_us":period/CPU_HZ*1e6,
             "cpu_hz":CPU_HZ,
             "modeled_spi_setup_us":SPI_SETUP_US,"modeled_spi_per_byte_us":SPI_BYTE_US,
@@ -111,6 +115,7 @@ def envelope(*,cpi=(2.5,3.0),peak_fractions=(0.75,1.0),execute=True,fixture_samp
                     irq_cost=profile["peak_isr_ticks"]*ratio
                     r=trial(artifact,Channel(),cpi=clock_cpi,gp0_irq_cycles=irq_cost,
                             spi_us=SPI_SETUP_US,spi_byte_us=SPI_BYTE_US,fd_us=FD_REGISTER_US,
+                            gp0_actual_group_rate_hz=actual_group_rate_hz,
                             fsk_cooperative_model=True)
                     record["scenarios"].append({
                         "profile":name,"cpi":clock_cpi,
@@ -133,9 +138,12 @@ def main():
     p.add_argument("--peak-fractions",type=float,nargs="+",default=[.75,1.0])
     p.add_argument("--metadata-only",action="store_true")
     p.add_argument("--fixture-samples",type=int,default=3280)
+    p.add_argument("--actual-group-rate",type=float,default=PDM_GROUPS_PER_SECOND,
+                   help="physical GP0 groups per second; distinct from fixed firmware divisor")
     a=p.parse_args()
     report=envelope(cpi=a.cpi,peak_fractions=a.peak_fractions,
-                    execute=not a.metadata_only,fixture_samples=a.fixture_samples)
+                    execute=not a.metadata_only,fixture_samples=a.fixture_samples,
+                    actual_group_rate_hz=a.actual_group_rate)
     print(json.dumps(report,indent=2,sort_keys=True))
     if a.json:
         with a.json.open("x") as f: f.write(json.dumps(report,indent=2,sort_keys=True)+"\n")
