@@ -1,4 +1,8 @@
 """Receive-only frontend tests, without opening RTL hardware."""
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 from scipy.signal import resample_poly
@@ -65,3 +69,14 @@ def test_capture_receiver_module_import_has_no_hardware_side_effects():
     from tools import k6_gp0_pcm_air_rx
     assert k6_gp0_pcm_air_rx.QUALIFIED_HZ==443500000
     assert k6_gp0_pcm_air_rx.IF_OFFSET==125000
+
+
+def test_direct_script_help_runs_without_pythonpath_from_unrelated_directory(tmp_path):
+    # Regression: `python tools/k6_gp0_pcm_air_rx.py` historically raised
+    # ModuleNotFoundError even though pytest imports worked. No SDR is opened.
+    script=Path(__file__).resolve().parents[1]/"tools"/"k6_gp0_pcm_air_rx.py"
+    result=subprocess.run([sys.executable,str(script),"--help"],cwd=tmp_path,
+                          capture_output=True,text=True,timeout=15,env={"PATH":"/usr/bin:/bin"})
+    assert result.returncode==0, result.stderr
+    assert "--output-prefix" in result.stdout
+    assert "--fine-offset-hz" in result.stdout

@@ -6,7 +6,7 @@ PTT, file deletion, or background receiver. Run instead of the Sotto Monitor:
 the same RTL-SDR USB device cannot be opened by both programs.
 
 Start capture *before* the operator launches GP0 PCM AIR, hold the radio's
-physical PTT ~1.3s, and let its guarded 67-packet RF dump finish. The exact
+physical PTT until the guarded 67-packet RF dump finishes (~11-13s). The exact
 pre-Sotto PCM is reconstructed only when all CRC-valid packets arrive.
 
 Example (operator-supervised only):
@@ -21,7 +21,14 @@ import ctypes as C
 import json
 import math
 from pathlib import Path
+import sys
 import time
+
+# Direct `python tools/k6_gp0_pcm_air_rx.py` puts tools/, not the repository
+# root, on sys.path. Keep package imports working with both CLI and pytest.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 from scipy.signal import resample_poly
 from tools.k6_gp0_pcm_air import parse_iq_complex64,assemble,write_wav_new
