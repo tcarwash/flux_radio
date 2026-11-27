@@ -62,3 +62,26 @@ A 1.2-second seeded independent 64-bit binomial PDM model estimates 1kHz sinusoi
 - Preserve the known-good MCU image, calibration backup, signed module, and fail-closed PCM overrun/dekey behavior. **Do not flash CIC3 without explicit subsequent approval.**
 
 The private matched ELF/BIN, raw test logs and recovery data stay outside Git. Evidence for the link-time ISR and spectral/SNR checks is in `docs/evidence/sotto-gp0-cic3-decim8-offline-20261126.json`.
+
+## Additional dense out-of-band alias sweep: important negative result
+
+A 31-frequency, 5–43kHz sweep (1.25kHz spacing, 0.7s each) evaluated
+**the strongest 80–3900Hz output spur**, not only the direct 8kHz-alias bin.
+It exposed a weakness hidden by the chosen 9kHz and 17kHz spot checks:
+
+- At **7.5kHz**, AA3 reduced the strongest in-band component by **11.93dB**
+  against the unfiltered baseline, whereas CIC3 reduced it by only **5.67dB**.
+  CIC3 was **6.25dB worse than AA3**, with its largest spur near 3.41kHz.
+- At 6.25kHz, CIC3 was 3.77dB worse; at 8.75kHz, 3.46dB worse.
+- Frequency-dependent sample-count quantization means this is a specific
+  deterministic modeled PDM-count test, **not a measured K6 microphone or
+  a worst-case guarantee over the entire spectrum**.
+
+Evidence and reproducible CLI:
+`docs/evidence/sotto-gp0-cic3-wide-alias-sweep-20261126.json` and
+`tools/k6_gp0_alias_sweep.py --start 5000 --stop 43000 --step 1250 --duration .7 --json NEW.json`.
+
+**Updated disposition:** CIC3 is the strongest *low-ISR-cost* filter candidate
+so far, but it is **not** generally equivalent to AA3 anti-alias performance.
+Do not promote to on-radio testing without real MICIN/PDM measurements and
+further rejection analysis over the problematic 6–9kHz input region.
