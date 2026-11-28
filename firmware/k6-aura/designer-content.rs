@@ -3,6 +3,7 @@
 pub(super) fn draw_flat_widget<D:DrawTarget<Color=BinaryColor>>(
     lcd:&mut D,app:&app::App,w:&[u8;5],theme:&super::theme_reader::Theme,battery:&[u8;24],meter:&[u8;14],font:&[u8;132],modes:&[[&str;8];2],
 ){
+    let tx=app.is_transmitting();
     let source=w[0];let x=i32::from(w[1]);let y=i32::from(w[2]);
     let Some((width,height))=super::theme_reader::widget_size(source,w[3]) else{return;};
     if w[4]&1!=0 && !matches!(source,9|14|15..=28) {lcd.fill_solid(&Rectangle::new(Point::new(x,y),Size::new(u32::from(width),u32::from(height))),BinaryColor::Off).ok();}
@@ -10,27 +11,34 @@ pub(super) fn draw_flat_widget<D:DrawTarget<Color=BinaryColor>>(
     let mut line:TextBuf<20>=TextBuf::new();
     match source {
         0=>{
+            if tx {
+                let secs=app.tx_elapsed_seconds();
+                write!(line,"{:02}:{:02}",secs/60,secs%60).ok();
+                designer_small(lcd,line.as_str(),p);
+                return;
+            }
             let c=&app.settings().aprs_callsign;
             let len=c.iter().position(|&b|b==0).unwrap_or(6).min(6);
             if let Ok(s)=core::str::from_utf8(&c[..len]){designer_small(lcd,s,p);}
         }
         32|33=>{let side=usize::from(source-32);if app.side_is_channel_mode(side){designer_small(lcd,app.side_name_str(side),p);}}
-        29=>{if app.power_save_active(){designer_small(lcd,"PS",p);}}
+        29=>{if !tx && app.power_save_active(){designer_small(lcd,"PS",p);}}
         30=>{if app.vox_enabled(){designer_small(lcd,"VX",p);}}
         31=>{if app.is_key_locked(){designer_small(lcd,"LK",p);}}
-        1=>{if app.dual_standby_enabled(){designer_small(lcd,"DW",p);}}
+        1=>{if !tx && app.dual_standby_enabled(){designer_small(lcd,"DW",p);}}
         2=>{
             if theme.battery_offset!=0 {designer_bitmap(lcd,battery,17,Point::new(x,y));}
             else {super::icons::draw_battery(lcd,x+17,y,app.battery_bars()+2);}
         }
-        3=>{if app.audio_open(){
+        3=>{if tx {designer_small(lcd,"MIC",p);}else if app.audio_open(){
             let over=app.s_meter_over_s9_dbm();
             if over>0 {write!(line,"{}dBm +{}",app.rssi_dbm(),over).ok();}
             else {write!(line,"{}dBm S{}",app.rssi_dbm(),app.s_meter_s_number()).ok();}
             designer_small(lcd,line.as_str(),p);
         }}
-        4=>{if app.audio_open(){
-            let n=app.s_meter_level().min(13);
+        4=>{if tx || app.audio_open(){
+            // Reuse the theme's existing 13-segment geometry for microphone level.
+            let n=if tx {((u16::from(app.mic_level())*13+127)/255) as u8} else {app.s_meter_level().min(13)};
             if theme.meter==0 {draw_classic_bar(lcd,x,y+7,n,13);}
             else if theme.meter==2 {
                 for (count,dx,filled) in [(n.min(9),0,true),(n.saturating_sub(9),45,false)] {
@@ -63,7 +71,7 @@ pub(super) fn draw_flat_widget<D:DrawTarget<Color=BinaryColor>>(
                     else{designer_small(lcd,">",p);}
                 }}
                 1=>{
-                    let state=if app.watching_index()==side && (app.is_monitor()||app.rssi_open()) && app.rx_blink_on(){"RX"}else if app.last_signal_side()==Some(side){">>"}else{""};
+                    let state=if tx {if app.master_index()==side {"TX"}else{""}}else if app.watching_index()==side && (app.is_monitor()||app.rssi_open()) && app.rx_blink_on(){"RX"}else if app.last_signal_side()==Some(side){">>"}else{""};
                     designer_small(lcd,state,p);
                 }
                 2=>{
@@ -72,6 +80,7 @@ pub(super) fn draw_flat_widget<D:DrawTarget<Color=BinaryColor>>(
                     designer_small(lcd,line.as_str(),p);
                 }
                 3=>{
+                    let freq_hz=if tx && app.master_index()==side {app.side_tx_freq_hz(side)}else{app.side_freq_hz(side)};
                     let channel_name=app.side_name_str(side);
                     let show_name=!theme.separate_names && app.side_is_channel_mode(side) && !channel_name.is_empty()
                         && app.channel_display_mode()!=app::ChannelDisplayMode::Frequency;
@@ -79,12 +88,12 @@ pub(super) fn draw_flat_widget<D:DrawTarget<Color=BinaryColor>>(
                         let shown=channel_name.get(..channel_name.len().min(12)).unwrap_or(channel_name);
                         designer_small(lcd,shown,p);
                         if app.channel_display_mode()==app::ChannelDisplayMode::NameFreq {
-                            format_designer_frequency(&mut line,app.side_freq_hz(side));
+                            format_designer_frequency(&mut line,freq_hz);
                             designer_small(lcd,line.as_str(),Point::new(p.x,p.y+8));
                         }
-                    } else if w[3]==0{draw_frequency_at(lcd,app.side_freq_hz(side),y+PROFONT_14_POINT.baseline as i32,x-44);}
+                    } else if w[3]==0{draw_frequency_at(lcd,freq_hz,y+PROFONT_14_POINT.baseline as i32,x-44);}
                     else{
-                        format_designer_frequency(&mut line,app.side_freq_hz(side));
+                        format_designer_frequency(&mut line,freq_hz);
                         if w[3]==2 {
                             for (i,ch) in line.as_str().bytes().enumerate(){
                                 let glyph=match ch {b'0'..=b'9'=>usize::from(ch-b'0'),b'.'=>10,_=>continue};

@@ -80,12 +80,27 @@ static char *dec(char *p, uint32_t v) {     /* no divide on the M0: subtract pow
   return p;
 }
 
-/* hold the key (PA on or off) for n units; 0, or a negative error */
+/* Short, interruptible delays instead of one 60 ms dit or 300 ms lead.
+   The core's TX watchdog remains authoritative even if key polling stalls. */
+#define CW_POLL_US 10000u
+static int wait_keyable(const k6_api_t *api, uint32_t total_us) {
+  while (total_us) {
+    uint32_t step = total_us > CW_POLL_US ? CW_POLL_US : total_us;
+    if (api->key_down()) return -4;  /* never knowingly re-enable a canceled PA */
+    api->delay_us(step);
+    total_us -= step;
+  }
+  return api->key_down() ? -4 : 0;
+}
+
+/* Hold the PA on or off for n Morse units, but check cancellation *before*
+   every PA transition. TX-on is still guarded by the host TX band/timeout. */
 static int hold(const k6_api_t *api, int on, int n) {
+  if (api->key_down()) return -4;
   if (api->tx_pa(on) < 0) return -5;
   while (n--) {
-    if (api->key_down()) return -4;
-    api->delay_us(UNIT_US);
+    int r = wait_keyable(api, UNIT_US);
+    if (r) return r;
   }
   return 0;
 }
@@ -96,6 +111,10 @@ static int tx_main(const k6_api_t *api, ui_t *ku) {
   int units = 0, need = 0, r = 0;
   uint32_t t0;
   if (api->level < 3) return -1;
+  /* The diagnostic line is only 64 bytes. Reject a too-long compile-time
+     callsign/text rather than constructing an overlong on-radio message.
+     Reserve 36 bytes for 'cw key ', WPM, 'wpm rx=', a u32 and NUL. */
+  if (sizeof(CW_TEXT) > sizeof line - 35u) return -6;
   for (s = CW_TEXT; *s; s++) {          /* check the text and count its units */
     int c = code_of(*s), b;
     if (*s == ' ') { need += 4; continue; }
@@ -113,21 +132,27 @@ static int tx_main(const k6_api_t *api, ui_t *ku) {
   /* the module runs as its last chunk lands, while the sender may still be keyed (its own CW
      ID follows the upload): wait for the channel to stay clear */
   {
-    uint32_t clear = api->ms();
-    while (api->ms() - clear < CW_CLEAR_MS) {
-      if (KM_RSSI_DBM(api->fd_read(0x67)) >= CW_CLEAR_DBM) clear = api->ms();
-      if (api->ms() > CW_WAIT_MS) return -7;
+    uint32_t start = api->ms(), clear = start;
+    for (;;) {
+      uint32_t now = api->ms();
+      if ((uint32_t)(now - start) >= CW_WAIT_MS) return -7;
+      if (KM_RSSI_DBM(api->fd_read(0x67)) >= CW_CLEAR_DBM) clear = now;
       if (api->key_down()) return -4;
-      api->delay_us(10000);
+      if ((uint32_t)(now - clear) >= CW_CLEAR_MS) break;
+      api->delay_us(CW_POLL_US);
     }
   }
-  /* the core's limit: the lead-in, the text and a second's margin */
+  if (api->key_down()) return -4;
+  /* Round *up* each whole Morse unit when budgeting the host's watchdog;
+     never truncate the fractional milliseconds at a nondivisor WPM. */
   ui_text(ku, 1, "ON THE AIR");
   ui_now(ku);
-  if (api->tx_on(CW_LEAD_MS + (uint32_t)need * (UNIT_US / 1000u) + 1000u) != 0) return -3;
-  t0 = api->ms();
+  if (api->tx_on(CW_LEAD_MS + (uint32_t)need * ((UNIT_US + 999u) / 1000u) + 1000u) != 0) return -3;
+  /* tx_on can assert PA momentarily. Command PA-off *immediately* after
+     tx_on rather than spending another ms() read while RF is enabled. */
   if (api->tx_pa(0) < 0) r = -5;
-  if (!r) api->delay_us(CW_LEAD_MS * 1000u);
+  t0 = api->ms();
+  if (!r) r = wait_keyable(api, CW_LEAD_MS * 1000u);
   for (s = CW_TEXT; *s && !r; s++) {
     int c, b;
     if (*s == ' ') {                     /* a word gap: 7 units, 3 already after the last char */
@@ -144,7 +169,9 @@ static int tx_main(const k6_api_t *api, ui_t *ku) {
       units += n + (b ? 1 : 3);
     }
   }
-  api->tx_pa(0);
+  /* Always request PA-off and TX-off on *every* post-tx_on exit, even
+     after cancellation, failed PA programming or expired watchdog. */
+  if (api->tx_pa(0) < 0 && !r) r = -5;
   api->tx_off();
   if (r) return r;
   p = put(line, "cw sent units=");

@@ -10,7 +10,7 @@
   <a href="docs/manual/install.md">Getting started</a> ·
   <a href="docs/module-store.md">Module Catalog</a> ·
   <a href="docs/k6-feature-packs.md">Feature packs</a> ·
-  <a href="CONTRIBUTING.md">Contribute</a>
+  <a href="CONTRIBUTING.md">Contribute</a> ·\n  <a href="docs/k6-research-experiment-queue.md">RF research queue</a>
 </p>
 
 Flux keeps familiar dual-VFO and channel operation, then adds a modular
@@ -171,6 +171,10 @@ starter ZIP. Open <http://127.0.0.1:5056> and use the emulator's virtual display
 PTT and SPI library. This is a development tool, not evidence of RF
 performance. Keep its unauthenticated server on a trusted local network.
 
+For receive experiments, add `--rf-source synthetic` to simulate a band,
+replay SigMF/NumPy IQ, or connect a receive-only SoapySDR source. See the
+[SDR-backed emulator guide](docs/k6-emulator.md#sdr-backed-receive-model-experimental).
+
 ## Explore the project
 
 | Find out about | Documentation |
@@ -180,6 +184,8 @@ performance. Keep its unauthenticated server on a trusted local network.
 | Firmware customization | [Feature packs](docs/k6-feature-packs.md) |
 | Native module development | [Module API](docs/k6-modules.md) |
 | Emulator development | [Workbench](docs/k6-emulator.md) |
+| Experimental Sotto voice offline loop | [Sotto end-to-end mock](docs/k6-sotto-end-to-end-mock-20261124.md) |
+| SoapyFang Sotto voice lab | [Opt-in ARM→virtual RF→receiver browser lab](docs/k6-soapyfang-sotto-lab-20261124.md) |
 | Serial data experiments | [Throughput and burst protocol](docs/k6-serial-throughput.md) |
 | Development and tests | [Contributing](CONTRIBUTING.md) |
 

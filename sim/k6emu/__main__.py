@@ -163,7 +163,8 @@ class K6Board:
                  keys: tuple[str, ...] = (), key_events: tuple[tuple[float, str, bool], ...] = (),
                  gpio_events: tuple[tuple[float, str, int, int], ...] = (),
                  adc_inputs: dict[int, int] | None = None, cpi: float = 1.5,
-                 collect_mmio: bool = True):
+                 collect_mmio: bool = True, rf_backend=None,
+                 capture_tx_events: bool = False):
         unicorn, arm = _unicorn()
         self.ucmod, self.arm = unicorn, arm
         self.trace_mmio = trace_mmio
@@ -206,6 +207,8 @@ class K6Board:
         self.key_sampled_scan = -1
         self.last_key_probe = -1
         self.fd_regs = {0x00: 0x0000, 0x67: 0x0000, 0x0C: 0x0000}
+        self.rf_backend = rf_backend
+        self.fd_read_value = 0
         self.fd_active = False
         self.fd_bits: list[int] = []
         self.fd_read_mode = False
@@ -213,6 +216,9 @@ class K6Board:
         self.fd_read_index = 0
         self.fd_read_bit = 0
         self.fd_writes: list[tuple[int, int]] = []
+        # Optional simulator-only 3-wire write timestamp trace; never a TX command.
+        self.capture_tx_events = capture_tx_events
+        self.fd_write_events: list[tuple[float, int, int]] = []
         self.rx_dma = None  # opt-in; no fabricated RF reception by default
         self.adc_inputs = {0: 2048, 1: 2048}
         if adc_inputs:
@@ -440,8 +446,12 @@ class K6Board:
                 for bit in self.fd_bits[8:24]:
                     value = (value << 1) | bit
                 addr &= 0x7F
+                if self.rf_backend is not None:
+                    self.rf_backend.write(addr, value, self.fd_regs, self.cycles / 96_000_000)
                 self.fd_regs[addr] = value
                 self.fd_writes.append((addr, value))
+                if self.capture_tx_events:
+                    self.fd_write_events.append((self.cycles, addr, value))
             self.fd_active = False
             return
         sck_rise = not ((old >> 5) & 1) and ((new >> 5) & 1)
@@ -449,7 +459,7 @@ class K6Board:
             sda_is_input = ((self.regs.get(0x48000400, 0) >> 12) & 3) == 0
             if self.fd_read_mode:
                 if sda_is_input:
-                    self.fd_read_bit = (self.fd_regs.get(self.fd_read_addr, 0) >>
+                    self.fd_read_bit = (self.fd_read_value >>
                                         (15 - self.fd_read_index)) & 1 if self.fd_read_index < 16 else 0
             else:
                 self.fd_bits.append((new >> 6) & 1)
@@ -460,6 +470,21 @@ class K6Board:
                     self.fd_read_mode = bool(addr & 0x80)
                     self.fd_read_addr = addr & 0x7F
                     self.fd_read_index = 0
+                    if self.fd_read_mode:
+                        self.fd_read_value = self.read_fd_register(self.fd_read_addr)
+
+    def read_fd_register(self, address):
+        """Latch one complete register value per RFIC bus read."""
+        if self.rf_backend is not None:
+            value = self.rf_backend.read(address, self.fd_regs, self.cycles / 96_000_000)
+            if value is not None:
+                return value & 0xFFFF
+        return self.fd_regs.get(address, 0)
+
+    def close_rf(self):
+        if self.rf_backend is not None:
+            self.rf_backend.close()
+            self.rf_backend = None
 
     def _fd_read_sampled(self):
         if self.fd_active and self.fd_read_mode:
@@ -783,6 +808,8 @@ class K6Board:
             self._service_uart_irq()
             self.last_pc = self.uc.reg_read(arm.UC_ARM_REG_PC) & ~1
             remaining -= n
+        if self.rf_backend is not None:
+            self.rf_backend.pace(self.cycles / 96_000_000)
         return self.uc.reg_read(arm.UC_ARM_REG_PC)
 
     def summary(self):
@@ -837,6 +864,7 @@ class K6Board:
                 "recent": [{**event, "address": f"0x{event['address']:08x}",
                             "value": f"0x{event['value']:08x}"} for event in self.recent_mmio],
             },
+            "rf_backend": self.rf_backend.status() if self.rf_backend else None,
             "fd6818_writes": [{"register": f"0x{reg:02x}", "value": f"0x{value:04x}"}
                                for reg, value in self.fd_writes[-256:]],
             "screen": {
@@ -887,6 +915,8 @@ def main():
                     help="estimated Cortex-M0 cycles per instruction (default: 1.5)")
     ap.add_argument("--quantum", type=int, default=256,
                     help="instruction steps between virtual timer updates (default: 256)")
+    from .rf_options import add_rf_args, rf_options
+    add_rf_args(ap)
     args = ap.parse_args()
     key_events = []
     for spec in args.key_event:
@@ -946,28 +976,38 @@ def main():
             ap.error(f"could not overlay module bundle: {exc}")
         print("Virtual SPI modules: " + ", ".join(
             f"slot {slot} {name} ({size} B)" for slot, name, size in installed), file=sys.stderr)
-    print(f"Booting {args.image} at 0x{APP_BASE:08x}; RAM 0x{APP_RAM_BASE:08x}.."
-          f"0x{RAM_BASE + RAM_BYTES:08x}", file=sys.stderr)
-    if args.live:
-        if args.live_slice <= 0:
-            ap.error("--live-slice must be positive")
-        from .live import run_live
-        run_live(board, quantum=args.quantum, slice_instructions=args.live_slice)
-    else:
-        board.run(args.instructions, args.quantum)
-    board.summary()
-    if args.save_spi:
-        args.save_spi.write_bytes(board.flash_data)
-        print(f"Wrote virtual SPI flash: {args.save_spi}", file=sys.stderr)
-    if args.lcd_trace:
-        args.lcd_trace.write_text("".join(json.dumps({"cycles": t, "dc": dc, "cs": cs, "byte": b}) + "\n"
-                                               for t, dc, cs, b in board.lcd_trace))
-        print(f"Wrote {len(board.lcd_trace)} LCD SPI events: {args.lcd_trace}", file=sys.stderr)
-    if args.report_json:
-        report_modules = ([{"slot": slot, "name": name, "image_bytes": size}
-                          for slot, name, size in installed] if args.module_bundle else [])
-        board.write_report(args.report_json, args.image, "live" if args.live else "headless",
-                           report_modules)
+    if args.rf_source:
+        from .rf.backend import create_backend
+        try:
+            board.rf_backend = create_backend(args.rf_source, **rf_options(args))
+        except (ValueError, OSError, ImportError, RuntimeError) as exc:
+            ap.error(f"RF source: {exc}")
+    try:
+        print(f"Booting {args.image} at 0x{APP_BASE:08x}; RAM 0x{APP_RAM_BASE:08x}.."
+              f"0x{RAM_BASE + RAM_BYTES:08x}", file=sys.stderr)
+        if args.live:
+            if args.live_slice <= 0:
+                ap.error("--live-slice must be positive")
+            from .live import run_live
+            run_live(board, quantum=args.quantum, slice_instructions=args.live_slice)
+        else:
+            board.run(args.instructions, args.quantum)
+        board.summary()
+        if args.save_spi:
+            args.save_spi.write_bytes(board.flash_data)
+            print(f"Wrote virtual SPI flash: {args.save_spi}", file=sys.stderr)
+        if args.lcd_trace:
+            args.lcd_trace.write_text("".join(json.dumps({"cycles": t, "dc": dc, "cs": cs, "byte": b}) + "\n"
+                                                   for t, dc, cs, b in board.lcd_trace))
+            print(f"Wrote {len(board.lcd_trace)} LCD SPI events: {args.lcd_trace}", file=sys.stderr)
+        if args.report_json:
+            report_modules = ([{"slot": slot, "name": name, "image_bytes": size}
+                              for slot, name, size in installed] if args.module_bundle else [])
+            board.write_report(args.report_json, args.image, "live" if args.live else "headless",
+                               report_modules)
+
+    finally:
+        board.close_rf()
 
 
 if __name__ == "__main__":

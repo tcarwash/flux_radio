@@ -1,5 +1,8 @@
 # Flux RF expansion and weak-signal laboratory roadmap
 
+Follow-up implementation plan for clean CW, AM, SSB, QPSK and OFDM:
+[`k6-modulation-workplan-20261124.md`](k6-modulation-workplan-20261124.md).
+
 2026-11-18 — planning only. Do not change base firmware, band locks, module
 ABI, feature packs, or existing modules while the current refactor is underway.
 This roadmap complements k6-rf-lab.md and is a research design, not permission

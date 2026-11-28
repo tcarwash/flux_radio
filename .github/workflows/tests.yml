@@ -27,7 +27,7 @@ jobs:
           tests/test_k6_pack_install.py tests/test_k6_starter_install.py
           tests/test_k6_port_lock.py tests/test_k6_host_feature.py
           tests/test_k6_catalog_coop.py tests/test_k6_rigctld.py
-          tests/test_k6_live_acceptance.py
+          tests/test_k6_live_acceptance.py tests/test_k6_rf_backend.py tests/test_k6_fsk_rf.py tests/test_k6_virtual_link.py tests/test_k6_sotto_virtual_link.py
       - name: Native loader and APRS host regressions
         run: |
           make -C c/k6 km_host kl_host

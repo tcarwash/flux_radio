@@ -26,7 +26,7 @@ def test_unattested_firmware_refused(tmp_path):
     root = pack(tmp_path)
     with pytest.raises(PackError, match='not implemented'):
         verify_pack(root, SPEC)
-    assert len(verify_pack(root, SPEC, require_attested=False)['modules']) == 3
+    assert {m['name'] for m in verify_pack(root, SPEC, require_attested=False)['modules']} == {'surf', 'explore_scan', 'cardlink', 'fluxtnc'}
     lock = json.loads((root / 'pack.lock.json').read_text())
     lock['firmware']['capabilities_verified'] = True
     (root / 'pack.lock.json').write_text(json.dumps(lock))
@@ -77,7 +77,7 @@ def test_compatibility_report_fails_closed_even_if_capabilities_match(tmp_path):
     report = compatibility_report(lock, {**reported, 'scanner': False, 'module_api_max': 15})
     assert not report['capabilities_match']
     assert 'candidate-ranking' in report['missing_capabilities']
-    assert len(report['unsupported_modules']) == 3
+    assert set(report['unsupported_modules']) == {'surf', 'explore_scan', 'cardlink', 'fluxtnc'}
 
 
 def test_radio_preflight_checks_artifacts_before_opening_port(tmp_path, monkeypatch):

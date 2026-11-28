@@ -83,7 +83,7 @@ def stream(mode, cn0, f_off=0.0, steps=10, seg_s=6.0, lead_s=1.5, seed=1, pre_s=
 class Emu:
     def __init__(self, code, entry, ib, on_at, fdma, cpi=1.5, max_s=None, key_us=60, stall=None,
                  wobble=None, flash_cpi=None, level=4, stack_win=3504, scratch=4096, fd_us=20,
-                 screen=None):
+                 screen=None, rf_backend=None, rf_hz=None):
         import unicorn
         from unicorn import arm_const as A
         self.U, self.A = unicorn, A
@@ -102,6 +102,12 @@ class Emu:
         self.spos, self.nread, self.bp = 0.0, 0, [(0.0, 0.0)]
         self.said, self.writes, self.reg = [], {}, {}
         self.fd_regs = {}
+        self.rf_backend = rf_backend
+        self.rf_hz = rf_hz
+        if rf_backend is not None:
+            if rf_backend.source.live or rf_hz is None:
+                raise ValueError("module harness RF requires a virtual source and initial frequency")
+            self.fd_regs.update({0x38: (rf_hz//10)&0xffff, 0x39: (rf_hz//10)>>16})
         self.said_cyc = []                           # the clock at each say (its call)
         self.led = []                                # level 7: (ms, on) for each api->led call
         self.lcd = {}                                # level 6: the text on each LCD line
@@ -243,11 +249,21 @@ class Emu:
             ret = int(self.cyc / 9600) & 0xFFFF
         elif name == "fd_read":
             us = self.fd_us
-            ret = (self.rssi() + 174) << 1 if r0 == 0x67 else self.fd_regs.get(r0, 0)
+            value = self.rf_backend.read(r0, self.fd_regs, self.cyc/FCPU) if self.rf_backend else None
+            ret = value if value is not None else ((self.rssi() + 174) << 1 if r0 == 0x67 else self.fd_regs.get(r0, 0))
         elif name == "fd_write":
             us = self.fd_us
             self.writes.setdefault(r0, []).append(r1)
+            if self.rf_backend:
+                self.rf_backend.write(r0, r1 & 0xffff, self.fd_regs, self.cyc/FCPU)
             self.fd_regs[r0] = r1 & 0xffff
+        elif name == "tune" and self.rf_backend:
+            self.rf_hz = r0
+            for reg, value in ((0x38, (r0//10)&0xffff), (0x39, (r0//10)>>16)):
+                self.rf_backend.write(reg, value, self.fd_regs, self.cyc/FCPU)
+                self.fd_regs[reg] = value
+        elif name == "rx_hz" and self.rf_backend:
+            ret = self.rf_hz
         elif name == "delay_us":
             us = r0
         elif name == "ms":

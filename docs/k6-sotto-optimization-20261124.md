@@ -1,0 +1,113 @@
+# Offline Sotto Modem Optimization — measured DCT candidate
+
+2026-11-24. All results are from **offline CPU/SPI timing models**, not real
+RF or measured FD6818B peripheral timings. No device was flashed or keyed.
+
+## Reproducible comparison
+
+The actual pinned `Sotto` slim code and its actual compiled Cortex-M0 module
+were exercised through API29 Unicorn hooks, virtual native 4800-baud 2FSK IQ,
+C packet decoder and an independent native C codec reference. The original
+encoder was compared with the exact reciprocal-phase DCT change
+(`0e4f885b`; original research source `a21765a7`). The DCT test checks all
+380 non-DC entries against the existing table. Native C, RF-session and
+packet validation are required; a completed emulation alone does not pass.
+
+Use `tools/k6_sotto_opt_bench.py` with a full API29 Sotto development checkout
+as **both** `--baseline` and `--candidate` (the main checkout by itself does
+not contain the attended experimental `sotto_live_tx.c` module). The paths
+below are illustrative; the comparison does not alter either checkout:
+
+```sh
+python3 tools/k6_sotto_opt_bench.py \
+  --baseline /path/to/sotto-live-original \
+  --candidate /path/to/sotto-live-with-dct \
+  --include-mixed --strict --json /tmp/sotto-opt-matrix.json
+```
+
+The tool compiles both development trees independently, runs an identical
+parameter matrix and records each module's SHA/size, timing assumptions,
+returned codec, PCM loss, RF delivery, strict acceptance and CPU/SPI metrics.
+The explicit `--case ADC_CYCLES:SPI_US` parameter can be repeated; `--wav`
+accepts 8-kHz mono PCM16 clips of 0.1–3 seconds in 10-ms increments. The
+built-in triangle and mixed-frequency stimuli are **not natural speech** and
+are not evidence of perceptual audio quality.
+
+## First optimization: DCT phase reduction
+
+The original DCT computes a wrapped phase through repeated subtraction. The
+replacement uses the exact `m -= ((m*205)>>14)*80` reduction across the
+entire 0..741 DCT input domain, preserving the 20x20 non-DC DCT table
+exactly while eliminating costly repetition on the Cortex-M0.
+
+At modeled CPI 1.5, with 1.04 seconds of triangular PCM and 1.20 seconds of
+silence/harmonic/multitone PCM, the measured matrix was:
+
+| ADC cycles/sample | SPI per read | Triangle before → after | Mixed before → after |
+|---:|---:|---|---|
+| 0 | 34 µs | Pass → Pass | Pass → Pass |
+| 4,800 | 10 µs | Pass → Pass | Pass → Pass |
+| 4,800 | 34 µs | Fail → Pass | Fail → Pass |
+| 5,745 | 10 µs | Fail → Pass | Fail → Pass |
+| 5,745 | 34 µs | Fail → Fail | Fail → Fail |
+
+**Aggregate: 4 baseline passes, 8 candidate passes, 4 recoveries, 0
+regressions.** Candidate successful trials recovered every PCM sample and
+all expected codec superframes exactly; all C and Python wire-session
+oracles agreed. Live module code size was 10,192 → 10,200 B, consuming 8 B
+of a tight 10,240-B bundle limit (including a 24-byte envelope: 16 B spare).
+
+## Next optimization gates
+
+- Attack the remaining high-ADC/high-SPI case without sacrificing codec
+  fidelity. Independent review suggests avoiding zero-imaginary FFT swaps,
+  reducing recurrent DCT phase math and, if permitted by the **actual**
+  resource service, batching IVF centroid reads. Each is a new candidate,
+  not a proven improvement.
+- Require byte-exact codec output and complete IQ/FSK C/Python recovery for
+  at least two fixtures; measure actual module size, stack and arena.
+- Confirm the resource API's maximum read size before considering 256-byte
+  centroid reads; a virtual API that accepts a read isn't enough evidence.
+- The 4-byte-headroom winner-vector candidate (`3ddaf662`) remains separate
+  and is **not** included in this change.
+- Natural speech clips and bench-calibrated peripheral latencies are required
+  before calling the modem real-time-qualified on physical hardware.
+
+## Second optimization: zero-imaginary FFT bit reversal
+
+The encoder's only `fft256(re, im)` caller initializes every `im[i]` to zero.
+The original FFT bit-reversal unnecessarily swapped pairs of these zeros.
+A guarded generated-source adaptation removes only the imaginary swap while
+retaining the real-input permutation and all later butterfly operations.
+It fails closed if upstream changes the single-caller zero-imaginary
+precondition or the exact swap pattern, and does not modify the pinned source.
+
+In the separately built API29 live module with DCT active, this reduces
+module size **10,200 → 10,192 B** (restoring 8 B of space) with no extra RAM.
+The same modeled CPI=1.5 4800:34, 5745:10, and 5745:34 timing scenarios
+were tested on both triangle and mixed-frequency input: **four passes remain
+passes, two failures remain failures**. No new pass threshold was crossed and
+there were zero regressions, while both independent codec/packet oracles
+remained exact. Offline native/module tests passed 14/14 before the source
+adaptation was ported back to main, and the main adaptation's focused tests
+also pass. This is a code/CPU work reduction, not yet evidence of a measurable
+improvement in hardware throughput. The integrated worktree does not enable
+physical Sotto voice TX or change the guarded TNC API27 dispatcher.
+
+## Experimental timing parameter: SPI transfer-length sensitivity
+
+The virtual resource service now supports an optional **per-byte** SPI delay,
+`--spi-byte-us X`, alongside its previous fixed `--spi-us N` per-read delay.
+For a successful uncached `resource_read(kind, off, buf, n)`, the modeled cost
+is `N + X*n` microseconds. The default `X=0` is backwards-compatible with
+previous constant-per-transaction sweeps. Hypothetical SRAM cache hits keep
+the separate `--spi-hit-us` cost. Both `spi_read_bytes` and
+`keyed_read_bytes` accompany transaction counts in each trial's JSON result.
+
+The comparison tool accepts `--spi-byte-us` as well, with the same value
+passed to baseline and candidate. **N is per-request overhead when X is
+nonzero**, not a measurement of the entire physical request; choosing both
+as all-in cost would double count transfer time. Measure the real NOR read
+setup and throughput before choosing values to predict hardware behavior.
+This is a more defensible model for evaluating 128-byte vs 256-byte centroid
+reads, but it does not by itself validate large transactions on the device.

@@ -103,3 +103,7 @@ c/common/fsk_rx_host
 !/flux-art-kit/flux-arrays/splash.bin
 
 /serial-test-output/
+
+# Local/off-air RF recordings (generated fixtures can be force-added intentionally).
+*.sigmf-data
+*.sigmf-meta
