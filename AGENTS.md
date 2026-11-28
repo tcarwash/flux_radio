@@ -31,3 +31,11 @@
   check runs at the beginning of a new agent prompt when the workflow is
   relevant, not as an unconditional scan on unrelated user requests.
 - Detailed reuse guide: `docs/k6-experiment-agent-result-inbox.md`.
+
+## Agent-driven bench workflow
+
+- Physical K6 experiments are started by the agent working the test, not by the scheduled queue autopilot. Do not start or re-enable `flux-experiment-autopilot.timer` or invoke its hardware runner.
+- Before planning a physical test, check the relevant experiment inbox and inspect the current bench lock/active reservation. Device-free emulator and fixture suites stay local and out of the hardware queue; combine compatible offline suites into one validation run.
+- To reserve the shared bench, acquire the cooperative host lock at `~/.cache/flux/bench.lock` with nonblocking `flock` and hold it through setup, test, cleanup, and restoration checks. If it is held, do not access the radio or SDR; return to the work when the owner releases it. Acquiring this lock is the reservation; record issue/session and test purpose in the experiment evidence.
+- Run physical tests only through their currently registered, reviewed, bounded dummy-load workflow. Do not bypass that workflow or reuse a consumed one-shot manifest. Combine physical tests only when their pinned setup, timing, receiver/scoring method, and cleanup are compatible, while keeping separate evidence and completion states per test.
+- Before releasing the lock, verify TX is off, temporary modules are removed, VFO and packed module contents match the pre-run snapshot, and the radio is responsive. If a run fails or restoration is uncertain, keep the bench reserved and report HOLD until restoration is verified.
