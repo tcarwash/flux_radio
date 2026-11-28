@@ -1,0 +1,462 @@
+{
+  "analysis": {
+    "fixed_denominator": 87260,
+    "fractional_group_weight": 7500,
+    "scoring": "conservative worst-band fitted tone-SNR change (500/1000/2800Hz) plus 2.8kHz attenuation gate; NOT objective speech intelligibility",
+    "startup_trim_pcm_samples": 32
+  },
+  "candidates": {
+    "aa3": {
+      "generator_off_pcm_rms_fs": 0.0305105,
+      "mean_band_snr_gain_db": 0.962,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.8553,
+        "2800": -1.5736,
+        "500": 2.6043
+      },
+      "tone_loss_db": {
+        "1000": -0.7043,
+        "2800": -4.6088,
+        "500": -0.1783
+      },
+      "worst_band_snr_gain_db": -1.5736
+    },
+    "fir11": {
+      "generator_off_pcm_rms_fs": 0.0343997,
+      "mean_band_snr_gain_db": 0.8478,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.2228,
+        "2800": -0.0083,
+        "500": 1.329
+      },
+      "tone_loss_db": {
+        "1000": -0.2204,
+        "2800": -1.6124,
+        "500": -0.0595
+      },
+      "worst_band_snr_gain_db": -0.0083
+    },
+    "fir11_late": {
+      "generator_off_pcm_rms_fs": 0.0345095,
+      "mean_band_snr_gain_db": 0.8512,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.2256,
+        "2800": -0.0038,
+        "500": 1.3319
+      },
+      "tone_loss_db": {
+        "1000": -0.215,
+        "2800": -1.605,
+        "500": -0.0534
+      },
+      "worst_band_snr_gain_db": -0.0038
+    },
+    "fir3_triangle": {
+      "generator_off_pcm_rms_fs": 0.0399386,
+      "mean_band_snr_gain_db": 0.0828,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.2272,
+        "2800": -0.0519,
+        "500": 0.0731
+      },
+      "tone_loss_db": {
+        "1000": -0.0038,
+        "2800": -0.1214,
+        "500": -0.0076
+      },
+      "worst_band_snr_gain_db": -0.0519
+    },
+    "fir5_binomial": {
+      "generator_off_pcm_rms_fs": 0.0385542,
+      "mean_band_snr_gain_db": 0.1924,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.5685,
+        "2800": -0.0688,
+        "500": 0.0775
+      },
+      "tone_loss_db": {
+        "1000": -0.019,
+        "2800": -0.1907,
+        "500": -0.0051
+      },
+      "worst_band_snr_gain_db": -0.0688
+    },
+    "fir5_box": {
+      "generator_off_pcm_rms_fs": 0.0377513,
+      "mean_band_snr_gain_db": 0.3677,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.7389,
+        "2800": 0.0622,
+        "500": 0.302
+      },
+      "tone_loss_db": {
+        "1000": -0.0461,
+        "2800": -0.3354,
+        "500": -0.015
+      },
+      "worst_band_snr_gain_db": 0.0622
+    },
+    "fir5_box_late": {
+      "generator_off_pcm_rms_fs": 0.0378246,
+      "mean_band_snr_gain_db": 0.3685,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.74,
+        "2800": 0.0619,
+        "500": 0.3037
+      },
+      "tone_loss_db": {
+        "1000": -0.0416,
+        "2800": -0.3302,
+        "500": -0.0097
+      },
+      "worst_band_snr_gain_db": 0.0619
+    },
+    "fir7_binomial": {
+      "generator_off_pcm_rms_fs": 0.0378254,
+      "mean_band_snr_gain_db": 0.288,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.6963,
+        "2800": 0.0424,
+        "500": 0.1253
+      },
+      "tone_loss_db": {
+        "1000": -0.0368,
+        "2800": -0.2295,
+        "500": -0.0048
+      },
+      "worst_band_snr_gain_db": 0.0424
+    },
+    "fir7_box": {
+      "generator_off_pcm_rms_fs": 0.0362558,
+      "mean_band_snr_gain_db": 0.5518,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.9115,
+        "2800": 0.1632,
+        "500": 0.5807
+      },
+      "tone_loss_db": {
+        "1000": -0.093,
+        "2800": -0.6211,
+        "500": -0.0244
+      },
+      "worst_band_snr_gain_db": 0.1632
+    },
+    "fir7_box_late": {
+      "generator_off_pcm_rms_fs": 0.036345,
+      "mean_band_snr_gain_db": 0.5565,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.9163,
+        "2800": 0.1688,
+        "500": 0.5845
+      },
+      "tone_loss_db": {
+        "1000": -0.0875,
+        "2800": -0.6149,
+        "500": -0.0186
+      },
+      "worst_band_snr_gain_db": 0.1688
+    },
+    "fir9_box": {
+      "generator_off_pcm_rms_fs": 0.035208,
+      "mean_band_snr_gain_db": 0.7036,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.0531,
+        "2800": 0.1214,
+        "500": 0.9363
+      },
+      "tone_loss_db": {
+        "1000": -0.1535,
+        "2800": -1.0536,
+        "500": -0.0407
+      },
+      "worst_band_snr_gain_db": 0.1214
+    },
+    "iir1_half": {
+      "generator_off_pcm_rms_fs": 0.0391205,
+      "mean_band_snr_gain_db": 0.3014,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.51,
+        "2800": 0.0469,
+        "500": 0.3473
+      },
+      "tone_loss_db": {
+        "1000": -0.0379,
+        "2800": -0.3198,
+        "500": -0.0123
+      },
+      "worst_band_snr_gain_db": 0.0469
+    },
+    "iir1_quarter": {
+      "generator_off_pcm_rms_fs": 0.0347767,
+      "mean_band_snr_gain_db": 0.7059,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.2613,
+        "2800": -0.2759,
+        "500": 1.1322
+      },
+      "tone_loss_db": {
+        "1000": -0.2351,
+        "2800": -1.5563,
+        "500": -0.0599
+      },
+      "worst_band_snr_gain_db": -0.2759
+    },
+    "iir2_half": {
+      "generator_off_pcm_rms_fs": 0.0371237,
+      "mean_band_snr_gain_db": 0.4732,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.8484,
+        "2800": 0.0176,
+        "500": 0.5537
+      },
+      "tone_loss_db": {
+        "1000": -0.0797,
+        "2800": -0.6177,
+        "500": -0.021
+      },
+      "worst_band_snr_gain_db": 0.0176
+    },
+    "iir2_quarter": {
+      "generator_off_pcm_rms_fs": 0.0320058,
+      "mean_band_snr_gain_db": 0.9353,
+      "passes_exploratory_gate": false,
+      "snr_gain_db": {
+        "1000": 1.6522,
+        "2800": -0.8058,
+        "500": 1.9594
+      },
+      "tone_loss_db": {
+        "1000": -0.4722,
+        "2800": -3.0759,
+        "500": -0.1188
+      },
+      "worst_band_snr_gain_db": -0.8058
+    },
+    "legacy": {
+      "generator_off_pcm_rms_fs": 0.0423111,
+      "mean_band_snr_gain_db": 0.0,
+      "passes_exploratory_gate": true,
+      "snr_gain_db": {
+        "1000": 0.0,
+        "2800": 0.0,
+        "500": 0.0
+      },
+      "tone_loss_db": {
+        "1000": 0.0,
+        "2800": 0.0,
+        "500": 0.0
+      },
+      "worst_band_snr_gain_db": 0.0
+    }
+  },
+  "caveats": [
+    "Only 32-44ms continuous raw windows; no direct speech intelligibility measurement",
+    "The 1kHz and generator-OFF recordings contain CRC holes: longest verified spans only",
+    "Candidate Rust edits are host-side what-ifs, NOT linked ARM firmware or timing qualified",
+    "Sample-level input PDM phase (64 individual bits) is irrecoverable from 64-bit popcounts",
+    "Tone selection/evaluation use the same captures; not an independently held-out dataset",
+    "Prospective 7500 clock weight modeled, not flashed; radio build remains unchanged",
+    "Raw RF files, PCM speech files and listening previews remain local and private"
+  ],
+  "date": "2026-11-27",
+  "generator_off": {
+    "contiguous_groups": 2944,
+    "crc_accepted_packets": 82,
+    "run_sequences": [
+      24,
+      85
+    ],
+    "sample_sha256": "f429f6cff3fa0e5314a4d30e364eebfd6d551dd1c4cbd85ade45fa6f8f9de398",
+    "source_complete": false
+  },
+  "no_radio_changes": true,
+  "offline_only": true,
+  "schema": 1,
+  "source": "physically captured GP0 raw 64-bit group popcounts, actual Rust decimator, local temporary candidate variants",
+  "synthetic_2000_3200hz_not_physical": {
+    "2000": {
+      "aa3": {
+        "snr_gain_db": 0.306,
+        "tone_loss_db": -2.6053
+      },
+      "fir11": {
+        "snr_gain_db": 1.0555,
+        "tone_loss_db": -0.7963
+      },
+      "fir11_late": {
+        "snr_gain_db": 1.0583,
+        "tone_loss_db": -0.7895
+      },
+      "fir3_triangle": {
+        "snr_gain_db": 0.5276,
+        "tone_loss_db": -0.042
+      },
+      "fir5_binomial": {
+        "snr_gain_db": 0.8777,
+        "tone_loss_db": -0.0807
+      },
+      "fir5_box": {
+        "snr_gain_db": 0.9608,
+        "tone_loss_db": -0.1579
+      },
+      "fir5_box_late": {
+        "snr_gain_db": 0.9613,
+        "tone_loss_db": -0.1524
+      },
+      "fir7_binomial": {
+        "snr_gain_db": 1.0324,
+        "tone_loss_db": -0.0965
+      },
+      "fir7_box": {
+        "snr_gain_db": 1.1418,
+        "tone_loss_db": -0.2893
+      },
+      "fir7_box_late": {
+        "snr_gain_db": 1.1476,
+        "tone_loss_db": -0.2839
+      },
+      "fir9_box": {
+        "snr_gain_db": 1.1549,
+        "tone_loss_db": -0.5038
+      },
+      "iir1_half": {
+        "snr_gain_db": 0.5926,
+        "tone_loss_db": -0.1535
+      },
+      "iir1_quarter": {
+        "snr_gain_db": 0.9504,
+        "tone_loss_db": -0.8504
+      },
+      "iir2_half": {
+        "snr_gain_db": 0.9443,
+        "tone_loss_db": -0.3014
+      },
+      "iir2_quarter": {
+        "snr_gain_db": 0.8006,
+        "tone_loss_db": -1.7151
+      },
+      "legacy": {
+        "snr_gain_db": 0.0,
+        "tone_loss_db": 0.0
+      }
+    },
+    "3200": {
+      "aa3": {
+        "snr_gain_db": -3.0738,
+        "tone_loss_db": -5.8556
+      },
+      "fir11": {
+        "snr_gain_db": -0.5139,
+        "tone_loss_db": -2.2126
+      },
+      "fir11_late": {
+        "snr_gain_db": -0.5101,
+        "tone_loss_db": -2.2047
+      },
+      "fir3_triangle": {
+        "snr_gain_db": 0.2244,
+        "tone_loss_db": -0.2199
+      },
+      "fir5_binomial": {
+        "snr_gain_db": 0.392,
+        "tone_loss_db": -0.3531
+      },
+      "fir5_box": {
+        "snr_gain_db": 0.3706,
+        "tone_loss_db": -0.5331
+      },
+      "fir5_box_late": {
+        "snr_gain_db": 0.3747,
+        "tone_loss_db": -0.5273
+      },
+      "fir7_binomial": {
+        "snr_gain_db": 0.5033,
+        "tone_loss_db": -0.4055
+      },
+      "fir7_box": {
+        "snr_gain_db": 0.3214,
+        "tone_loss_db": -0.9143
+      },
+      "fir7_box_late": {
+        "snr_gain_db": 0.3256,
+        "tone_loss_db": -0.9075
+      },
+      "fir9_box": {
+        "snr_gain_db": 0.0203,
+        "tone_loss_db": -1.4799
+      },
+      "iir1_half": {
+        "snr_gain_db": 0.1593,
+        "tone_loss_db": -0.4655
+      },
+      "iir1_quarter": {
+        "snr_gain_db": -0.4299,
+        "tone_loss_db": -2.0464
+      },
+      "iir2_half": {
+        "snr_gain_db": 0.1726,
+        "tone_loss_db": -0.89
+      },
+      "iir2_quarter": {
+        "snr_gain_db": -1.6001,
+        "tone_loss_db": -3.9531
+      },
+      "legacy": {
+        "snr_gain_db": 0.0,
+        "tone_loss_db": 0.0
+      }
+    }
+  },
+  "verified_source_groups": {
+    "gen-1000-20261127-01": {
+      "contiguous_groups": 3024,
+      "crc_accepted_packets": 84,
+      "measured_group_rate_hz": 93302.96,
+      "nominal_tone_hz": 1000,
+      "run_sequences": [
+        9,
+        71
+      ],
+      "sample_sha256": "611c58e1728f01f153052197643e590318d3cc2af6c055257dcb94cd1dec440e",
+      "source_complete": false
+    },
+    "gen-2800-20261127-01": {
+      "contiguous_groups": 4096,
+      "crc_accepted_packets": 86,
+      "measured_group_rate_hz": 93302.96,
+      "nominal_tone_hz": 2800,
+      "run_sequences": [
+        0,
+        85
+      ],
+      "sample_sha256": "f5c21e5b8b586f2c0441023ef4b23f770126db703f92a92b96045251b1026764",
+      "source_complete": true
+    },
+    "gen-500-20261127-03": {
+      "contiguous_groups": 4096,
+      "crc_accepted_packets": 86,
+      "measured_group_rate_hz": 93302.96,
+      "nominal_tone_hz": 500,
+      "run_sequences": [
+        0,
+        85
+      ],
+      "sample_sha256": "26a871d9af716673b09adfc2542ad91f010edc21f392a175d3842fc68e8ff3c2",
+      "source_complete": true
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-26 Pacific",
+  "source_commit": "932435d1",
+  "candidate_sha256": "ce8ebab442b63915d653eef19b79f72aadb5aae0fc9843e1210d6fbf701f473a",
+  "image_bytes": 117052,
+  "bootloader": "stock K6 UPDATE via cable-session END and automatic restart",
+  "bootloader_ack_packages": "115/115 KiB",
+  "flasher_exit_code": 0,
+  "postflash_radio_response": true,
+  "cable_protocol": 5,
+  "retained_catalog": {
+    "24": {
+      "name": "SOTTO GP0",
+      "code_bytes": 9784,
+      "serial": 1795730062
+    },
+    "25": {
+      "name": "MIC IRQ",
+      "code_bytes": 3771,
+      "serial": 1795641552
+    },
+    "30": {
+      "name": "SOTTO MIC",
+      "code_bytes": 9780,
+      "serial": 1795626699
+    }
+  },
+  "backup_sha256": "18fd1d3cb118c36eecf6111ec805f77ff70bd1732ed7576d459183f341d74dbd",
+  "previous_firmware_sha256": "8d38e8973e89d32099791c34a5c9d7c68520869564bffc004c08d4695fa4827d",
+  "external_spi_written": false,
+  "module_library_mutated": false,
+  "physical_rf_tested": false,
+  "dummy_load_verified_in_this_turn": false,
+  "vfo_screen_confirmed": false,
+  "mcu_flash_byte_readback_performed": false,
+  "status": "FIRMWARE_FLASH_AND_CABLE_POSTFLIGHT_PASS; FSK_HARDWARE_TIMING_UNTESTED",
+  "log_paths": {
+    "bootloader": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-flash-20261126/bootloader-flash.log",
+    "postflash_catalog": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-flash-20261126/postflash-catalog.log"
+  }
+}

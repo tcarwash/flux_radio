@@ -33,6 +33,27 @@ or move into an installed module with safe load/unload behavior.
 
 ## Offline proof and missing real-firmware boundaries
 
+An [opt-in API31 production-host RX development slice](k6-sotto-api31-rx-development-20261124.md)
+now compiles and boots under Unicorn. The linked ARM API31 callback has
+now also received all six Sotto frames from SoapyFang virtual IQ using
+a fast 0.4ms modeled FIFO rearm, with PTT/timeout and register cleanup.
+The actual run_module -> km_run_on_stack -> km_run path now also
+runs a CRC32 cable-verified level-31 receiver module to completion,
+recovering all six IQ packets. Production SipHash/SPI install, full
+UART/CPS and VFO mode activation are still untested. API28 read-only K6CB/K6SC resources and **API29 finite FSK TX** are
+now compiled and emulator-qualified with the normal ARM module runner
+under separate opt-in flags. The PA is muted until its FIFO has been
+fully loaded; RX -> TX -> RX now passes the SoapyFang virtual-IQ gate.
+API30 PA11/TIM17 microphone ISR is now also installed and
+individually qualified under a virtual ARM board (95 simulated
+8-kHz interrupts and safe cleanup). **The live microphone/encoder,
+on-radio speaker/decoder and installed VFO mode are not yet tied into
+one real voice session**, so this is not a finished two-way voice host.
+
+The [incremental fixed-point RX playout model](k6-soapyfang-sotto-lab-20261124.md#incremental-receive-audio-and-bounded-playout)
+adds a bounded PCM queue and failure/preemption semantics. Its
+host-memory budget is not a verified K6 SRAM measurement.
+
 The [SoapyFang browser lab](k6-soapyfang-sotto-lab-20261124.md)
 exposes the full virtual voice loop and accepted receiver PCM for repeated,
 parameterized test runs, with source-aware cached compilation. It remains a

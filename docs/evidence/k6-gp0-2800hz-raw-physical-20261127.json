@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-27",
+  "filters": {
+    "aa3": {
+      "pcm_samples": 352,
+      "replay_noise_rms_fs": 0.029348,
+      "replay_pcm_peak_fs": 0.188929,
+      "replay_snr_db": 13.164,
+      "snr_gain_vs_legacy_db": -1.966,
+      "tone_attenuation_vs_legacy_db": -4.622
+    },
+    "fir11": {
+      "pcm_samples": 352,
+      "replay_noise_rms_fs": 0.034643,
+      "replay_pcm_peak_fs": 0.266975,
+      "replay_snr_db": 14.727,
+      "snr_gain_vs_legacy_db": -0.403,
+      "tone_attenuation_vs_legacy_db": -1.618
+    },
+    "fir11_late": {
+      "pcm_samples": 352,
+      "replay_noise_rms_fs": 0.034652,
+      "replay_pcm_peak_fs": 0.267206,
+      "replay_snr_db": 14.732,
+      "snr_gain_vs_legacy_db": -0.398,
+      "tone_attenuation_vs_legacy_db": -1.611
+    },
+    "legacy": {
+      "pcm_samples": 352,
+      "replay_noise_rms_fs": 0.039845,
+      "replay_pcm_peak_fs": 0.321649,
+      "replay_snr_db": 15.13,
+      "snr_gain_vs_legacy_db": 0.0,
+      "tone_attenuation_vs_legacy_db": 0.0
+    }
+  },
+  "generator_nominal_hz": 2800,
+  "generator_nominal_vpp": 0.1,
+  "limitations": [
+    "43.9ms tone windows are short; long-run noise and subjective intelligibility not tested",
+    "Original RF IQ and complete raw popcounts remain private",
+    "At 1kHz only a CRC-complete contiguous fragment was used for replay",
+    "AA3 and FIR11 are not enabled in the radio",
+    "The replay uses prospective 7500 clock weight; hardware still uses weight 8000"
+  ],
+  "measured_raw_residual_noise_std_counts": 1.26392,
+  "measured_raw_tone_hz": 2799.9943,
+  "measured_raw_tone_peak_counts": 3.19857,
+  "replay": {
+    "actual_firmware_rust_decimator": true,
+    "fractional_clock_weight": 7500,
+    "no_firmware_or_rf_changes": true
+  },
+  "rf_capture": {
+    "capture_duration_ms": 43.9,
+    "complete": true,
+    "crc_total_packets": 86,
+    "crc_valid_packets": 86,
+    "implied_groups_per_second": 93302.96,
+    "raw_popcount_groups": 4096,
+    "raw_sha256": "f5c21e5b8b586f2c0441023ef4b23f770126db703f92a92b96045251b1026764"
+  }
+}

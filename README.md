@@ -186,6 +186,8 @@ replay SigMF/NumPy IQ, or connect a receive-only SoapySDR source. See the
 | Emulator development | [Workbench](docs/k6-emulator.md) |
 | Experimental Sotto voice offline loop | [Sotto end-to-end mock](docs/k6-sotto-end-to-end-mock-20261124.md) |
 | SoapyFang Sotto voice lab | [Opt-in ARM→virtual RF→receiver browser lab](docs/k6-soapyfang-sotto-lab-20261124.md) |
+| Experimental Sotto API28 resources + API29 FSK TX + API30 mic + API31 RX | [Compiled ARM guarded TX, KUL2 codec resources, PA11/TIM17 mic ISR and half-duplex SoapyFang IQ gates](docs/k6-sotto-api31-rx-development-20261124.md) |
+| Sotto live voice: two compiled ARM radios (offline) | [Live PA11 mic→codec→FSK→API31 virtual RF→host PCM, with bounded queue, memory budget and replay tests](docs/k6-sotto-live-arm-e2e-20261124.md) |
 | Serial data experiments | [Throughput and burst protocol](docs/k6-serial-throughput.md) |
 | Development and tests | [Contributing](CONTRIBUTING.md) |
 

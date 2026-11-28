@@ -1,0 +1,88 @@
+{
+  "date": "2026-11-26 America/Los_Angeles",
+  "run": "second attended GP0 test on diagnostic MCU; UART cable remained attached",
+  "source_commit": "c411c89c",
+  "source_file_on_host": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/gp0-serial-follow-20261126-1828.json",
+  "source_sha256": "55fb9cb16c4656be011d5892a67a646aef52fdfa84c8a5e37b3d9d113b5735fa",
+  "firmware_sha256": "c69a87428a4b72192f4a9ac22bd17c5fe40da159ebe818880a2a5b04ca7f03ec",
+  "reporter": "passive UART monitor tools/k6_sotto_gp0_follow.py; cable queries only after module returned",
+  "capture_ms_estimate": 200.05,
+  "resource_callback_ms_approx": 49.459,
+  "module_wall_ms_from_uart": 5067,
+  "reported_stack_free_bytes": 1428,
+  "tx_frequency_hz_logged": 443500000,
+  "conclusions": [
+    "Confirmed repeated GP0 ENGINE return -12 with exact DMA reason 2 queue full",
+    "No missed IRQ halves, FSK callback errors or codec resource read errors",
+    "Serial cable attached throughout; UART monitor observed module start and dekey and captured both diagnostics after return",
+    "Sotto mic analog audio input is not validated while serial cable occupies shared jack"
+  ],
+  "qualifiers": [
+    "IRQs infer approximate active mic duration, not complete 5067ms module lifetime",
+    "Only max per-phase FSK callback measured; no complete on-air packet decode",
+    "Resource timer wraps and interrupt preemption limit physical timing accuracy"
+  ],
+  "report": {
+    "console_lines": [
+      "K6 MENU host",
+      "K6 MENU open modules=15",
+      "K6 MENU run row=10",
+      "K6 LIB load slot=24",
+      "K6 LIB loaded slot=24 r=9784",
+      "K6 LIB run slot=24 r=9784",
+      "K6 MOD run serial=1795730062 code=9784 B status=9784 B at 0x20001940 stack=1556 B scratch=4128 B",
+      "K6 LCD hook registered",
+      "K6 MOD tx on hz=443500000 max=25000 ms",
+      "K6 MOD tx off",
+      "K6 MOD ret=-12 (0xfffffff4) in 5067 ms stack_free=1428 B"
+    ],
+    "console_return_line": "K6 MOD ret=-12 (0xfffffff4) in 5067 ms stack_free=1428 B",
+    "decode_error": null,
+    "fault": {
+      "boot_local": true,
+      "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+      "failure_classes": [
+        "pcm_dma"
+      ],
+      "fsk_errors": 0,
+      "gp0_capture_started": true,
+      "gp0_dma_error": 3,
+      "gp0_irq_count": 2182,
+      "gp0_missed_halves": 0,
+      "gp0_peak_isr_ticks": 3147,
+      "last_fsk_error": 0,
+      "module_return": -12,
+      "module_serial": 1795730062,
+      "pcm_lost": true,
+      "read_only": true,
+      "resource_errors": 0,
+      "saturating_16bit_counters": true,
+      "valid": true,
+      "version": "GPF1"
+    },
+    "fault_raw_hex": "475046318eaa086bf4ffffff2700000000000000000000000000000003000000860800004b0c000000000000",
+    "module_serial_expected": 1795730062,
+    "timing": {
+      "boot_local": true,
+      "fsk_preload_peak_100us_ticks": 22,
+      "fsk_preload_peak_approx_ms": 2.2,
+      "fsk_preloads": 1,
+      "gp0_code3_reason": "pcm_queue_full",
+      "gp0_code3_reason_id": 2,
+      "module_serial": 1795730062,
+      "pcm_backlog_at_stop_blocks": 3,
+      "pcm_backlog_qualifier": "sampled on op1 stop, not at IRQ failure; foreground may consume queued blocks before stop",
+      "pcm_offset_at_stop_samples": 0,
+      "read_only": true,
+      "resource_peak_approx_us": 258.08,
+      "resource_peak_tim17_ticks": 24776,
+      "resource_reads": 766,
+      "resource_timer_resolution": "96MHz nominal; 16-bit counter wraps every ~682.7us",
+      "resource_timing_qualifier": "individual calls spanning >=1 TIM17 counter wrap are ambiguous; values are not definitive wall times",
+      "resource_total_tim17_ticks_modulo": 4748045,
+      "valid": true,
+      "version": "GPT1"
+    },
+    "timing_raw_hex": "475054318eaa086b01000000fe020000c86000000d73480016000000010000000200000003000000"
+  }
+}

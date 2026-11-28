@@ -1,0 +1,359 @@
+{
+  "date": "2026-11-26",
+  "purpose": "Offline ablation of exact Cortex-M0 fast division and specialized aligned rolling PCM history copies in the Flux K6 Sotto GP0 module.",
+  "radio_touched": false,
+  "flash_performed": false,
+  "rf_transmitted": false,
+  "fixture": {
+    "samples": 8293,
+    "sample_rate_hz": 8000,
+    "components_hz": [
+      320,
+      870
+    ],
+    "amplitudes": [
+      7000,
+      2000
+    ]
+  },
+  "spi_model": {
+    "read_setup_us": 6.19212962962963,
+    "per_byte_us": 0.9403935185185185,
+    "fsk_delay_us": 60
+  },
+  "model_assumptions": {
+    "cpi_values": [
+      1.5,
+      2.5,
+      3.0
+    ],
+    "adc_cycles_per_sample_values": [
+      3000,
+      4000
+    ],
+    "note": "CPI and ADC cycle values are simulator inputs, not measured CPU averages."
+  },
+  "module_variants": [
+    {
+      "name": "baseline",
+      "module_bytes": 9784,
+      "entry": 16,
+      "sha256": "551bea3e8d72a47dcf7c97f6502b32614d7915fd4ab12d4f0b90d9f99d48fa6e",
+      "scratch_available_bytes": 4128,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 48
+    },
+    {
+      "name": "fast_div",
+      "module_bytes": 9772,
+      "entry": 16,
+      "sha256": "05e8ec1a91b92fff1cff0bea1a5926674b65f9a8a78f9868413c8df118d9492f",
+      "scratch_available_bytes": 4140,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 60
+    },
+    {
+      "name": "fast_history_copy",
+      "module_bytes": 9748,
+      "entry": 16,
+      "sha256": "742162f19339f38460d43d6e4b17d131e0ffca17497946cf6160566facfe86ee",
+      "scratch_available_bytes": 4164,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 84
+    },
+    {
+      "name": "fast_div_plus_history_copy",
+      "module_bytes": 9736,
+      "entry": 16,
+      "sha256": "541ce071459f9a2b00839f694095c8e74067dcbe25449feb5238edcc49f08106",
+      "scratch_available_bytes": 4176,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 96,
+      "ivf_deck_bytes": 4182,
+      "ivf_deck_sha256": "5d05fa9fb0194eee04356c3cb4b15471c780d0a915ee67063ed91a54e64ce9f6"
+    },
+    {
+      "name": "fast_div_plus_history_copy_plus_paired_score",
+      "module_bytes": 9756,
+      "entry": 16,
+      "sha256": "23f15706c9c958188674141c0dd655bd0aeb8fac883ea6cb3d5fbead7c0691c8",
+      "scratch_available_bytes": 4156,
+      "scratch_required_bytes": 4080,
+      "margin_bytes": 76,
+      "ivf_deck_bytes": 4182,
+      "ivf_deck_sha256": "5d05fa9fb0194eee04356c3cb4b15471c780d0a915ee67063ed91a54e64ce9f6"
+    }
+  ],
+  "results": [
+    {
+      "cpi": 1.5,
+      "adc_cycles_per_sample": 4000,
+      "results": [
+        {
+          "variant": "baseline",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_div",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_history_copy",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "combined",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        }
+      ]
+    },
+    {
+      "cpi": 2.5,
+      "adc_cycles_per_sample": 4000,
+      "results": [
+        {
+          "variant": "baseline",
+          "samples": 1920,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_div",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_history_copy",
+          "samples": 2880,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "combined",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        }
+      ]
+    },
+    {
+      "cpi": 3.0,
+      "adc_cycles_per_sample": 3000,
+      "results": [
+        {
+          "variant": "baseline",
+          "samples": 1600,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_div",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_history_copy",
+          "samples": 2240,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "combined",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 8293,
+          "pcm_highwater": 2,
+          "pcm_lost": false,
+          "module_return": 26,
+          "codec_exact": true,
+          "codec_frames": 26,
+          "session_valid": 6,
+          "session_invalid": 0,
+          "wire_decoder_agrees": true,
+          "tx_active": false
+        }
+      ]
+    },
+    {
+      "cpi": 3.0,
+      "adc_cycles_per_sample": 4000,
+      "results": [
+        {
+          "variant": "baseline",
+          "samples": 1200,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_div",
+          "samples": 1920,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "fast_history_copy",
+          "samples": 1280,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "combined",
+          "samples": 2560,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        },
+        {
+          "variant": "combined_cb_pair",
+          "samples": 2880,
+          "pcm_highwater": 4,
+          "pcm_lost": true,
+          "module_return": -12,
+          "tx_active": false
+        }
+      ]
+    }
+  ],
+  "interpretation": "The fast history copy is bit-exact and improves queue progress by itself, but it is not sufficient. Combined with fast division it sustains the full fixture at CPI 2.5/4000 and CPI 3.0/3000. The paired codebook-score loop preserves exact output, adds 20 module bytes, and improves the CPI 3.0/4000 failure point from 2560 to 2880 samples, but the queue still fills and the module returns -12 with TX off.",
+  "evidence_scope": "Compiled Cortex-M0 module + virtual RF/GP0 model with physical SPI timing fit; not physical on-radio qualification.",
+  "test_results": {
+    "focused_optimization_tests": 15,
+    "broader_regression_tests": 71,
+    "broader_test_files": [
+      "tests/test_k6_sotto_fast_div.py",
+      "tests/test_k6_sotto_fast_div_rf.py",
+      "tests/test_k6_sotto_gp0_end_to_end.py",
+      "tests/test_k6_sotto_gp0_timing.py",
+      "tests/test_k6_sotto_module.py",
+      "tests/test_k6_sotto_virtual_link.py",
+      "tests/test_k6_sotto_gp0_spi_latency_budget.py",
+      "tests/test_k6_sotto_gp0_fast_divider.py",
+      "tests/test_k6_sotto_dct_fast.py",
+      "tests/test_k6_sotto_fft_zero.py"
+    ],
+    "candidate_cli_build": {
+      "module_bytes": 9756,
+      "entry": 16,
+      "scratch_required_bytes": 4080,
+      "scratch_available_bytes": 4156,
+      "scratch_margin_bytes": 76,
+      "fast_div_experimental": true,
+      "fast_history_copy_experimental": true,
+      "fast_cb_pair_experimental": true,
+      "rf_enabled_in_artifact": true,
+      "signed": false,
+      "installed": false
+    }
+  }
+}

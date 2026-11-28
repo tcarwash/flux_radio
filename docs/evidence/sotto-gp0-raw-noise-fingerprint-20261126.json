@@ -1,0 +1,336 @@
+{
+  "conclusion": "Four recordings exhibit similar broad-band residual, independent of strong generator tone; clipping absent; source/alias mechanism unresolved",
+  "input": "CRC-verified pre-Sotto PCM AIR packet captures",
+  "limits": [
+    "short (56 to 188ms) independent sessions",
+    "RF transport verified by per-packet CRC but no raw PDM samples captured",
+    "spectral fractions are only descriptive within these finite windows",
+    "apparent harmonic distortion is noise-floor limited",
+    "cannot separate high-rate PDM folding from in-band analog noise from 8k PCM alone"
+  ],
+  "no_originals_modified": true,
+  "no_rf_or_radio_used": true,
+  "noise_rms_variation_db_across_four_runs": 0.39,
+  "offline_only": true,
+  "run_fingerprints": {
+    "gen-1000-01": {
+      "absolute_peak_full_scale": 0.51465,
+      "accepted_packets": 67,
+      "adjacent_correlations_lags_1_2_3_4_8_16": [
+        0.001,
+        -0.041,
+        0.057,
+        0.032,
+        -0.015,
+        -0.019
+      ],
+      "complete": true,
+      "fitted_harmonic_amplitudes_full_scale": [
+        0.410979,
+        0.002099,
+        0.002509
+      ],
+      "fitted_harmonic_to_fundamental_db": -41.98,
+      "fitted_physical_fundamental_hz": 999.461,
+      "frequency_bands_hz": [
+        [
+          0,
+          300
+        ],
+        [
+          300,
+          800
+        ],
+        [
+          800,
+          1500
+        ],
+        [
+          1500,
+          2500
+        ],
+        [
+          2500,
+          3500
+        ],
+        [
+          3500,
+          4000
+        ]
+      ],
+      "fundamental_peak_full_scale": 0.410979,
+      "generator_nominal_hz": 1000,
+      "harmonic_measurement_caveat": "noise-floor-limited apparent upper bound, not isolated analog THD",
+      "ljung_box_16_lags_exploratory_p": 0.128783,
+      "observed_duration_ms": 187.6,
+      "pcm_payload_sha256": "1294e4fc943d605812855cf351dd16fbdfe30a8f0ba3a44e8592bafef4f628d4",
+      "physical_sample_rate_hz": 8528.785,
+      "possible_source_categories": [
+        "PDM quantization / fold-down",
+        "analog input or RFIC mic noise",
+        "GPIO/DMA read artifacts",
+        "timebase or gain error"
+      ],
+      "raw_pcm_rms_full_scale": 0.2940659,
+      "real_rf_crc_verified": true,
+      "required_packets": 67,
+      "residual_excess_kurtosis": -0.264,
+      "residual_rms_dbfs": -26.94,
+      "residual_rms_full_scale": 0.0449902,
+      "samples": 1600,
+      "samples_near_clip": 0,
+      "tone_to_residual_db": 16.2,
+      "welch_noise_energy_percent_by_band": [
+        8.5,
+        11.5,
+        15.0,
+        26.6,
+        26.3,
+        12.1
+      ],
+      "within_record_160_sample_residual_rms": [
+        0.04302,
+        0.0499,
+        0.04085,
+        0.04457,
+        0.04469,
+        0.0434,
+        0.04341,
+        0.04926,
+        0.04459,
+        0.04438
+      ]
+    },
+    "gen-500-01": {
+      "absolute_peak_full_scale": 0.16113,
+      "accepted_packets": 67,
+      "adjacent_correlations_lags_1_2_3_4_8_16": [
+        0.031,
+        0.006,
+        0.018,
+        0.028,
+        0.052,
+        -0.019
+      ],
+      "complete": true,
+      "frequency_bands_hz": [
+        [
+          0,
+          300
+        ],
+        [
+          300,
+          800
+        ],
+        [
+          800,
+          1500
+        ],
+        [
+          1500,
+          2500
+        ],
+        [
+          2500,
+          3500
+        ],
+        [
+          3500,
+          4000
+        ]
+      ],
+      "ljung_box_16_lags_exploratory_p": 0.5135681,
+      "observed_duration_ms": 187.5,
+      "pcm_payload_sha256": "45be3082862a3b6a14f39f9c45dacb7113a1a9e64895c19c6b9cc28048e9d298",
+      "physical_sample_rate_hz": 8533.333,
+      "possible_source_categories": [
+        "PDM quantization / fold-down",
+        "analog input or RFIC mic noise",
+        "GPIO/DMA read artifacts",
+        "timebase or gain error"
+      ],
+      "raw_pcm_rms_full_scale": 0.0446258,
+      "real_rf_crc_verified": true,
+      "required_packets": 67,
+      "residual_excess_kurtosis": 0.027,
+      "residual_rms_dbfs": -27.01,
+      "residual_rms_full_scale": 0.0446258,
+      "samples": 1600,
+      "samples_near_clip": 0,
+      "welch_noise_energy_percent_by_band": [
+        8.1,
+        11.9,
+        18.3,
+        26.2,
+        24.0,
+        11.5
+      ],
+      "within_record_160_sample_residual_rms": [
+        0.04331,
+        0.04656,
+        0.04748,
+        0.04517,
+        0.04612,
+        0.04438,
+        0.04249,
+        0.04361,
+        0.0413,
+        0.04337
+      ]
+    },
+    "gen-500-02": {
+      "absolute_peak_full_scale": 0.48242,
+      "accepted_packets": 20,
+      "adjacent_correlations_lags_1_2_3_4_8_16": [
+        -0.04,
+        0.06,
+        0.008,
+        -0.058,
+        -0.011,
+        -0.096
+      ],
+      "complete": false,
+      "fitted_harmonic_amplitudes_full_scale": [
+        0.407615,
+        0.003575,
+        0.001378
+      ],
+      "fitted_harmonic_to_fundamental_db": -40.54,
+      "fitted_physical_fundamental_hz": 499.91,
+      "frequency_bands_hz": [
+        [
+          0,
+          300
+        ],
+        [
+          300,
+          800
+        ],
+        [
+          800,
+          1500
+        ],
+        [
+          1500,
+          2500
+        ],
+        [
+          2500,
+          3500
+        ],
+        [
+          3500,
+          4000
+        ]
+      ],
+      "fundamental_peak_full_scale": 0.407615,
+      "generator_nominal_hz": 500,
+      "harmonic_measurement_caveat": "noise-floor-limited apparent upper bound, not isolated analog THD",
+      "ljung_box_16_lags_exploratory_p": 0.2289178,
+      "observed_duration_ms": 56.28,
+      "pcm_payload_sha256": "b783f3c2ffdad059757968a491d52e44f932331bc9916af9737ee6b995f0e9ed",
+      "physical_sample_rate_hz": 8528.785,
+      "possible_source_categories": [
+        "PDM quantization / fold-down",
+        "analog input or RFIC mic noise",
+        "GPIO/DMA read artifacts",
+        "timebase or gain error"
+      ],
+      "raw_pcm_rms_full_scale": 0.2914734,
+      "real_rf_crc_verified": true,
+      "required_packets": 67,
+      "residual_excess_kurtosis": -0.423,
+      "residual_rms_dbfs": -26.79,
+      "residual_rms_full_scale": 0.0457751,
+      "samples": 480,
+      "samples_near_clip": 0,
+      "tone_to_residual_db": 15.98,
+      "welch_noise_energy_percent_by_band": [
+        8.7,
+        16.9,
+        13.6,
+        18.8,
+        27.2,
+        14.9
+      ],
+      "within_record_160_sample_residual_rms": [
+        0.04818,
+        0.04559,
+        0.04341
+      ]
+    },
+    "gen-off-01": {
+      "absolute_peak_full_scale": 0.15259,
+      "accepted_packets": 36,
+      "adjacent_correlations_lags_1_2_3_4_8_16": [
+        0.008,
+        0.006,
+        -0.009,
+        -0.025,
+        0.025,
+        0.039
+      ],
+      "complete": false,
+      "frequency_bands_hz": [
+        [
+          0,
+          300
+        ],
+        [
+          300,
+          800
+        ],
+        [
+          800,
+          1500
+        ],
+        [
+          1500,
+          2500
+        ],
+        [
+          2500,
+          3500
+        ],
+        [
+          3500,
+          4000
+        ]
+      ],
+      "ljung_box_16_lags_exploratory_p": 0.704141,
+      "observed_duration_ms": 101.304,
+      "pcm_payload_sha256": "faf10eebf01eb39ab46a843db0a4a6f45a8f59dffe222f13ca46329919df8f8b",
+      "physical_sample_rate_hz": 8528.785,
+      "possible_source_categories": [
+        "PDM quantization / fold-down",
+        "analog input or RFIC mic noise",
+        "GPIO/DMA read artifacts",
+        "timebase or gain error"
+      ],
+      "raw_pcm_rms_full_scale": 0.0437667,
+      "real_rf_crc_verified": true,
+      "required_packets": 67,
+      "residual_excess_kurtosis": 0.306,
+      "residual_rms_dbfs": -27.18,
+      "residual_rms_full_scale": 0.0437667,
+      "samples": 864,
+      "samples_near_clip": 0,
+      "welch_noise_energy_percent_by_band": [
+        8.5,
+        14.7,
+        16.7,
+        26.6,
+        21.4,
+        12.2
+      ],
+      "within_record_160_sample_residual_rms": [
+        0.04223,
+        0.04395,
+        0.04412,
+        0.04473,
+        0.04096
+      ]
+    }
+  },
+  "schema": 1
+}

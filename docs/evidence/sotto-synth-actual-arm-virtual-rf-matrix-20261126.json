@@ -1,0 +1,371 @@
+{
+  "hardware_test": false,
+  "description": "Actual ARM synthetic PCM module with modeled RF and compiled receiver",
+  "profile_names": [
+    "silence",
+    "multitone",
+    "chirp",
+    "bursts"
+  ],
+  "sample_count": 8320,
+  "sample_rate_hz": 8000,
+  "virtual_frequency_hz": 433500000,
+  "host_cpi_parameters": [
+    1.7,
+    2.5
+  ],
+  "cases": [
+    {
+      "profile": "silence",
+      "variant": "original",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "d651e76e099e17f9485d93cb21aeafa55be664ebecba139c18674fc0202eea25",
+      "module_size": 9667,
+      "scratch_margin": 165,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000067",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 1.969
+    },
+    {
+      "profile": "silence",
+      "variant": "original",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "d651e76e099e17f9485d93cb21aeafa55be664ebecba139c18674fc0202eea25",
+      "module_size": 9667,
+      "scratch_margin": 165,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000078",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 1.848
+    },
+    {
+      "profile": "silence",
+      "variant": "optimized",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "f9a5a97cf883c300d86cbcfcfa42435cb1698c505a2d193e6d0d5693f8ed9548",
+      "module_size": 9667,
+      "scratch_margin": 165,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000061",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 1.755
+    },
+    {
+      "profile": "silence",
+      "variant": "optimized",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "f9a5a97cf883c300d86cbcfcfa42435cb1698c505a2d193e6d0d5693f8ed9548",
+      "module_size": 9667,
+      "scratch_margin": 165,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000006F",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 1.99
+    },
+    {
+      "profile": "multitone",
+      "variant": "original",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "29ce114acbaa2af4c43dccef2b12fb838dd6a36de533defecd47c9bf15c1644b",
+      "module_size": 9759,
+      "scratch_margin": 73,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000067",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.64
+    },
+    {
+      "profile": "multitone",
+      "variant": "original",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "29ce114acbaa2af4c43dccef2b12fb838dd6a36de533defecd47c9bf15c1644b",
+      "module_size": 9759,
+      "scratch_margin": 73,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000007D",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 3.337
+    },
+    {
+      "profile": "multitone",
+      "variant": "optimized",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "28f3b48df1220a83144d117bea549d7450dc70d95112f9c5ed2aa94cc285c94e",
+      "module_size": 9759,
+      "scratch_margin": 73,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000005B",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.55
+    },
+    {
+      "profile": "multitone",
+      "variant": "optimized",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "28f3b48df1220a83144d117bea549d7450dc70d95112f9c5ed2aa94cc285c94e",
+      "module_size": 9759,
+      "scratch_margin": 73,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000006A",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 3.381
+    },
+    {
+      "profile": "chirp",
+      "variant": "original",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "340b4092b49f82103af9c190e3ff68f86ec1ffa6c2b8487b96daf88e044cb76b",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000006A",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 3.614
+    },
+    {
+      "profile": "chirp",
+      "variant": "original",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "340b4092b49f82103af9c190e3ff68f86ec1ffa6c2b8487b96daf88e044cb76b",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000007F",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 3.709
+    },
+    {
+      "profile": "chirp",
+      "variant": "optimized",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "ba8508dbb2c79d13dc99998115cba89381f68239847dbf17a6946974b5e8457b",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000005F",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.871
+    },
+    {
+      "profile": "chirp",
+      "variant": "optimized",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "ba8508dbb2c79d13dc99998115cba89381f68239847dbf17a6946974b5e8457b",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:0000006F",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.647
+    },
+    {
+      "profile": "bursts",
+      "variant": "original",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "7d36cd898055b447b2a3c812ec139c084cefba2049552163702845c257d433ac",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000082",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.662
+    },
+    {
+      "profile": "bursts",
+      "variant": "original",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "7d36cd898055b447b2a3c812ec139c084cefba2049552163702845c257d433ac",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000099",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.616
+    },
+    {
+      "profile": "bursts",
+      "variant": "optimized",
+      "cpi": 1.7,
+      "passed": true,
+      "module_sha256": "e7f1e17d35e4bd4702cc69c0833236db043095423aa3914f800db7d1f0d0cc60",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000076",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.435
+    },
+    {
+      "profile": "bursts",
+      "variant": "optimized",
+      "cpi": 2.5,
+      "passed": true,
+      "module_sha256": "e7f1e17d35e4bd4702cc69c0833236db043095423aa3914f800db7d1f0d0cc60",
+      "module_size": 9747,
+      "scratch_margin": 85,
+      "return": 26,
+      "codec_frames": 26,
+      "codec_exact": true,
+      "session_complete": true,
+      "session_valid": 6,
+      "session_invalid": 0,
+      "rf_received": 6,
+      "tx_end_keyed": false,
+      "telemetry": [
+        "SYN:M:00000087",
+        "SYN:Q:00000001"
+      ],
+      "sim_wall_s": 2.435
+    }
+  ]
+}

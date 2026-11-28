@@ -1,0 +1,24 @@
+{
+  "arena_and_stack_unchanged": true,
+  "baseline_code_identical_except_build_id": true,
+  "baseline_sha256": "d36a7b93ee43122625e9a5c8ada78452807ed10c920762af7a2d08411942f03e",
+  "diagnostic_flash_free": 4660,
+  "diagnostic_ram0_free": 32,
+  "diagnostic_sha256": "a4f486a579a7b6632ef63d0fb812676e6fa5e5722cc89c3d3493e76e4238a139",
+  "diagnostic_size": 118220,
+  "field_firmware_sha256": "8d38e8973e89d32099791c34a5c9d7c68520869564bffc004c08d4695fa4827d",
+  "field_firmware_size": 116796,
+  "field_gp0_module_sha256": "551bea3e8d72a47dcf7c97f6502b32614d7915fd4ab12d4f0b90d9f99d48fa6e",
+  "note": "Offline structural gate only. Before live tests verify current SPI backup, signed GP0 module slot, recovery firmware and unattended TX policies; the gate does not authorize a radio flash or PTT.",
+  "paths": {
+    "baseline": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/spi-recovered-flags-baseline/field-exact-compiler-flags.bin",
+    "diagnostic": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/gp0-timing-candidate/gp0-timing-offline-only.bin",
+    "module": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/slot24-stage2-code-9784.bin",
+    "reference": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/firmware-gp0-tx.bin"
+  },
+  "ram0_trace_bytes": 40,
+  "safe_to_flash_automatically": false,
+  "safety_failures": [],
+  "status": "READY_FOR_ATTENDED_REVIEW",
+  "timing_enabled": true
+}

@@ -1,0 +1,72 @@
+{
+  "binary_diff_byte_count": 604,
+  "binary_diff_contiguous_spans": 38,
+  "candidate_only_change": "default-OFF opt-in group_weight=7500 vs default 8000, denominator 87260 unchanged",
+  "date_local": "2026-11-26 America/Los_Angeles",
+  "fielded_image_comparison_qualifier": "Only the firmware image SIZE matched the known booted coop-gpf1-gpt1.bin; baseline SHA256 was not identical to the fielded hash. Neither variant is approved for flash.",
+  "hardware_radio_used": false,
+  "image_matches_current_fielded_radio_by_hash": false,
+  "matched_full_firmware_builds": {
+    "baseline": {
+      "application_flash_limit_bytes": 122880,
+      "firmware_sha256": "42c9ca7847448c6cbd5518395ab096e8898f2d8abe68f859e61dd1fefe5f2c83",
+      "firmware_size_bytes": 118408,
+      "flash_headroom_bytes": 4472,
+      "linked_isr_96_half_results": {
+        "actual_arm_thumbv6m_instruction_stream": true,
+        "irq_instruction_max": 1117,
+        "irq_instruction_mean": 1093.46,
+        "not_cycle_accurate": true,
+        "output_pcm_samples": 70,
+        "pcm_ring_lost": 0,
+        "pcm_ring_offset": 70,
+        "pcm_ring_produced": 0,
+        "simulated_half_buffer_count": 96
+      },
+      "ram0_layout": {
+        "arena_base": "0x20001930",
+        "arena_bytes": 14976,
+        "ram0_free": 24,
+        "ram0_used": 3816,
+        "stack_reservation": 2812
+      }
+    },
+    "calibrated": {
+      "application_flash_limit_bytes": 122880,
+      "firmware_sha256": "e7edf82c5aa9081662f649a383375c68026ecff1a8a16e3ca51edf990561631d",
+      "firmware_size_bytes": 118408,
+      "flash_headroom_bytes": 4472,
+      "linked_isr_96_half_results": {
+        "actual_arm_thumbv6m_instruction_stream": true,
+        "irq_instruction_max": 1114,
+        "irq_instruction_mean": 1087.18,
+        "not_cycle_accurate": true,
+        "output_pcm_samples": 66,
+        "pcm_ring_lost": 0,
+        "pcm_ring_offset": 66,
+        "pcm_ring_produced": 0,
+        "simulated_half_buffer_count": 96
+      },
+      "ram0_layout": {
+        "arena_base": "0x20001930",
+        "arena_bytes": 14976,
+        "ram0_free": 24,
+        "ram0_used": 3816,
+        "stack_reservation": 2812
+      }
+    }
+  },
+  "pinned_aura_commit": "c3aeb17aec0fd09dccf931b52f6c7d5dbf72e7ac",
+  "pinned_sotto_commit": "598f1bce87c22ebada2b9d0d1fcfd89107b33a09",
+  "private_assets_not_in_repo": [
+    "ELF",
+    "MCU BIN",
+    "radio SPI backup",
+    "IQ",
+    "WAV"
+  ],
+  "software_checks": "100 tests passed, 3 optional linked-image tests skipped in normal suite; opt-in paired-linked 1 additional test passed; separate linked GP0 service start/stop test passed",
+  "source_branch": "experiment/gp0-pcm-clock-7500-offline-20261126",
+  "status": "OFFLINE_ONLY_NOT_APPROVED_FOR_FLASH",
+  "virtual_profile_limits": "Unicorn runs exact linked ARM instructions, but no physical CPU cycles, DMA bus stalls, noise, PTT, RF, firmware boot, or real queue contention are measured."
+}

@@ -64,6 +64,22 @@ fi
   echo "checkout at $WORK is not pinned to $REV; preserve it and choose another AURA_FD6818B_REV" >&2
   exit 1
 }
+# API31 research overlays are append-only and not all legacy patch scripts
+# can be reapplied incrementally to an already generated level-31 host.
+# Rebuild from the PINNED upstream source only on explicit request; never
+# reset a user's normal source repo or any tree on the default path.
+case "${K6_AURA_RESET_GENERATED:-0}" in
+  0) ;;
+  1)
+    [ -z "$(git -C "$WORK" symbolic-ref -q --short HEAD || true)" ] || {
+      echo "K6_AURA_RESET_GENERATED refused: generated Aura checkout is on a branch" >&2
+      exit 1
+    }
+    git -C "$WORK" reset --hard "$REV" >/dev/null
+    git -C "$WORK" clean -fd >/dev/null
+    ;;
+  *) echo "K6_AURA_RESET_GENERATED must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ ! -f "$WORK/src/app/pager.rs" ]; then
   git -C "$WORK" apply "$HERE/aura-pager.patch"
   git -C "$WORK" apply "$HERE/aura-pager-fd6818b.patch"
@@ -106,7 +122,12 @@ python3 "$HERE/apply-action-beep.py"
 python3 "$HERE/apply-aprs-position-api.py"
 python3 "$HERE/apply-boot-app-stack.py"
 python3 "$HERE/apply-cable-stack.py"
-python3 "$HERE/apply-capability-query.py"
+K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_FSK_RX_SERVICE="${K6_FSK_RX_SERVICE:-0}" \
+  K6_OTA_SERVICE="${K6_OTA_SERVICE:-0}" K6_DESIGNER_SERVICE="${K6_DESIGNER_SERVICE:-0}" K6_SOTTO_SERVICE="${K6_SOTTO_SERVICE:-0}" \
+  K6_MODE_REGISTRY="${K6_MODE_REGISTRY:-0}" K6_PACKET_MAILBOX="${K6_PACKET_MAILBOX:-0}" K6_FSK4800_RX="${K6_FSK4800_RX:-0}" \
+  K6_LIVE_SERIAL="${K6_LIVE_SERIAL:-0}" K6_SOTTO_RESOURCES="${K6_SOTTO_RESOURCES:-0}" \
+  K6_SOTTO_ASYNC_FSK="${K6_SOTTO_ASYNC_FSK:-0}" K6_SOTTO_MIC="${K6_SOTTO_MIC:-0}" \
+  python3 "$HERE/apply-capability-query.py"
 python3 "$HERE/apply-ota-service.py"
 python3 "$HERE/trim-generated-host.py"
 python3 "$HERE/apply-pack-service-gates.py"
@@ -164,6 +185,48 @@ python3 "$HERE/apply-live-serial.py"
 K6_MODE_REGISTRY=${K6_MODE_REGISTRY:-0}
 K6_MODE_RFTEST=${K6_MODE_RFTEST:-0}
 K6_PACKET_MAILBOX=${K6_PACKET_MAILBOX:-0}
+K6_FSK4800_RX=${K6_FSK4800_RX:-0}
+K6_SOTTO_RESOURCES=${K6_SOTTO_RESOURCES:-0}
+K6_SOTTO_ASYNC_FSK=${K6_SOTTO_ASYNC_FSK:-0}
+K6_SOTTO_MIC=${K6_SOTTO_MIC:-0}
+case "$K6_SOTTO_MIC" in
+  0|1) ;;
+  *) echo "K6_SOTTO_MIC must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_MIC" = 1 ] && [ "$K6_SOTTO_ASYNC_FSK" != 1 ]; then
+  echo "API30 mic requires experimental API29 async FSK service" >&2
+  exit 1
+fi
+case "$K6_SOTTO_ASYNC_FSK" in
+  0|1) ;;
+  *) echo "K6_SOTTO_ASYNC_FSK must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_RESOURCES" != 1 ]; then
+  echo "API29 requires the opt-in API28 resources and API31 host tail" >&2
+  exit 1
+fi
+case "$K6_SOTTO_RESOURCES" in
+  0|1) ;;
+  *) echo "K6_SOTTO_RESOURCES must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
+  [ "$K6_MODE_REGISTRY" = 1 ] && [ "$K6_PACKET_MAILBOX" = 1 ] || {
+    echo "Sotto resources require the API31 host tail and API26/27 (mode registry + packet mailbox)" >&2
+    exit 1
+  }
+fi
+case "$K6_FSK4800_RX" in
+  0|1) ;;
+  *) echo "K6_FSK4800_RX must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_FSK4800_RX" = 1 ]; then
+  [ "$K6_MODE_REGISTRY" = 1 ] && [ "$K6_PACKET_MAILBOX" = 1 ] &&
+  [ "${K6_FSK_RX_SERVICE:-0}" = 1 ] && [ "${K6_CONFIG_FSK:-0}" = 1 ] &&
+  [ "${K6_LEAN_TXDOG:-0}" = 1 ] && [ "$K6_SOTTO_SERVICE" = 0 ] || {
+    echo "Experimental FSK4800 RX needs Data, watchdog, API26/27; no resident Sotto" >&2
+    exit 1
+  }
+fi
 export K6_MODE_REGISTRY
 if [ "$K6_MODE_REGISTRY" = 1 ]; then
   python3 "$HERE/apply-mode-registry.py"
@@ -173,6 +236,65 @@ if [ "$K6_PACKET_MAILBOX" = 1 ]; then
   python3 "$HERE/apply-packet-mailbox.py"
   python3 "$HERE/apply-packet-dispatch.py"
 fi
+# API31 defines the stable API28-31 host tail; the optional RX4800 receiver
+# itself remains separately gated by K6_FSK4800_RX.
+if [ "$K6_FSK4800_RX" = 1 ] || [ "$K6_SOTTO_RESOURCES" = 1 ]; then
+  python3 "$HERE/apply-sotto-rx4800.py"
+fi
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then
+  python3 "$HERE/apply-sotto-api28-resources.py"
+fi
+# Experimental codec resource path only: stream one SPI NOR READ transaction
+# with a final bounded BSY check instead of waiting for BUSY after every byte.
+# Never change default NOR reads or the module-loader flash path.
+case "${K6_SOTTO_FAST_SPI:-0}" in
+  0) K6_SOTTO_FAST_SPI=0 python3 "$HERE/apply-sotto-fast-spi.py" ;;
+  1)
+    [ "$K6_SOTTO_RESOURCES" = 1 ] || {
+      echo "K6_SOTTO_FAST_SPI requires the Sotto resource service" >&2; exit 1;
+    }
+    python3 "$HERE/apply-sotto-fast-spi.py"
+    ;;
+  *) echo "K6_SOTTO_FAST_SPI must be 0 or 1" >&2; exit 1 ;;
+esac
+# Opt-in cable-only SPI timing report; requires *both* Sotto resources and
+# streaming read support. Never enters TX; no radio writes in this overlay.
+case "${K6_SOTTO_SPI_BENCH:-0}" in
+  0) K6_SOTTO_SPI_BENCH=0 python3 "$HERE/apply-sotto-spi-bench.py" ;;
+  1)
+    [ "${K6_SOTTO_FAST_SPI:-0}" = 1 ] || {
+      echo "K6_SOTTO_SPI_BENCH requires K6_SOTTO_FAST_SPI=1" >&2; exit 1;
+    }
+    K6_SOTTO_SPI_BENCH=1 python3 "$HERE/apply-sotto-spi-bench.py" ;;
+  *) echo "K6_SOTTO_SPI_BENCH must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then
+  python3 "$HERE/apply-sotto-api29-async-fsk.py"
+fi
+if [ "$K6_SOTTO_MIC" = 1 ]; then
+  python3 "$HERE/apply-sotto-api30-mic.py"
+  python3 "$HERE/apply-mic-result-serial.py"
+fi
+# Alternate diagnostic host for codebook encoder on synthetic 8-kHz PCM.
+# This mode is NOT a replacement for the GP0 live-microphone firmware.
+if [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ]; then
+  [ "$K6_SOTTO_MIC" = 0 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+  [ "${K6_LIVE_SERIAL:-0}" = 1 ] || {
+    echo "Synthetic host requires MIC=0, RAM0=1, LIVE_SERIAL=1" >&2; exit 1;
+  }
+  python3 "$HERE/apply-sotto-synth-host-ram0.py"
+fi
+# Optional foreground-only fault counters, readable through 0x75 after GP0
+# returns. The original module binary and default firmware stay unchanged.
+case "${K6_SOTTO_GP0_TRACE:-0}" in
+  0) K6_SOTTO_GP0_TRACE=0 python3 "$HERE/apply-sotto-gp0-fault.py" ;;
+  1)
+    [ "$K6_SOTTO_RESOURCES" = 1 ] && [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_TRACE requires resources, FSK async, GP0 mic, and expanded RAM0=1" >&2; exit 1;
+    }
+    K6_SOTTO_GP0_TRACE=1 python3 "$HERE/apply-sotto-gp0-fault.py" ;;
+  *) echo "K6_SOTTO_GP0_TRACE must be 0 or 1" >&2; exit 1 ;;
+esac
 if [ "$K6_MODE_RFTEST" = 1 ]; then
   [ "$K6_MODE_REGISTRY" = 1 ] || { echo "RFTEST discovery requires K6_MODE_REGISTRY=1" >&2; exit 1; }
 fi
@@ -198,17 +320,188 @@ if [ "$K6_SOTTO_SERVICE" = 1 ]; then
   K6_VOICE=1
 fi
 K6_EXPLORE_HOST="$K6_EXPLORE_HOST" K6_SCAN_SERVICE="${K6_SCAN_SERVICE:-1}" K6_PKT_YIELD=0 K6_VOICE="$K6_VOICE" K6_CB=spi \
+  K6_MODE_REGISTRY="$K6_MODE_REGISTRY" K6_PACKET_MAILBOX="$K6_PACKET_MAILBOX" K6_FSK4800_RX="$K6_FSK4800_RX" \
+  K6_SOTTO_RESOURCES="$K6_SOTTO_RESOURCES" K6_SOTTO_ASYNC_FSK="$K6_SOTTO_ASYNC_FSK" K6_SOTTO_MIC="$K6_SOTTO_MIC" \
   K6_OUT="$OUT/c-build" sh "$ROOT/tools/k6_build.sh"
 mkdir -p "$WORK/lib"
 cp "$OUT/c-build/libsotto_k6.a" "$WORK/lib/libsotto_k6.a"
 PACK_CFG=""
 if [ "$K6_MODE_REGISTRY" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_registry"; fi
 if [ "$K6_PACKET_MAILBOX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_packet_mailbox"; fi
+if [ "$K6_FSK4800_RX" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_fsk4800_rx"; fi
+if [ "$K6_SOTTO_RESOURCES" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_resources"; fi
+if [ "$K6_SOTTO_ASYNC_FSK" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_async_fsk"; fi
+# Experimental bounded FSK preload. Default keeps the bench-qualified
+# single-call path. GP0 or explicitly gated synthetic-RF hosts may stage writes.
+case "${K6_SOTTO_FSK_COOP_PRELOAD:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_ASYNC_FSK" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] && {
+      [ "$K6_SOTTO_MIC" = 1 ] || {
+        [ "$K6_SOTTO_MIC" = 0 ] && [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ] &&
+        [ "${K6_LIVE_SERIAL:-0}" = 1 ] && [ "${K6_LEAN_TXDOG:-0}" = 1 ];
+      }
+    } || {
+      echo "Cooperative FSK requires MIC or gated live synthetic-TX host (API29, RAM0, TXDOG)" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_fsk_coop_preload" ;;
+  *) echo "K6_SOTTO_FSK_COOP_PRELOAD must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$K6_SOTTO_MIC" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_mic"; fi
+if [ "${K6_SOTTO_SPI_BENCH:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_spi_bench"; fi
+if [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_trace"; fi
+# Optional GPF1 supplement: precise DMA failure discriminator, bounded
+# resource-read timing and FSK preload timing; 16 extra protected RAM0 bytes.
+case "${K6_SOTTO_GP0_TIMING:-0}" in
+  0) ;;
+  1)
+    [ "${K6_SOTTO_GP0_TRACE:-0}" = 1 ] && [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_TIMING requires GPF1 trace, mic capture, and expanded RAM0=1" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_timing" ;;
+  *) echo "K6_SOTTO_GP0_TIMING must be 0 or 1" >&2; exit 1 ;;
+esac
+# Optional exact 87,260 Hz GP0 decimator divider; all non-GP0 builds and
+# other mic sample rates retain the original restoring-divider path.
+case "${K6_SOTTO_GP0_FAST_ISR:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_FAST_ISR requires GP0 mic and expanded RAM0=1" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fast_isr" ;;
+  *) echo "K6_SOTTO_GP0_FAST_ISR must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental pre-decimation anti-aliasing for GP0 PDM. Three 32-bit Q7
+# states plus only shifts and adds in the IRQ. Default remains unchanged.
+case "${K6_SOTTO_GP0_AA3:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] || {
+      echo "K6_SOTTO_GP0_AA3 requires GP0 mic, RAM0=1 and fast ISR" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_aa3" ;;
+  *) echo "K6_SOTTO_GP0_AA3 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Offline-only alternative: eleven-tap boxcar pre-decimation filter. Do
+# not combine with AA3, and do not flash before real ISR/voice qualification.
+case "${K6_SOTTO_GP0_FIR11:-0}" in
+  0) ;;
+  1)
+    [ "${K6_SOTTO_MIC}" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] && [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_FIR11 requires GP0 mic, RAM0, fast ISR, and AA3=0" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fir11" ;;
+  *) echo "K6_SOTTO_GP0_FIR11 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Offline-only lower-cost FIR11 option: defer /11 to the 8kHz sample
+# rather than dividing every 87.26kHz raw group. No radio qualification.
+case "${K6_SOTTO_GP0_FIR11_LATE:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_FIR11_LATE requires GP0 mic, RAM0, fast ISR, FIR11=0, AA3=0" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_fir11_late" ;;
+  *) echo "K6_SOTTO_GP0_FIR11_LATE must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental CIC2/R=8 PDM anti-aliasing: two 16-bit wrapping
+# integrators per input group, comb+fractional-PCM work only every 8 groups.
+# Offline only; must not combine with other input prefilters.
+case "${K6_SOTTO_GP0_CIC2:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_CIC2 requires GP0 mic, RAM0, fast ISR, AA3=FIR11=FIR11_LATE=0" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_cic2" ;;
+  *) echo "K6_SOTTO_GP0_CIC2 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental CIC3/R=8. Three wrapped integrators and combs, all bounded
+# to 16-bit state; 8k fractional output math runs once per 8 groups.
+case "${K6_SOTTO_GP0_CIC3:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC2:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_CIC3 requires GP0 mic, RAM0, fast ISR and all other prefilters OFF" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_cic3" ;;
+  *) echo "K6_SOTTO_GP0_CIC3 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental 4096x8bit raw-group RF diagnostic capture. Entirely absent
+# unless explicitly requested, requires existing bounded mic/fast IRQ path.
+# It is NOT a normal module API and never enables PTT on its own.
+case "${K6_SOTTO_GP0_POPCOUNT_AIR:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_ASYNC_FSK:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC2:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_POPCOUNT_AIR requires MIC, RAM0, FAST_ISR, FSK and all prefilters OFF" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_popcount_air" ;;
+  *) echo "K6_SOTTO_GP0_POPCOUNT_AIR must be 0 or 1" >&2; exit 1 ;;
+esac
+# Experimental GP0 PCM sample-clock calibration, based on real 500Hz and
+# 1kHz pre-vocoder RF dumps (~8530 produced PCM/s on this one radio).
+# This is an offline-only candidate: opt-in, not universal hardware timing.
+# It changes only the fractional output count weight (8000 -> 7500), NOT the
+# 87260 denominator or its exact fast integer divider. Keep prefilters off
+# during qualification so ISR utilization/noise effects are not confounded.
+case "${K6_SOTTO_GP0_CLOCK_7500:-0}" in
+  0) ;;
+  1)
+    [ "$K6_SOTTO_MIC" = 1 ] && [ "${K6_RAM0:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_FAST_ISR:-0}" = 1 ] &&
+    [ "${K6_SOTTO_GP0_AA3:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_FIR11_LATE:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC2:-0}" = 0 ] &&
+    [ "${K6_SOTTO_GP0_CIC3:-0}" = 0 ] || {
+      echo "K6_SOTTO_GP0_CLOCK_7500 requires GP0 mic, RAM0=1, fast ISR and all GP0 prefilters OFF" >&2; exit 1;
+    }
+    PACK_CFG="$PACK_CFG --cfg k6_sotto_gp0_clock_7500" ;;
+  *) echo "K6_SOTTO_GP0_CLOCK_7500 must be 0 or 1" >&2; exit 1 ;;
+esac
+# Only full expanded RAM0 builds borrow spare protected SRAM0 for API28-31
+# persistent registers/context. Standard and RAM0=stack images are unchanged.
+if [ "${K6_RAM0:-0}" = 1 ] && {
+  [ "$K6_SOTTO_MIC" = 1 ] || [ "${K6_SOTTO_SYNTH_HOST:-0}" = 1 ];
+}; then
+  PACK_CFG="$PACK_CFG --cfg k6_sotto_ram0_state"
+fi
 if [ "$K6_MODE_RFTEST" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_mode_rftest"; fi
 if [ "${K6_LIVE_SERIAL:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_live_serial"; fi
 if [ "${K6_REMOTE_UI:-0}" = 1 ]; then PACK_CFG="$PACK_CFG --cfg k6_remote_ui"; fi
-if [ "${K6_USER_STORE:-0}" = 1 ]; then
+# API28 Sotto resources resolve logical module-library slots through the
+# same read-only location helper as User Store. Install that helper whenever
+# resources are enabled, without enabling the optional write-capable store.
+if [ "${K6_USER_STORE:-0}" = 1 ] || [ "$K6_SOTTO_RESOURCES" = 1 ]; then
   python3 "$HERE/apply-user-store.py"
+fi
+if [ "${K6_USER_STORE:-0}" = 1 ]; then
   python3 "$HERE/apply-user-restore.py"
   PACK_CFG="$PACK_CFG --cfg k6_user_store"
 fi

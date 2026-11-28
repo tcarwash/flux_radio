@@ -1,0 +1,73 @@
+{
+  "test_date": "2026-11-26 America/Los_Angeles",
+  "firmware_sha256": "c69a87428a4b72192f4a9ac22bd17c5fe40da159ebe818880a2a5b04ca7f03ec",
+  "module_slot24_serial": 1795730062,
+  "source": "direct first post-PTT read-only GPF1/GPT1 cable replies before session end",
+  "user_observation": "GP0 ENGINE, brief RF/modulation, manual PTT on dummy load",
+  "live_pcm_capture_ms_estimate": 200.05,
+  "resource_total_callback_ms_modulo": 50.514,
+  "fsk_preload_peak_ms": 2.2,
+  "previous_physical_baseline": {
+    "irq_count": 1746,
+    "capture_ms_estimate": 160.07,
+    "fsk_peak_ms": 14.8,
+    "resource_reads": 506,
+    "resource_callback_total_ms": 32.709,
+    "gp0_error": 3,
+    "reason": 2
+  },
+  "limitations": [
+    "Single live run; physical SDR IQ recording and decoded Sotto payload not verified",
+    "Resource timer wraps per call at approximately 682.7 microseconds; total is summed modulo durations",
+    "Peak FSK callback in cooperative mode is longest of split stages, not entire preload latency",
+    "CPU encoder arithmetic duration not separately measured"
+  ],
+  "raw_readback": {
+    "decode_error": null,
+    "fault": {
+      "boot_local": true,
+      "evidence_scope": "firmware callback and DMA error counters; codec-internal failures can remain unclassified",
+      "failure_classes": [
+        "pcm_dma"
+      ],
+      "fsk_errors": 0,
+      "gp0_capture_started": true,
+      "gp0_dma_error": 3,
+      "gp0_irq_count": 2182,
+      "gp0_missed_halves": 0,
+      "gp0_peak_isr_ticks": 3147,
+      "last_fsk_error": 0,
+      "module_return": -12,
+      "module_serial": 1795730062,
+      "pcm_lost": true,
+      "read_only": true,
+      "resource_errors": 0,
+      "saturating_16bit_counters": true,
+      "valid": true,
+      "version": "GPF1"
+    },
+    "fault_raw_hex": "475046318eaa086bf4ffffff2700000000000000000000000000000003000000860800004b0c000000000000",
+    "timing": {
+      "boot_local": true,
+      "fsk_preload_peak_100us_ticks": 22,
+      "fsk_preload_peak_approx_ms": 2.2,
+      "fsk_preloads": 1,
+      "gp0_code3_reason": "pcm_queue_full",
+      "gp0_code3_reason_id": 2,
+      "module_serial": 1795730062,
+      "pcm_backlog_at_stop_blocks": 3,
+      "pcm_backlog_qualifier": "sampled on op1 stop, not at IRQ failure; foreground may consume queued blocks before stop",
+      "pcm_offset_at_stop_samples": 0,
+      "read_only": true,
+      "resource_peak_approx_us": 258.11,
+      "resource_peak_tim17_ticks": 24779,
+      "resource_reads": 811,
+      "resource_timer_resolution": "96MHz nominal; 16-bit counter wraps every ~682.7us",
+      "resource_timing_qualifier": "individual calls spanning >=1 TIM17 counter wrap are ambiguous; values are not definitive wall times",
+      "resource_total_tim17_ticks_modulo": 4849338,
+      "valid": true,
+      "version": "GPT1"
+    },
+    "timing_raw_hex": "475054318eaa086b010000002b030000cb600000bafe490016000000010000000200000003000000"
+  }
+}

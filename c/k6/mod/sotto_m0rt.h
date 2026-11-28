@@ -19,6 +19,29 @@ static unsigned m0rt_udiv(unsigned n, unsigned d, unsigned *rem) {
     *rem = n;
     return 0;
   }
+#ifdef SOTTO_FAST_DIV
+  /* Exact shift/subtract long division, but normalize the divisor to the
+   * numerator first. On the Cortex-M0 the legacy path always runs 32
+   * iterations; this needs only as many bits as the actual quotient.
+   * No hardware division, tables, stack buffers, or 64-bit arithmetic.
+   * Do not left-shift into overflow. All 32-bit numerators supported. */
+  {
+    unsigned bit = 1;
+    while (d < n && !(d & 0x80000000u)) {
+      d <<= 1;
+      bit <<= 1;
+    }
+    while (bit) {
+      if (n >= d) {
+        n -= d;
+        q |= bit;
+      }
+      d >>= 1;
+      bit >>= 1;
+    }
+    *rem = n;
+  }
+#else
   for (i = 31; i >= 0; i--) {
     r = (r << 1) | ((n >> i) & 1u);
     if (r >= d) {
@@ -27,6 +50,7 @@ static unsigned m0rt_udiv(unsigned n, unsigned d, unsigned *rem) {
     }
   }
   *rem = r;
+#endif
   return q;
 }
 

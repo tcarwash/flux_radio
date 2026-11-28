@@ -39,7 +39,7 @@ def test_ported_live_module_never_runs_against_old_api():
     assert 'a->mic_stream(0,&s->mic,sizeof(s->mic))' in s
     assert 'a->tx_on(25000u)' in s
     assert 'a->tx_off()' in s
-    assert 'K6_MODULE_NAME("SOTTO TX")' in s
+    assert 'K6_MODULE_NAME("SOTTO MIC")' in s
 
 
 def test_real_module_emits_api30_and_size(tmp_path):
@@ -50,6 +50,16 @@ def test_real_module_emits_api30_and_size(tmp_path):
     assert 0<=entry<len(code)
     # On disk original module header indexes stay intact; new image runs
     # only on a new API30 host with added tail and support services.
-    assert b'SOTTO TX' in code
+    assert b'SOTTO MIC' in code
     with pytest.raises(ValueError):
         build(live_tx=True)
+
+
+def test_attended_catalog_entry_distinct_and_screen_flushed_before_ptt():
+    src=SRC.read_text()
+    assert 'K6_MODULE_NAME("SOTTO MIC")' in src
+    assert 'SOTTO MIC BENCH' in src
+    assert 'SOTTO MIC codec' in src
+    assert src.index('a->lcd_text(2,"Hold PTT to speak")') < src.index('a->lcd_flush()') < src.index('r=a->mic_stream(3,0,0)')
+    # Avoid a second display path: scratch availability is close to its 4K boundary.
+    assert src.count('a->lcd_flush()')==1

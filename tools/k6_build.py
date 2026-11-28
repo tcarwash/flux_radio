@@ -62,6 +62,24 @@ def _build(out, extra, env, c):
     if env.get('K6_PKT_YIELD', '1') != '0':
         flags.append('-DSP_PKT_YIELD')
     flags.extend(['-DSP_DEC_POOL', *extra])
+    # Pass the exact API tail gates into k6_mod.h. The header promotes
+    # KM_LEVEL monotonically (23 -> 26/27 -> 28/29/30/31) and rejects
+    # impossible dependency combinations at compile time.
+    gates = ('K6_MODE_REGISTRY', 'K6_PACKET_MAILBOX', 'K6_SOTTO_RESOURCES',
+             'K6_SOTTO_ASYNC_FSK', 'K6_SOTTO_MIC', 'K6_FSK4800_RX')
+    for gate in gates:
+        if env.get(gate, '0') == '1':
+            flags.append('-D' + gate + '=1')
+    if env.get('K6_PACKET_MAILBOX', '0') == '1' and env.get('K6_MODE_REGISTRY', '0') != '1':
+        raise ValueError('API27 C module loader requires API26 mode registry')
+    if env.get('K6_SOTTO_RESOURCES', '0') == '1' and env.get('K6_PACKET_MAILBOX', '0') != '1':
+        raise ValueError('API28 C module loader requires API27 packet mailbox')
+    if env.get('K6_SOTTO_ASYNC_FSK', '0') == '1' and env.get('K6_SOTTO_RESOURCES', '0') != '1':
+        raise ValueError('API29 C module loader requires API28 resources')
+    if env.get('K6_SOTTO_MIC', '0') == '1' and env.get('K6_SOTTO_ASYNC_FSK', '0') != '1':
+        raise ValueError('API30 C module loader requires API29 async FSK')
+    if env.get('K6_FSK4800_RX', '0') == '1' and env.get('K6_PACKET_MAILBOX', '0') != '1':
+        raise ValueError('API31 C module loader requires API26/27 host opt-ins')
     helper = out / ('cb_image.exe' if os.name == 'nt' else 'cb_image')
     run(hostcc, '-O2', '-std=c99', '-I' + str(c),
         c / 'k6/cb_image.c', c / 'k6/sp_cb.c',

@@ -1,0 +1,73 @@
+{
+  "complete_dataset": false,
+  "contiguous_group_count": 3024,
+  "contiguous_groups_sha256": "611c58e1728f01f153052197643e590318d3cc2af6c055257dcb94cd1dec440e",
+  "contiguous_verified_sequence_range": [
+    9,
+    71
+  ],
+  "crc_fail_sequences": [
+    8,
+    72
+  ],
+  "date": "2026-11-27",
+  "fractional_clock_weight": 7500,
+  "generator_nominal_hz": 1000,
+  "generator_nominal_vpp": 0.1,
+  "gp0_group_hz": 93302.9613,
+  "limitations": [
+    "2 RF packets did not pass CRC; no fabricated values",
+    "replay on contiguous 32.4 ms fragment only",
+    "not a speech-band listening test",
+    "AA3 physical firmware remains disabled",
+    "FIR11 physical firmware remains disabled",
+    "mismatched longer-duration 500Hz data may bias noise comparison"
+  ],
+  "model_pcm_hz": 8019.3927,
+  "offline_only": true,
+  "results": {
+    "aa3": {
+      "fitted_hz": 1000.2642,
+      "gain_vs_original_db": 1.578,
+      "pcm_samples": 259,
+      "peak_fs": 0.38602,
+      "residual_rms_fs": 0.0322707,
+      "snr_db": 18.546,
+      "tone_attenuation_vs_original_db": -0.714
+    },
+    "fir11": {
+      "fitted_hz": 1000.2748,
+      "gain_vs_original_db": 1.003,
+      "pcm_samples": 259,
+      "peak_fs": 0.4082787,
+      "residual_rms_fs": 0.0364679,
+      "snr_db": 17.971,
+      "tone_attenuation_vs_original_db": -0.227
+    },
+    "fir11_late": {
+      "fitted_hz": 1000.2749,
+      "gain_vs_original_db": 1.005,
+      "pcm_samples": 259,
+      "peak_fs": 0.4085375,
+      "residual_rms_fs": 0.0364815,
+      "snr_db": 17.973,
+      "tone_attenuation_vs_original_db": -0.221
+    },
+    "legacy": {
+      "fitted_hz": 1000.2514,
+      "gain_vs_original_db": 0.0,
+      "pcm_samples": 259,
+      "peak_fs": 0.4190694,
+      "residual_rms_fs": 0.0420128,
+      "snr_db": 16.968,
+      "tone_attenuation_vs_original_db": 0.0
+    }
+  },
+  "rf_crc_valid_packets": 84,
+  "rust_decimator_same_source": true,
+  "source": "real physical K6 RF pre-decimator popcount groups",
+  "source_iq_saved_privately": true,
+  "source_iq_sha256": "9da05758b5a916c82b7721283a68c200b658d691cf688e218be74154cfe3e885",
+  "ticks_100us": 439,
+  "total_packets": 86
+}

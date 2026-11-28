@@ -1,0 +1,304 @@
+{
+  "baseline_instruction_profiles": {
+    "silence": {
+      "mean_instr": 1141.65
+    },
+    "tone": {
+      "mean_instr": 1142
+    }
+  },
+  "caveats": [
+    "Cortex-M0 Unicorn executed instruction count is not physical cycles or timing",
+    "Synthetic binomial PDM and deterministic tone counts are not microphone measurements",
+    "Native 8-group decimation can shift input alias frequency: measure strongest complete in-band output",
+    "Linked matched offline feature profile differs from real 118408B known-good MCU",
+    "No encoder/interrupt scheduling co-simulation or sustained K6 live RF has been validated",
+    "Physical module, SPI library, firmware and bench untouched by this work"
+  ],
+  "firmware_bytes": 117388,
+  "image_sha256": "6468e9e20a33493293e695a8fa14c2998032eab4ed3ecd9f1b83b51ac6897bb0",
+  "interrupts": {
+    "silence": {
+      "final_irq_instructions": [
+        1179,
+        1182,
+        1103,
+        1182,
+        1179,
+        1106,
+        1179,
+        1182
+      ],
+      "firmware_bytes": 117388,
+      "first_irq_instructions": [
+        1103,
+        1182,
+        1179,
+        1106,
+        1179,
+        1182,
+        1179,
+        1106
+      ],
+      "groups_per_half": 8,
+      "halves": 96,
+      "irq_instructions_max": 1182,
+      "irq_instructions_mean": 1159.92,
+      "irq_instructions_median": 1179.0,
+      "irq_instructions_min": 1103,
+      "irq_instructions_total": 111352,
+      "not_cycle_accurate": true,
+      "offline_only": true,
+      "pcm_output_sha256": "24045c10c12a89f4c11e3b88ea34558fcdf926a8c1008cd08cc33bc71407c774",
+      "pcm_peak": 0,
+      "pcm_samples": 70,
+      "rate_hz": 87260,
+      "real_linked_rust_isr": true,
+      "ring_consumed": 0,
+      "ring_lost": 0,
+      "ring_offset": 70,
+      "ring_produced": 0,
+      "sha256": "6468e9e20a33493293e695a8fa14c2998032eab4ed3ecd9f1b83b51ac6897bb0",
+      "symbol_irq": "0x8016c54",
+      "symbol_state": "0x20000fa8",
+      "unicorn_instruction_count": true
+    },
+    "tone": {
+      "final_irq_instructions": [
+        1180,
+        1182,
+        1103,
+        1182,
+        1179,
+        1106,
+        1179,
+        1183
+      ],
+      "firmware_bytes": 117388,
+      "first_irq_instructions": [
+        1103,
+        1182,
+        1179,
+        1106,
+        1179,
+        1182,
+        1179,
+        1106
+      ],
+      "groups_per_half": 8,
+      "halves": 96,
+      "irq_instructions_max": 1183,
+      "irq_instructions_mean": 1160.26,
+      "irq_instructions_median": 1180.0,
+      "irq_instructions_min": 1103,
+      "irq_instructions_total": 111385,
+      "not_cycle_accurate": true,
+      "offline_only": true,
+      "pcm_output_sha256": "41dceb09065f7a85df30afc4c652bae2d8bc81b7ba4d51d40dc5a67c13c80be4",
+      "pcm_peak": 19416,
+      "pcm_samples": 70,
+      "rate_hz": 87260,
+      "real_linked_rust_isr": true,
+      "ring_consumed": 0,
+      "ring_lost": 0,
+      "ring_offset": 70,
+      "ring_produced": 0,
+      "sha256": "6468e9e20a33493293e695a8fa14c2998032eab4ed3ecd9f1b83b51ac6897bb0",
+      "symbol_irq": "0x8016c54",
+      "symbol_state": "0x20000fa8",
+      "unicorn_instruction_count": true
+    }
+  },
+  "method": "Matched full thumbv6m linked firmware, exact production Rust IRQ executed in Unicorn and native Rust decimator compared with Python fixed-point oracle",
+  "noise_fit": "1k sine and cosine with residual broadband RMS after 200ms",
+  "noise_input_scope": "seeded independent 64-bit binomial popcounts, not physical K6 PDM",
+  "noise_rows": [
+    {
+      "filter": "bypass",
+      "input_sine_density_amplitude": 0.005,
+      "pcm_samples": 8000,
+      "snr_db": -14.668
+    },
+    {
+      "filter": "AA3",
+      "input_sine_density_amplitude": 0.005,
+      "pcm_samples": 8000,
+      "snr_db": -12.341
+    },
+    {
+      "filter": "CIC2",
+      "input_sine_density_amplitude": 0.005,
+      "pcm_samples": 8000,
+      "snr_db": -12.893
+    },
+    {
+      "filter": "CIC3",
+      "input_sine_density_amplitude": 0.005,
+      "pcm_samples": 8000,
+      "snr_db": -12.549
+    },
+    {
+      "filter": "bypass",
+      "input_sine_density_amplitude": 0.015,
+      "pcm_samples": 8000,
+      "snr_db": -5.267
+    },
+    {
+      "filter": "AA3",
+      "input_sine_density_amplitude": 0.015,
+      "pcm_samples": 8000,
+      "snr_db": -2.993
+    },
+    {
+      "filter": "CIC2",
+      "input_sine_density_amplitude": 0.015,
+      "pcm_samples": 8000,
+      "snr_db": -3.527
+    },
+    {
+      "filter": "CIC3",
+      "input_sine_density_amplitude": 0.015,
+      "pcm_samples": 8000,
+      "snr_db": -3.223
+    },
+    {
+      "filter": "bypass",
+      "input_sine_density_amplitude": 0.035,
+      "pcm_samples": 8000,
+      "snr_db": 2.412
+    },
+    {
+      "filter": "AA3",
+      "input_sine_density_amplitude": 0.035,
+      "pcm_samples": 8000,
+      "snr_db": 4.77
+    },
+    {
+      "filter": "CIC2",
+      "input_sine_density_amplitude": 0.035,
+      "pcm_samples": 8000,
+      "snr_db": 4.191
+    },
+    {
+      "filter": "CIC3",
+      "input_sine_density_amplitude": 0.035,
+      "pcm_samples": 8000,
+      "snr_db": 4.524
+    }
+  ],
+  "offline_only": true,
+  "ram0": {
+    "arena_base": "0x20001930",
+    "arena_bytes": 14976,
+    "ram0_free": 32,
+    "ram0_used": 3808,
+    "stack_reservation": 2812
+  },
+  "real_radio_or_rf_used": false,
+  "schema": 1,
+  "source_branch": "research/sotto-gp0-cic3-decim8-20261126",
+  "spectral_input_scope": "synthetic PDM counts 87260Hz, 1.5s, 64-popcount nominal 32+4sin",
+  "spectral_method": "strongest FFT bin after 200ms transient",
+  "spectral_rows": [
+    {
+      "aa3_strongest_db": -0.1,
+      "aa3_strongest_hz": 320.0,
+      "cic2_strongest_db": -0.05,
+      "cic2_strongest_hz": 320.03,
+      "cic3_strongest_db": -0.06,
+      "cic3_strongest_hz": 320.03,
+      "input_hz": 320,
+      "legacy_strongest_hz": 320.0
+    },
+    {
+      "aa3_strongest_db": -0.76,
+      "aa3_strongest_hz": 1000.0,
+      "cic2_strongest_db": -0.42,
+      "cic2_strongest_hz": 1000.1,
+      "cic3_strongest_db": -0.54,
+      "cic3_strongest_hz": 1000.1,
+      "input_hz": 1000,
+      "legacy_strongest_hz": 1000.0
+    },
+    {
+      "aa3_strongest_db": -2.87,
+      "aa3_strongest_hz": 2000.0,
+      "cic2_strongest_db": -1.76,
+      "cic2_strongest_hz": 2000.19,
+      "cic3_strongest_db": -2.24,
+      "cic3_strongest_hz": 2000.19,
+      "input_hz": 2000,
+      "legacy_strongest_hz": 2000.0
+    },
+    {
+      "aa3_strongest_db": -5.16,
+      "aa3_strongest_hz": 2800.0,
+      "cic2_strongest_db": -3.54,
+      "cic2_strongest_hz": 2800.27,
+      "cic3_strongest_db": -4.49,
+      "cic3_strongest_hz": 2800.27,
+      "input_hz": 2800,
+      "legacy_strongest_hz": 2800.0
+    },
+    {
+      "aa3_strongest_db": -7.35,
+      "aa3_strongest_hz": 3500.0,
+      "cic2_strongest_db": -5.59,
+      "cic2_strongest_hz": 3500.34,
+      "cic3_strongest_db": -7.1,
+      "cic3_strongest_hz": 3500.34,
+      "input_hz": 3500,
+      "legacy_strongest_hz": 3500.0
+    },
+    {
+      "aa3_strongest_db": -13.77,
+      "aa3_strongest_hz": 480.0,
+      "cic2_strongest_db": -13.7,
+      "cic2_strongest_hz": 480.05,
+      "cic3_strongest_db": -13.74,
+      "cic3_strongest_hz": 480.05,
+      "input_hz": 7000,
+      "legacy_strongest_hz": 1000.0
+    },
+    {
+      "aa3_strongest_db": -21.98,
+      "aa3_strongest_hz": 780.0,
+      "cic2_strongest_db": -10.75,
+      "cic2_strongest_hz": 1907.88,
+      "cic3_strongest_db": -21.59,
+      "cic3_strongest_hz": 780.08,
+      "input_hz": 9000,
+      "legacy_strongest_hz": 1000.0
+    },
+    {
+      "aa3_strongest_db": -16.47,
+      "aa3_strongest_hz": 1440.0,
+      "cic2_strongest_db": -15.81,
+      "cic2_strongest_hz": 1440.14,
+      "cic3_strongest_db": -16.16,
+      "cic3_strongest_hz": 1440.14,
+      "input_hz": 15000,
+      "legacy_strongest_hz": 1000.0
+    },
+    {
+      "aa3_strongest_db": -20.14,
+      "aa3_strongest_hz": 880.0,
+      "cic2_strongest_db": -10.5,
+      "cic2_strongest_hz": 3184.92,
+      "cic3_strongest_db": -20.17,
+      "cic3_strongest_hz": 880.08,
+      "input_hz": 17000,
+      "legacy_strongest_hz": 1000.0
+    },
+    {
+      "aa3_strongest_db": -2.96,
+      "aa3_strongest_hz": 1440.0,
+      "cic2_strongest_db": -2.29,
+      "cic2_strongest_hz": 1440.14,
+      "cic3_strongest_db": -2.55,
+      "cic3_strongest_hz": 1440.14,
+      "input_hz": 25000,
+      "legacy_strongest_hz": 1000.0
+    }
+  ]
+}

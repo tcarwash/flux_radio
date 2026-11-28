@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loopback-only Hamlib NET rigctl bridge for Flux with optional leased PTT."""
+"""Loopback-only Hamlib NET rigctl bridge with leased PTT and opt-in module runs."""
 import argparse
 import math
 import secrets
@@ -69,10 +69,20 @@ ALIASES = {
 }
 
 class Rig:
-    def __init__(self, link, features=("status", "tune"), *, enable_ptt=None):
+    def __init__(self, link, features=("status", "tune"), *, enable_ptt=None,
+                 allowed_module_slot=None, allowed_module_name=None,
+                 allowed_module_frequency=None):
         self.link = link
         self.features = set(features)
         self.ptt_enabled = "ptt" in self.features if enable_ptt is None else enable_ptt and "ptt" in self.features
+        self.allowed_module_slot = allowed_module_slot
+        self.allowed_module_name = allowed_module_name
+        self.allowed_module_frequency = allowed_module_frequency
+        if allowed_module_slot is not None and (
+                allowed_module_name is None or allowed_module_frequency is None
+                or not 0 <= allowed_module_slot < 32
+                or allowed_module_frequency <= 0):
+            raise ValueError("Module runner requires a fixed slot, exact name and frequency")
         self.lock = threading.Lock()
         self.ptt_token = None
         self.ptt_owner = None
@@ -142,6 +152,28 @@ class Rig:
             return "RPRT -1\n"
 
     def _execute(self, op, args, session=None):
+        # One opt-in local extension to NET rigctl, serialized under Rig.lock.
+        # Module RF owns a firmware TX lease; Hamlib's ordinary T command
+        # remains separately leased and is prohibited during module runs.
+        if op == r"\run_module" and len(args) == 1:
+            if (self.allowed_module_slot is None
+                    or "coop_cancel" not in self.features):
+                return "RPRT -11\n"
+            if args[0] != str(self.allowed_module_slot) or self.ptt_token is not None:
+                return "RPRT -9\n"
+            s = self.link.status()
+            if (not s["standby_idle"] or s["transmitting"] or s.get("sleeping")
+                    or s["vfos"][s["master"]]["hz"] != self.allowed_module_frequency):
+                return "RPRT -9\n"
+            head = self.link.slot_head(self.allowed_module_slot)
+            if head is None or head[1] != self.allowed_module_name or head[0][12] != 31:
+                return "RPRT -9\n"
+            result = self.link.run_module_cooperative(
+                self.allowed_module_slot, timeout=15.0, allow_higher_api=True)
+            # A module returning normally is not proof of CRC-valid RF.
+            if self.link.status()["transmitting"] or not result.get("returned"):
+                return "RPRT -5\n"
+            return f"RESULT {result['result']}\nRPRT 0\n"
         if op == r"\dump_state" and not args:
             return (DUMP_STATE
                     .replace("has_set_vfo=0", "has_set_vfo=" + str(int("vfo" in self.features)))
@@ -269,7 +301,19 @@ def main():
     p.add_argument("--port", required=True, help="K6 serial device")
     p.add_argument("--listen-port", type=int, default=4532)
     p.add_argument("--disable-ptt", action="store_true", help="disable PTT on this local Hamlib bridge even when the radio supports it")
+    p.add_argument("--allow-module-slot", type=int, help=r"enable one expected \run_module slot")
+    p.add_argument("--module-name", help="exact installed module name required")
+    p.add_argument("--module-frequency-hz", type=int, help="exact active VFO frequency required")
+    p.add_argument("--dummy-load-confirmed", action="store_true", help="explicit RF load confirmation for module runs")
     a = p.parse_args()
+    if a.allow_module_slot is not None and (
+            not a.dummy_load_confirmed or not a.module_name
+            or a.module_frequency_hz is None
+            or not 0 <= a.allow_module_slot < 32):
+        p.error("module runs require --dummy-load-confirmed, --module-name and --module-frequency-hz")
+    if a.allow_module_slot is None and (
+            a.dummy_load_confirmed or a.module_name or a.module_frequency_hz is not None):
+        p.error("module-run flags require --allow-module-slot")
     try:
         with serial_lock(a.port), open_port(SimpleNamespace(port=a.port)) as port:
             link = LiveLink(port)
@@ -282,7 +326,10 @@ def main():
                 if str(exc) != "Unsupported command, address or frequency.":
                     raise
                 features = ("status", "tune")
-            rig=Rig(link,features,enable_ptt=not a.disable_ptt)
+            rig=Rig(link,features,enable_ptt=not a.disable_ptt,
+                    allowed_module_slot=a.allow_module_slot,
+                    allowed_module_name=a.module_name,
+                    allowed_module_frequency=a.module_frequency_hz)
             try:
                 with Server(("127.0.0.1", a.listen_port), rig) as server:
                     label="PTT leased" if rig.ptt_enabled else "TX disabled"

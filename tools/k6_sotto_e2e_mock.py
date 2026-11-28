@@ -25,6 +25,7 @@ sys.path.insert(0,str(ROOT))
 
 from sim.k6emu.rf.virtual_link import Channel
 from tools.k6_sotto_virtual_link import prepare,trial,accepted
+from tools.k6_sotto_rx_stream import SottoRxPaced
 from tools.k6_sotto_opt_bench import read_pcm,mixed_pcm
 from tools.k6_sotto_installed_vfo import (
     on_select_toggle, ptt_allowed, sotto_mode_installed, vfo_label,
@@ -118,6 +119,8 @@ class MockSottoRadio:
         self.rx_audio=None
         self.last=None
         self.speaker_cursor=0
+        self.stream_peak_blocks=0
+        self.stream_peak_encoded_frames=0
 
     @property
     def installed(self):
@@ -151,12 +154,38 @@ class MockSottoRadio:
         if (self.radio_state!='RX' or self.running or self.ptt
                 or not self.installed or self.mode!='SOTTO'):
             raise RuntimeError('Sotto receive/playout unavailable outside RX')
+        # A failed new receive must not leave the last speaker queue playable.
+        self.rx_audio=None
+        self.speaker_cursor=0
+        self.stream_peak_blocks=0
+        self.stream_peak_encoded_frames=0
         if not payload or payload!=self.artifact['reference']:
             raise RuntimeError('decoded RF payload differs from independent native encoder')
         audio=decode_pcm(self.decoder,payload)
-        reference=decode_pcm(self.decoder,self.artifact['reference'])
-        if not np.array_equal(audio,reference):
-            raise RuntimeError('received PCM differs from native reference decoder')
+        # Independently decode received Sotto frames with bounded live RX
+        # playout rather than storing a second full compressed PCM session.
+        stream=SottoRxPaced(self.decoder,capacity_frames=16)
+        streamed=[]
+        try:
+            # The real 40-ms frames remain compressed until the 20-ms
+            # playout consumer requests their PCM. No 16-block PCM burst.
+            for off in range(0,len(payload),8*6):
+                stream.enqueue_packet(payload[off:off+8*6])
+                while (block:=stream.speaker_next()) is not None:
+                    streamed.append(block)
+            stream.end()
+            while (block:=stream.speaker_next()) is not None:
+                streamed.append(block)
+            self.stream_peak_blocks=stream.peak_pcm_blocks
+            self.stream_peak_encoded_frames=stream.peak_encoded_frames
+            if (stream.decoder.output_blocks!=stream.decoder.frames*2 or
+                    stream.queued_pcm_blocks or stream.queued_encoded_frames):
+                raise RuntimeError('paced Sotto receiver failed to drain')
+        finally:
+            stream.close()
+        streaming_audio=np.concatenate(streamed) if streamed else np.empty(0,dtype='<i2')
+        if not np.array_equal(audio,streaming_audio):
+            raise RuntimeError('incremental Sotto speaker differs from batch decoder')
         self.rx_audio=audio
         self.speaker_cursor=0
 
@@ -172,6 +201,8 @@ class MockSottoRadio:
         # No local RX codec processing or playout is allowed while keyed.
         self.rx_audio=None
         self.speaker_cursor=0
+        self.stream_peak_blocks=0
+        self.stream_peak_encoded_frames=0
         self.radio_state='TX'
         self.ptt=True
         self.running=True

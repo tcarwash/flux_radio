@@ -79,6 +79,34 @@ extern "C" {
 #undef KM_LEVEL
 #define KM_LEVEL 27
 #endif
+/* Append-only Sotto host tail: API28 resources, API29 async FSK,
+   API30 microphone capture, and optional API31 native 4800 RX. These
+   feature macros are supplied only by the matching firmware build. */
+#if defined(K6_SOTTO_RESOURCES) && !defined(K6_PACKET_MAILBOX)
+#error "K6_SOTTO_RESOURCES requires API26/27 (mode registry + packet mailbox)"
+#endif
+#if defined(K6_SOTTO_ASYNC_FSK) && !defined(K6_SOTTO_RESOURCES)
+#error "K6_SOTTO_ASYNC_FSK requires K6_SOTTO_RESOURCES"
+#endif
+#if defined(K6_SOTTO_MIC) && !defined(K6_SOTTO_ASYNC_FSK)
+#error "K6_SOTTO_MIC requires K6_SOTTO_ASYNC_FSK"
+#endif
+#if defined(K6_SOTTO_RESOURCES) && KM_LEVEL < 28
+#undef KM_LEVEL
+#define KM_LEVEL 28
+#endif
+#if defined(K6_SOTTO_ASYNC_FSK) && KM_LEVEL < 29
+#undef KM_LEVEL
+#define KM_LEVEL 29
+#endif
+#if defined(K6_SOTTO_MIC) && KM_LEVEL < 30
+#undef KM_LEVEL
+#define KM_LEVEL 30
+#endif
+#if defined(K6_FSK4800_RX) && KM_LEVEL < 31
+#undef KM_LEVEL
+#define KM_LEVEL 31
+#endif
 
 /* API 26 installed-provider record: mode ID u16LE, capability flags,
    name length + 12 name bytes, max packet payload u16LE. Naturally aligned
@@ -363,11 +391,28 @@ typedef struct k6_api {
   int (*resource_open)(uint32_t slot);
   int (*resource_read)(uint32_t kind, uint32_t off, void *buf, uint32_t n);
   /* Level 29: guarded 33-word finite FSK start(0)/poll(1)/abort(2). Caller
-     owns a bounded TX lease. No refilling or continuous RF is implied. */
+     owns a bounded TX lease. No refilling or continuous RF is implied.
+     In opt-in cooperative-preload hosts, start(0) retains the caller's
+     scratch-backed words pointer and reads it during subsequent poll(1)
+     calls. The 33 words MUST remain aligned, inside authorized module scratch,
+     stable and immutable until poll returns 1 or an explicit abort. Existing
+     Sotto sl_peek slots satisfy this rule; temporary/transient buffers do not. */
   int (*fsk_async)(uint32_t op, const uint16_t *words, uint32_t n);
   /* Level 30: typed 644-byte microphone ISR ring (start0/stop1/peak2/PTT3).
      Requires independently guarded timer vector, cable/PTT and PA checks. */
   int (*mic_stream)(uint32_t op, void *ring, uint32_t bytes);
+  /* Level 31, opt-in experimental native 4800-baud B-chip 33-word RX.
+     28-30 may be unavailable on research builds: modules MUST check
+     each operation's return rather than assuming those services work.
+     op 0 arm (cfg=0 default 4-word threshold, or 1..7); ptr ignored.
+     op 1 non-blocking pump: 0 in progress, 33 complete (66 raw bytes
+     written to the aligned, caller-owned scratch buffer), negative on
+     refusal, cancellation, PTT, timeout or invalid arguments. cfg must 0.
+     op 2 stop and restore RFIC RX registers. No PA/TX, no ISR/heap use,
+     no 4800 support added to the legacy level-24 fsk_configured API.
+     The caller validates FDV1 CRC/epoch and controls rearming and audio.
+     Not yet physically validated on FD6818B silicon. */
+  int (*fsk4800_rx)(uint32_t op, uint16_t *words33, uint32_t cfg);
 } k6_api_t;
 
 #define KM_SETTINGS_BYTES 212u

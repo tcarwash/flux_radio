@@ -1,0 +1,177 @@
+{
+  "event": "first K6 physical combined synthetic Sotto TX and native FSK RX host",
+  "local_date": "2026-11-26",
+  "country": "USA",
+  "firmware": {
+    "bytes": 107520,
+    "sha256": "1903449a0b99daf1b65acb8fa35e60b770be4aeb991493cb0bae887778153d7f",
+    "build_id_readback": "f666ced065f41ac3",
+    "source_commit": "fbd33270",
+    "source_worktree": "/storage5/dev/flux-sotto-api31-synth-20261126",
+    "features": "K6_LIVE_SERIAL=1; K6_SOTTO_MIC=0; K6_SOTTO_SYNTH_HOST=1; K6_FSK4800_RX=1; K6_SOTTO_ASYNC_FSK=1; K6_SOTTO_FSK_COOP_PRELOAD=1; K6_SOTTO_SERVICE=0"
+  },
+  "memory": {
+    "arena_base": "0x2000195c",
+    "arena_bytes": 14976,
+    "ram0_used": 3676,
+    "ram0_free": 164,
+    "stack_reservation": 2780
+  },
+  "offline_gates": {
+    "full_test_suite": "24/24 passed",
+    "arm_api29_rf_test": "PASS",
+    "cases": [
+      {
+        "case": "success",
+        "module_return": 9,
+        "air_bursts": 1,
+        "pa_off": true,
+        "pa_sequence": "preload",
+        "fifo_strobe_after_last_word": true,
+        "words_written": 33,
+        "independent_iq_receive": {
+          "frames": 1,
+          "match": true,
+          "fsk": {
+            "armed": false,
+            "configured": false,
+            "locked": false,
+            "fifo_words": 0,
+            "frames": 1,
+            "words": 33,
+            "overruns": 0,
+            "underflows": 0,
+            "gaps": 0,
+            "unsupported": null,
+            "estimated_clock_ppm": 0.0,
+            "last_acquired_clock_ppm": 12.749807444922823,
+            "clock_fits": 1
+          }
+        }
+      },
+      {
+        "case": "rx_tx_rx",
+        "module_return": 9,
+        "air_bursts": 1,
+        "pa_off": true,
+        "pa_sequence": "preload",
+        "fifo_strobe_after_last_word": true,
+        "words_written": 33,
+        "independent_iq_receive": {
+          "frames": 1,
+          "match": true,
+          "fsk": {
+            "armed": false,
+            "configured": false,
+            "locked": false,
+            "fifo_words": 0,
+            "frames": 1,
+            "words": 33,
+            "overruns": 0,
+            "underflows": 0,
+            "gaps": 0,
+            "unsupported": null,
+            "estimated_clock_ppm": 0.0,
+            "last_acquired_clock_ppm": 16.714340637102865,
+            "clock_fits": 1
+          }
+        }
+      },
+      {
+        "case": "bad_guard",
+        "module_return": -20,
+        "air_bursts": 0,
+        "pa_off": true,
+        "pa_sequence": "preload",
+        "fifo_strobe_after_last_word": true,
+        "words_written": 0,
+        "independent_iq_receive": null
+      },
+      {
+        "case": "abort_early",
+        "module_return": 8,
+        "air_bursts": 0,
+        "pa_off": true,
+        "pa_sequence": "preload",
+        "fifo_strobe_after_last_word": true,
+        "words_written": 0,
+        "independent_iq_receive": null
+      },
+      {
+        "case": "timeout_poll",
+        "module_return": -12,
+        "air_bursts": 0,
+        "pa_off": true,
+        "pa_sequence": "preload",
+        "fifo_strobe_after_last_word": true,
+        "words_written": 0,
+        "independent_iq_receive": null
+      }
+    ]
+  },
+  "physical_flash": {
+    "method": "live cable session CMD_END; stock K6 bootloader, MCU only",
+    "blocks_1kib_acknowledged": 105,
+    "total_blocks_1kib": 105,
+    "successful_restart": true,
+    "spi_writes": false
+  },
+  "physical_postflash": {
+    "protocol": 5,
+    "catalog_slot_count": 32,
+    "module_api_max": 31,
+    "fsk_rx_service": true,
+    "sotto_speaker_service": false,
+    "battery_volts": 7.65,
+    "transmitting": false,
+    "standby_idle": true,
+    "rx_vfo_hz": 443500000
+  },
+  "physical_rx_module": {
+    "slot": 28,
+    "name": "SOTTO RX",
+    "module_load_return": 10838,
+    "returned": true,
+    "result": -8,
+    "result_meaning": "no received packet while testing; not a successful RF decode",
+    "reports": [],
+    "postrun_transmitting": false,
+    "postrun_standby_idle": true
+  },
+  "physical_tx_module": {
+    "slot": 22,
+    "name": "SOTTO SYNTH",
+    "result": 26,
+    "reports": [
+      "SYN:M:00000065",
+      "SYN:Q:00000001"
+    ],
+    "encoder_peak_ms": 10.1,
+    "peak_pcm_blocks": 1,
+    "postrun_transmitting": false,
+    "postrun_standby_idle": true,
+    "cancel_requested": false
+  },
+  "attempted_sdr_capture": {
+    "attempted": true,
+    "capture_started": false,
+    "physical_tx_attempted_after_capture_failure": false,
+    "failure": "SoapySDR enumerate finds RTL2832U serial 00000001, but Device.make returns no match. No RF capture saved."
+  },
+  "limitations": [
+    "No independent on-air decoded bits from this physical host (virtual RF only)",
+    "Synth TX bypasses real GP0 microphone",
+    "RX test received no external packets, API31 hardware service loaded but decode not demonstrated",
+    "K6_SOTTO_SERVICE=0; no speaker PCM decoder, API31 exposes only native FSK words",
+    "The entire packed SPI module library was not bulk-read after flash because this lean host lacks live bulk_read; MCU flash leaves SPI unchanged",
+    "All 32 logical library entries remain allocated; temporary synthetic slot22 replaces LED DEMO until explicitly restored"
+  ],
+  "rollback": {
+    "known_prior_physically_booted_mcu": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/autonomous-pcm-virtual-tests-20261126/live-serial-synth-api29-pa-muted-qualified/flux-sotto-synth-pa-muted.bin",
+    "prior_mcu_sha256": "182d2700b868df2b6435f8e6418c2cc7f4016756d9e4464f76723a19be019c50",
+    "older_diagnostic_mcu": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/coop-preload-diagnostic-physical-flash-20261126/coop-gpf1-gpt1.bin",
+    "full_spi_backup": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/k6-spi-before-sotto-spi-latency-test-20261126.bin",
+    "slot22_restore_envelope": "/storage5/dev/flux-sotto-gp0-kul2-verified-release-20261126/recovery/autonomous-pcm-virtual-tests-20261126/synth-hardware-flash-20261126/led-demo-slot22-before.bin"
+  },
+  "status": "Physical TX test passed; physical RX module loaded and timed out without an external packet; no voice playback"
+}

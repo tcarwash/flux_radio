@@ -1,0 +1,103 @@
+# K6 standalone microphone GP0 → 8kHz PCM physical diagnostic
+
+Date: 2026-11-25. Branch: `feature/sotto-mic-continuous-pa-20261125`.
+
+## Verified signal path and outstanding question
+
+Physical MIC GP0 DMA tests on the K6 B-chip established a mic-dependent path via RFIC GP0 selector12 → PB1 → DMA1 CH1: generator OFF: 1kHz/2kHz bins both 0, VOX 171; generator ON at 1kHz: 1kHz score 5, 2kHz 0, VOX 517; generator ON at 2kHz: 1kHz 0, 2kHz 25, VOX 435. Four windows per condition consistently matched. The ~5.4-5.6 MS/s GP0 digital stream contains a frequency-dependent audio component, not merely mic envelope or line bias. See `docs/k6-sotto-gp0-mic-dma-20261125.md` and evidence in `~/flux-bench/sotto-mic-calibration-20261125/gp0-dma-v1/`.
+
+The critical next unknown is whether the radio can produce **usable 8kHz signed PCM** at acceptable gain, noise and timing. The K6's earlier PA11 sampler only produced transient startup activity, despite strong RFIC VOX, so no existing microphone-to-MCU audio chain was demonstrated until the GP0 discovery. This module directly tests the *new* GP0 path and does **not** make RF voice transmissions or change Sotto slot30.
+
+## Implementation
+
+- `c/k6/mod/sotto_gp0_pcm.h` is a stateful fixed-point 64-raw-bit population-count → measured-rate 8kHz signed PCM converter. It applies a fractional boxcar decimator to ~85-88 kHz density samples, a ~62Hz DC-rejecting IIR with fractional precision, and saturating 16-bit PCM output with clipping count. No malloc, FPU, libgcc division helper or hardware ownership.
+- `c/k6/mod/sotto_mic_gp0_pcm.c` is a separate **`MIC PCM`** loadable catalog module, API30, candidate for diagnostic **slot25**, with shared, already-validated GP0 DMA primitive functions reused from `c/k6/mod/sotto_mic_gp0_dma.c` via a `MIC_GP0_PCM_ONLY` compile guard; the existing `MIC GP0` module retains its original code size (**2244 bytes**) and semantics. In new `MIC PCM`, source builds to 2966 bytes (confirm fresh build before install).
+- Physical preflight: dummy load still attached; programming cable removed so the *real* microphone can use the headset jack; user physically holds PTT. The module has a PA-muted 2500ms TX lease, calls `mic_stream(7)` for *RFIC mic only*, selects GP0 code12 with PB1 strictly configured as GPIO input, gives the mic ADC/bias **800ms** to settle, and refuses concurrent TIM17 or DMA1 CH1 ownership. At all times during DMA the module performs no blocking RFIC, UART or LCD calls. It never calls `tx_pa` to enable RF output.
+- `capture()` calibrates actual DMA rate using 2048 high-rate density outputs, then **one uninterrupted** DMA run enters `capture_pcm()` and produces 8kHz PCM. The first **800 PCM samples / 100 ms** are discarded for high-pass/DC estimator startup. Four successive **256-sample / 32ms** PCM windows are measured by coherent IQ/DFT at 1kHz and 2kHz, and for approximate PCM RMS and clipping count. Total 1824 valid PCM samples (800 warm + 4×256) are produced. Module stops DMA before doing any RFIC register read or result serialization. Any DMA ring overrun, timeout, invalid timing, premature PTT release before capture, or resource failure aborts and stores an explicit v9 error; no incomplete capture is mislabeled success.
+- `tools/k6_mic_result.py` decodes CRC16/XMODEM-protected 33-byte `MAB1` mailbox records of version **8** (completed physical 8kHz PCM windows) or **9** (error code). This reuses live serial command 0x86 and only survives until the next attempted diagnostic or reboot. Each v8 window includes **2×uint16 relative 1kHz/2kHz PCM tone peak estimates**, an 8-bit approximate PCM RMS score (units ~64), and an 8-bit clipped sample count (0..255). Overall report includes RFIC VOX, measured density sample rate and **1824** PCM samples emitted. The numbers are not calibrated millivolts and do not prove intelligible voice.
+- DMA/GP0/TIM17 clocks and registers are always torn down before restoring RFIC GP0 selector and then clearing the RFIC mic route/PA-muted lease. The original installed `SOTTO MIC` slot30 remains untouched and continues to use PA11 for now.
+
+## Validation and limitations
+
+- `tests/test_k6_sotto_mic_gp0_pcm.py` compiles the exact Cortex-M0 `MIC PCM` code and runs it under a fake RFIC + DMA1/TIM17 register simulator with synthetic tone OFF, 1kHz, 2kHz, old firmware rejection, cable-in exclusion and busy DMA guard. Checks all four 8kHz PCM windows, expected 1824 samples, distinct 1kHz vs 2kHz peaks and full TX/reg/clock cleanup. The modeled generator is not hardware evidence.
+- `tests/test_k6_sotto_gp0_pcm.py` verifies the decimator on 2 seconds of synthetic 0/1/2/2.6kHz population-count data at four input sampling rates, including actual physical rates 84,960/87,770Hz. Confirms exact 16,000 PCM output, tone recovery, no clipping, DC correction and ARM PIC compilation.
+- Broader focused regressions with earlier physical GP0 diagnostic, Sotto v1-v7 mailbox decoders, PA11 diagnostics, and lib modules: **57 passed / 1 optional skip** at this stage.
+- The physical ring DMA writes 1024 bytes in about 185us; the foreground must consume 64-byte blocks at high speed. Host models do *not* prove real-time budget. Physical test must check for `DMA ring overrun` (v9 error11) and avoid claiming success unless all four 256-sample windows complete.
+- This is still a *short offline physical audio-capture diagnostic*, not yet a continuous Sotto transmitter. We have not scheduled any RF FSK transmission or codec work in the physical radio. The real-time capture + encoder + FSK concurrency must be separately qualified after PCM audio fidelity and stability are measured.
+
+## Physical install / next operator test
+
+Before slot25 update verify radio standby/no TX, battery >=7V, expected base firmware build `b6a3df0d360d3110`, existing slot25 MIC GP0 SHA256 `b358b016ec8541a2a28c4700932ced3febf029ac3cba45f2f6fd74dcb00084df`, and slot30 SOTTO MIC SHA256 `791de524e9640967f047f855d92e107405dbe765814f372b6003da5b375386a0`. Existing full SPI backup: `gp0-dma-v1/preflash-spi-mic-gp0-20261125T2041Z.bin` verified SHA256 `5da971007f1c5ffe88f7131a8a2b58e5c1e76f669de0e1dad9aa8096b5827774`. Save signed MIC PCM envelope in a new `gp0-pcm-v1/` directory, install *only* catalog slot25, verify exact readback and slot30 unchanged. Perform cable-connected no-mic/no-TX preflight using `k6_live.py run-coop 25` (expected -4 and blank result). Do **not** reflash base firmware.
+
+The first attended physical test after installation: with dummy load and signal generator verified ON at **1kHz, 0.1V** into the external microphone, disconnect programming cable; launch **CATALOG → MIC PCM**, hold real PTT about **2 seconds** until `MIC PCM SAVED` or `MIC PCM ABORT`; reconnect serial *without reboot*. Retrieve results via `python tools/k6_live.py --port /dev/ttyUSB0 mic-result --save ~/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-1khz-01.json`. The 8kHz PCM result should show genuine 1kHz content plus RFIC VOX >400; generator-OFF and 2kHz captures follow only if that passes. An abort returns the reason, likely ring throughput if code is too slow; use that result to optimize before asking for repeat runs.
+
+## Installation and cable preflight performed (2026-11-25 20:58 UTC)
+
+The production GP0 MIC PCM module and format/parser implementation were committed as **`0945d6ba`** after the focused suite passed **57 tests, 1 optional skip**, including real `thumbv6m-none-eabi` PIC compilation, the previous `MIC GP0` diagnostic unchanged at 2244 bytes, the 2s mathematical resampling suite, CRC fail/success cases, forced old-firmware/DMA busy cleanup, and physical codec-related decoder compatibility. The new `MIC PCM` code compiles to **2966 bytes**, with a 16-byte PIC entry offset and level30 module requirements.
+
+The workstation bench was claimed as `flux-gp0-pcm-install`. The attached physical radio reported **standby idle and transmitting=false**, **7.76 V**, base firmware `b6a3df0d360d3110`. The previous slot25 `MIC GP0` image was verified byte-for-byte against its saved known-good envelope SHA256 **`b358b016ec8541a2a28c4700932ced3febf029ac3cba45f2f6fd74dcb00084df`** before replacement, and the installed slot30 `SOTTO MIC` envelope had SHA256 **`791de524e9640967f047f855d92e107405dbe765814f372b6003da5b375386a0`**. No base firmware flash was needed; the full earlier SPI backup remains intact.
+
+New signed **`MIC PCM`** image in slot25 was installed and then read back byte-for-byte: serial **`1795640260`**, code **2966 B**, envelope **2990 B**, SHA256 **`91149cddfba6a50ace120fc9aab6cf406702d64ef563d4a7503f5495f6be6eb8`**, staged in `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/slot25-mic-pcm.k6m`. Slot30 was verified **unchanged after** the slot25 update. Installation metadata `install-report.json` and old module remain preserved separately. Firmware base and RF emission state unchanged.
+
+Real cable-connected launch `tools/k6_live.py --port /dev/ttyUSB0 run-coop 25 --allow-higher-api --cancel-after 3 --timeout 13` correctly loaded 2966 bytes, emitted `MAB1:CLR`, returned **-4** (UART blocks physical microphone/PTT preflight by design). No RF was emitted; live status afterward was TX=false, standby idle, 7.76V. The result mailbox was empty as expected. Full production radio library status confirmed `MIC PCM` slot25 / `SOTTO MIC` slot30; no module or link regressions detected. Persistent preflight artifacts in `gp0-pcm-v1/`: `cable-preflight.json`, `final-live-status.json`, `empty-after-preflight.json`. No physical 8kHz PCM sample has been captured yet.
+
+**Next attended operator capture:** with K6 on a dummy load, detach programming UART, attach the existing external microphone signal-generator connector, verify generator awake with output ON at **1kHz and nominal 0.1 V**, select `CATALOG → MIC PCM`, then hold physical PTT for ~2 seconds until screen says **`MIC PCM SAVED`** or **`MIC PCM ABORT`**. Reconnect programming UART **without power-cycling** and read version8 or version9 result using `tools/k6_live.py --port /dev/ttyUSB0 mic-result --save /home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-1khz-01.json`. On valid version8 verify four 256-sample windows contain a 1kHz PCM peak and reasonable RMS/clip stats with VOX above prior silence baseline (~171). Only then repeat generator-OFF and 2kHz controls. The `MIC PCM` module and base firmware are installed, so no additional flashing is required for any of these runs.
+
+### First real K6 8kHz PCM measurement — 1kHz signal generator ON (2026-11-25 21:00 UTC)
+
+The user performed the operator-attended 1kHz, nominal 0.1V mic-input generator test with physical PTT, disconnected programming cable, and then reconnected without rebooting. The physical radio was in standby idle with TX=false, battery 7.76V, VFO A 443.500 MHz; no bench lock was held. The host retrieved a CRC-valid **MAB1 version8**, written to `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-1khz-01.json`, SHA256 **`16178dbf1798b1896ac3ec7898eff647d5fc7f0ccbc3a2b1aafc7e9469f603f0`**. Its UTC serial retrieval timestamp was `2026-11-25T21:00:24.281443+00:00`, not necessarily the exact capture time.
+
+GP0 selector12, measured 64:1-decimated input density rate **84,810 samples/s**. The production fixed-point `gp0_pcm_push()` generated **1,824 8kHz signed PCM samples**: the first 800/100ms discarded for IIR DC settling, then four consecutive 256-sample / 32ms blocks with bounded spectral and RMS summaries. The real microphone stimulus is independently confirmed by RFIC max VOX **515**, versus baseline OFF ~171 in the prior native DMA experiment. No error, DMA overrun, or PCM clipping reported across any of the blocks.
+
+| 8kHz PCM window | 1kHz coherent score | 2kHz coherent score | PCM RMS approximate | Clipped PCM samples |
+|---|---:|---:|---:|---:|
+| #0 | **1953** | 472 | 9536 | 0 |
+| #1 | **2568** | 390 | 9472 | 0 |
+| #2 | **1859** | 183 | 9792 | 0 |
+| #3 | **2400** | 313 | 9664 | 0 |
+
+**Supported result:** successful actual MCU high-rate GP0/PB1 DMA microphone capture and reconstruction of live signal-dependent signed 8kHz PCM with a dominant 1kHz measurement in each of four windows. This is a physical mic-to-MCU PCM pipeline feasibility gate, **not** proof of intelligible speech or real-time Sotto codec concurrency. The tone amplitude units are a relative IQ score (corresponding to Q5 internal scaling), not direct PCM peak units; RMS is an approximate, quantized PCM count. The comparatively high RMS values compared with coherent 1kHz scores could indicate high-frequency noise, clock/rate drift, DMA artifacts or other spectral components, so a clean voice pass is not yet established. The 128ms measured window + 100ms warmup is short; tests with actual acoustic speech and longer uninterrupted capture still needed.
+
+**Next controlled run:** generator output **OFF**, same microphone cable/other settings and exact installed `MIC PCM` slot25 module, hold PTT ~2s, reconnect UART without reboot, save `gp0-pcm-v1/tone-off-01.json`. This will establish actual PCM noise floor and determine whether the 1kHz component/RMS are stimulus-dependent. If successful, repeat with generator output ON at **2kHz**, same nominal 0.1V, save `gp0-pcm-v1/tone-2khz-01.json` to prove peak frequency tracking in the PCM reconstruction itself. Then pursue optimization of raw GP0 capture/codec scheduling; the 1024-byte DMA ring wraps in ~185us, and concurrent Sotto encoding on this 48MHz Cortex-M0 remains unqualified. Do not change SOTTO MIC slot30 until a complete independent monitor confirms audible speech.
+
+### Physical 8kHz PCM generator-OFF control (2026-11-25 21:02 UTC)
+
+The user performed the same installed `MIC PCM` slot25 test with signal-generator **output OFF**, then reconnected UART without reboot. A CRC-valid **version8** complete four-window report was retrieved successfully and saved at `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-off-01.json`, SHA256 **`d87fbb970f98fa997a91fc1bdb45dbb56907066e1981a31141c025a63ba6524b`**. Report retrieval timestamp was `2026-11-25T21:02:10.484575+00:00`, not necessarily the moment of physical capture. The radio was standby idle, TX=false, battery 7.76V, VFO A 443.500MHz; bench unowned.
+
+RFIC VOX max was **169**, versus 515 with the prior 1kHz stimulus. High-rate GP0 density was measured at **87,260 samples/s**, versus 84,810 samples/s with generator ON; the measured-rate PCM decimator still emitted exactly **1,824 8kHz signed samples** in both cases (800 discarded for DC settling, then 4×256 measured). No DMA overrun, failed capture or clipping.
+
+| Measurement from 8kHz PCM | 1kHz ON — four windows | Generator OFF — four windows |
+|---|---|---|
+| 1kHz spectral score | 1953, 2568, 1859, 2400 (mean **2195**) | 436, 368, 288, 428 (mean **380**) |
+| 2kHz spectral score | 472, 390, 183, 313 (mean ~340) | 494, 364, 507, 528 (mean ~473) |
+| PCM RMS approximately | 9536, 9472, 9792, 9664 (mean **9616**) | 1856, 1920, 1792, 1920 (mean **1872**) |
+| Clipped PCM samples | 0, 0, 0, 0 | 0, 0, 0, 0 |
+
+The 1kHz response of the actual fixed-point PCM converter is 5.8× higher with generator 1kHz ON than OFF; approximate PCM RMS is 5.14× higher. The 2kHz bin does not rise with a 1kHz signal (indeed its mean is lower than OFF), providing further support for a genuine input-frequency-specific reconstruction. This is strong controlled **physical microphone-input-dependent 8kHz PCM** evidence, requiring no board modification. The measurement contains only short spectral/RMS summaries, not a saved PCM waveform or recovered intelligible speech. The broadband noise floor in the OFF run is nonzero; no subjective audio quality or full-band SNR has been established, and no real-time Sotto codec/concurrent DMA pass has been run.
+
+**Next physical validation:** same `CATALOG → MIC PCM` slot25 with signal generator awake, output ON at **2kHz, nominal 0.1V**; dummy load attached, UART unplugged, hold PTT ~2s for `MIC PCM SAVED`/`ABORT`, reconnect **without power cycling**, retrieve `gp0-pcm-v1/tone-2khz-01.json`. Look for increased **2kHz PCM** spectral estimate and absence/reduction at 1kHz, with RFIC VOX distinctly higher than 169. No firmware/module updates required. Thereafter prioritize a bounded continuous sample ring or on-device codec input pipeline under the constrained ~185us DMA ring turnaround, and use the already-established SDR monitor to verify RF/codec/audio.
+
+### Final physical frequency tracking: 2kHz → 8kHz GP0 PCM (2026-11-25 21:04 UTC)
+
+After the operator set the mic-pad generator to **2kHz, nominal 0.1V output ON**, launched the existing `MIC PCM` slot25 with physical PTT on dummy load, and reconnected UART without power cycling, we retrieved a CRC-valid MAB1 **version8** result with all four 32ms windows completed. Saved `/home/tyler/flux-bench/sotto-mic-calibration-20261125/gp0-pcm-v1/tone-2khz-01.json` SHA256 **`bc2ec8cc48c1b055e9f7e47234db34057fba2ecad259544e7f922c3e63351191`**, UTC retrieval timestamp `2026-11-25T21:04:18.274178+00:00` (not a guaranteed RF capture timestamp). The radio remained standby idle, not transmitting, at 7.76 V on VFO A 443.500 MHz; the bench was unowned.
+
+RFIC VOX maximum 434, GP0 selector12 via PB1 DMA, measured 64:1 density sample rate **87,260 samples/s**; GP0 fixed-point converter emitted exactly **1,824 signed 8kHz PCM samples** (800 DC-settling warm-up, 4 × 256 analyzed). No DMA overrun, captured failure, or clipping. Measurements:
+
+| 32ms PCM window | 1kHz coherent score | 2kHz coherent score | Approx PCM RMS | clipped |
+|---|---:|---:|---:|---:|
+| 0 | 544 | **24,299** | 8,896 | 0 |
+| 1 | 439 | **24,072** | 8,768 | 0 |
+| 2 | 608 | **23,766** | 8,640 | 0 |
+| 3 | 136 | **23,331** | 8,512 | 0 |
+
+Averaged three-condition proof:
+
+| Physical stimulus | RFIC VOX | PCM 1kHz peak avg | PCM 2kHz peak avg | Approx PCM RMS avg | 8kHz PCM output |
+|---|---:|---:|---:|---:|---:|
+| generator OFF | 169 | 380 | 473 | 1,872 | 1,824 |
+| 1kHz/nominal 0.1V ON | 515 | **2,195** | 340 | 9,616 | 1,824 |
+| 2kHz/nominal 0.1V ON | 434 | 432 | **23,867** | 8,704 | 1,824 |
+
+**Conclusion, bounded to measured evidence:** physical input-frequency-dependent audio makes it through the *existing* K6 RFIC GP0 output select12 to PB1 at roughly 5.5M GPIO samples/s, then through actual module-executed DMA bit-density decimation to signed 8kHz PCM on the MCU. Physical PCB modification is not required for microphone signal acquisition with the RFIC ADC on during PA-muted TX. Four windows independently tracked each injected tone; the generator OFF control demonstrated a lower noise floor. The *markedly different* 1kHz and 2kHz spectral scores at nominal equal stimulus amplitude must be investigated; a flat 8kHz voice pass cannot be inferred, and oscillator sensitivity, frequency response, filter/delay and artifacts remain open questions. PCM content was summarized, not recorded as a full-waveform WAV. Intelligible speech, analog acoustic-microphone SNR, and continuous PCM capture *during Sotto encoder/FSK RF work* remain unvalidated.
+
+**Next engineering focus:** isolate GP0 DMA ring ownership and solve real-time decimation/PCM ring production during Sotto encoding (the 1,024-byte raw DMA buffer wraps in about 185µs). A bounded real speech PCM capture and host WAV reconstruction plus full-band sweep would provide fidelity evidence. Maintain installed, working `MIC PCM` slot25 and original `SOTTO MIC` slot30, and only replace slot30 after an independent live RF+codec+audio monitor confirms speech.

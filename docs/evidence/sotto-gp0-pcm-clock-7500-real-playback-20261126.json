@@ -1,0 +1,68 @@
+{
+  "filter": "2200Hz third-order zero-phase output-side low-pass; not high-rate GP0 antialiasing",
+  "no_radio_firmware_flash": true,
+  "offline_only": true,
+  "receiver_tone_cases": {
+    "1000hz_complete": {
+      "corrected_peak_hz": 999.451,
+      "corrected_residual_rms_full_scale": 0.0430361,
+      "corrected_samples": 1501,
+      "corrected_sine_amplitude_peak_full_scale": 0.4112795,
+      "filter_residual_reduction_db": -2.98,
+      "filtered_residual_rms_full_scale": 0.0305232,
+      "lowpass_tone_amplitude_loss_db": -0.017,
+      "pcm_rate_measured_hz": 8528.78465,
+      "rf_complete": true,
+      "source_name": "gen-1000-01.wav",
+      "source_samples": 1600
+    },
+    "500hz_first_no_tone": {
+      "corrected_peak_hz": 521.423,
+      "corrected_residual_rms_full_scale": 0.0424723,
+      "corrected_samples": 1500,
+      "corrected_sine_amplitude_peak_full_scale": 0.003598,
+      "filter_residual_reduction_db": -2.79,
+      "filtered_residual_rms_full_scale": 0.0308212,
+      "lowpass_tone_amplitude_loss_db": 0.031,
+      "pcm_rate_measured_hz": 8533.33333,
+      "rf_complete": true,
+      "source_name": "gen-500-01.wav",
+      "source_samples": 1600
+    },
+    "500hz_verified_prefix": {
+      "corrected_peak_hz": 499.695,
+      "corrected_residual_rms_full_scale": 0.0457158,
+      "corrected_samples": 451,
+      "corrected_sine_amplitude_peak_full_scale": 0.4070525,
+      "filter_residual_reduction_db": -2.62,
+      "filtered_residual_rms_full_scale": 0.0338088,
+      "lowpass_tone_amplitude_loss_db": -0.002,
+      "pcm_rate_measured_hz": 8528.78465,
+      "rf_complete": false,
+      "source_name": "gen-500-02.c64",
+      "source_samples": 480
+    },
+    "off_verified_prefix": {
+      "corrected_peak_hz": null,
+      "corrected_residual_rms_full_scale": 0.0419208,
+      "corrected_samples": 811,
+      "corrected_sine_amplitude_peak_full_scale": null,
+      "filter_residual_reduction_db": -2.8,
+      "filtered_residual_rms_full_scale": 0.0303529,
+      "lowpass_tone_amplitude_loss_db": null,
+      "pcm_rate_measured_hz": 8528.78465,
+      "rf_complete": false,
+      "source_name": "gen-off-01.c64",
+      "source_samples": 864
+    }
+  },
+  "redacted_from_public_evidence": [
+    "source absolute paths",
+    "raw IQ",
+    "WAV audio",
+    "SPI flash backups",
+    "module keys"
+  ],
+  "schema": 1,
+  "source": "real GP0 PCM AIR RF captures made Nov 26 2026 PT, independently CRC checked"
+}

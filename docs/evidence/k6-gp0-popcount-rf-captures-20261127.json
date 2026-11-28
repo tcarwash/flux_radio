@@ -1,0 +1,139 @@
+{
+  "capture_500hz": {
+    "capture_ticks_100us": 439,
+    "crc_valid_packets": 86,
+    "group_count_mean": 32.14306640625,
+    "group_count_std": 1.233302845878785,
+    "group_max": 36,
+    "group_min": 28,
+    "group_residual_std_counts": 1.2326126281353296,
+    "measured_gp0_group_rate_hz": 93302.96,
+    "nominal_500hz_group_amplitude_counts": 0.05827985879661788,
+    "raw_groups": 4096,
+    "rf_crc_complete": true,
+    "source_sha256": "4ae51ec0173e25c77f69d115fddfa554dc2e02d38dff416c1bb226fd9cb01fc7"
+  },
+  "capture_500hz_after_probes_reseated": {
+    "500hz_fit_frequency_hz": 500.0795,
+    "500hz_fitted_raw_peak_counts": 3.22255,
+    "capture_ticks_100us": 439,
+    "crc_valid_packets": 86,
+    "measured_gp0_group_rate_hz": 93302.96,
+    "offline_filter_test_only": true,
+    "previous_take_raw_500hz_peak_counts": 0.06237,
+    "raw_group_noise_rms_counts": 1.29336,
+    "raw_groups": 4096,
+    "real_rust_decimator_replay": {
+      "aa3": {
+        "500hz_pcm_peak_full_scale": 0.389942,
+        "fit_residual_rms_full_scale": 0.031037,
+        "snr_gain_vs_legacy_db": 2.447,
+        "tone_snr_db": 18.972
+      },
+      "fir11": {
+        "500hz_pcm_peak_full_scale": 0.395437,
+        "fit_residual_rms_full_scale": 0.036024,
+        "snr_gain_vs_legacy_db": 1.274,
+        "tone_snr_db": 17.799
+      },
+      "fir11_late": {
+        "500hz_pcm_peak_full_scale": 0.395718,
+        "fit_residual_rms_full_scale": 0.03604,
+        "snr_gain_vs_legacy_db": 1.277,
+        "tone_snr_db": 17.802
+      },
+      "legacy": {
+        "500hz_pcm_peak_full_scale": 0.398438,
+        "fit_residual_rms_full_scale": 0.042034,
+        "snr_gain_vs_legacy_db": 0.0,
+        "tone_snr_db": 16.525
+      }
+    },
+    "rf_crc_complete": true,
+    "source_sha256": "26a871d9af716673b09adfc2542ad91f010edc21f392a175d3842fc68e8ff3c2"
+  },
+  "capture_off": {
+    "continuous_tail_groups": 2944,
+    "continuous_tail_mean": 32.20720108695652,
+    "continuous_tail_std": 1.2219137221369782,
+    "crc_valid_packets": 82,
+    "group_count_mean_valid": 32.201331967213115,
+    "missing_sequences": [
+      9,
+      10,
+      18,
+      23
+    ],
+    "rf_crc_complete": false,
+    "verified_groups": 3904
+  },
+  "classification": "PRIVATE_RF_CAPTURE_DERIVED_METRICS_ONLY",
+  "date": "2026-11-27",
+  "limitations": [
+    "500Hz generator tone essentially absent in new raw capture: do not claim filter voice-tone fidelity",
+    "SDR IQ and raw bytes remain private",
+    "generator output state or source routing not independently confirmed from capture",
+    "OFF capture missing 4 RF packets; filtering compares contiguous seq 24..85 only",
+    "44ms is too short for detailed stable spectral estimation",
+    "actual radio capture firmware uses 8000 decimator weight; replay uses prospective 7500 clock correction, no hardware changes"
+  ],
+  "no_rf_generated_by_analysis": true,
+  "offline_filter_replay": {
+    "aa3": {
+      "500_raw": {
+        "500hz_fit_residual_rms_fs": 0.02941061295701948,
+        "500hz_fitted_amp_peak_fs": 0.006858607256989285,
+        "pcm_n": 352,
+        "rms_full_scale": 0.029808693796611708
+      },
+      "off_contiguous": {
+        "500hz_fit_residual_rms_fs": 0.02915856530575689,
+        "500hz_fitted_amp_peak_fs": 0.010885203763981237,
+        "pcm_n": 253,
+        "rms_full_scale": 0.030147076333359876
+      }
+    },
+    "fir11": {
+      "500_raw": {
+        "500hz_fit_residual_rms_fs": 0.0340793073665727,
+        "500hz_fitted_amp_peak_fs": 0.006860099570059597,
+        "pcm_n": 352,
+        "rms_full_scale": 0.0344236384908033
+      },
+      "off_contiguous": {
+        "500hz_fit_residual_rms_fs": 0.03315720211990222,
+        "500hz_fitted_amp_peak_fs": 0.011038400332281657,
+        "pcm_n": 253,
+        "rms_full_scale": 0.034054128784402095
+      }
+    },
+    "fir11_late": {
+      "500_raw": {
+        "500hz_fit_residual_rms_fs": 0.03420890951895381,
+        "500hz_fitted_amp_peak_fs": 0.006880258641663917,
+        "pcm_n": 352,
+        "rms_full_scale": 0.03455395828441469
+      },
+      "off_contiguous": {
+        "500hz_fit_residual_rms_fs": 0.03326996838347758,
+        "500hz_fitted_amp_peak_fs": 0.011066843016506029,
+        "pcm_n": 253,
+        "rms_full_scale": 0.034168487315775445
+      }
+    },
+    "legacy": {
+      "500_raw": {
+        "500hz_fit_residual_rms_fs": 0.03848112691714999,
+        "500hz_fitted_amp_peak_fs": 0.006788693783776161,
+        "pcm_n": 352,
+        "rms_full_scale": 0.03878009390672213
+      },
+      "off_contiguous": {
+        "500hz_fit_residual_rms_fs": 0.04169705591787567,
+        "500hz_fitted_amp_peak_fs": 0.01057359825775848,
+        "pcm_n": 253,
+        "rms_full_scale": 0.04235599460979905
+      }
+    }
+  }
+}

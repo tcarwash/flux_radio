@@ -1,0 +1,338 @@
+{
+  "pdm_group_hz": 87260,
+  "output_hz": 8000,
+  "popcount_per_group": 64,
+  "filter": "poles (0/2/3) of signed Q7 EMA at alpha1/4 before fractional boxcar decimation",
+  "results": [
+    {
+      "input_hz": 320,
+      "alias_hz": 320,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 11665.368437627676,
+      "amp": 16490.162438821004,
+      "db": 84.344,
+      "peak": 16912
+    },
+    {
+      "input_hz": 320,
+      "alias_hz": 320,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 11573.34062749386,
+      "amp": 16363.968862467476,
+      "db": 84.278,
+      "peak": 16768
+    },
+    {
+      "input_hz": 320,
+      "alias_hz": 320,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 11531.129693069974,
+      "amp": 16305.355011896914,
+      "db": 84.247,
+      "peak": 16736
+    },
+    {
+      "input_hz": 1000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 11362.452991339502,
+      "amp": 16067.338008616374,
+      "db": 84.119,
+      "peak": 15280
+    },
+    {
+      "input_hz": 1000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 10725.52458420566,
+      "amp": 15167.231431761254,
+      "db": 83.618,
+      "peak": 15504
+    },
+    {
+      "input_hz": 1000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 10408.663026517863,
+      "amp": 14719.252729900849,
+      "db": 83.358,
+      "peak": 14560
+    },
+    {
+      "input_hz": 2000,
+      "alias_hz": 2000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 10496.915716133,
+      "amp": 14841.690752255949,
+      "db": 83.43,
+      "peak": 11616
+    },
+    {
+      "input_hz": 2000,
+      "alias_hz": 2000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 8435.20960145034,
+      "amp": 11927.972942491111,
+      "db": 81.531,
+      "peak": 12360
+    },
+    {
+      "input_hz": 2000,
+      "alias_hz": 2000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 7545.680734937041,
+      "amp": 10669.992274861313,
+      "db": 80.563,
+      "peak": 10704
+    },
+    {
+      "input_hz": 2800,
+      "alias_hz": 2800,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 9461.661270432376,
+      "amp": 13378.232189737811,
+      "db": 82.528,
+      "peak": 13440
+    },
+    {
+      "input_hz": 2800,
+      "alias_hz": 2800,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 6365.850641163363,
+      "amp": 9001.074645861025,
+      "db": 79.086,
+      "peak": 9216
+    },
+    {
+      "input_hz": 2800,
+      "alias_hz": 2800,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 5221.99652971926,
+      "amp": 7383.36157206688,
+      "db": 77.365,
+      "peak": 8536
+    },
+    {
+      "input_hz": 3500,
+      "alias_hz": 3500,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 8330.135840405004,
+      "amp": 11767.180076746594,
+      "db": 81.413,
+      "peak": 12312
+    },
+    {
+      "input_hz": 3500,
+      "alias_hz": 3500,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 4745.361160164734,
+      "amp": 6691.547506953751,
+      "db": 76.511,
+      "peak": 7248
+    },
+    {
+      "input_hz": 3500,
+      "alias_hz": 3500,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 3585.514847215111,
+      "amp": 5045.982996879882,
+      "db": 74.059,
+      "peak": 5600
+    },
+    {
+      "input_hz": 7000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 1653.0664180243937,
+      "amp": 2274.7881358894865,
+      "db": 67.139,
+      "peak": 3104
+    },
+    {
+      "input_hz": 7000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 532.3996059352411,
+      "amp": 568.2696687647104,
+      "db": 55.091,
+      "peak": 2944
+    },
+    {
+      "input_hz": 7000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 398.0105481014291,
+      "amp": 285.87559276853864,
+      "db": 49.124,
+      "peak": 2224
+    },
+    {
+      "input_hz": 9000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 1266.8929552254997,
+      "amp": 1757.345465511219,
+      "db": 64.897,
+      "peak": 2112
+    },
+    {
+      "input_hz": 9000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 261.9767440060281,
+      "amp": 295.7278971562945,
+      "db": 49.418,
+      "peak": 1696
+    },
+    {
+      "input_hz": 9000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 165.2654579759485,
+      "amp": 119.82075100875849,
+      "db": 41.571,
+      "peak": 1544
+    },
+    {
+      "input_hz": 15000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 778.8728715265412,
+      "amp": 1014.7236865189138,
+      "db": 60.127,
+      "peak": 1592
+    },
+    {
+      "input_hz": 15000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 213.5591571438696,
+      "amp": 75.59404998062432,
+      "db": 37.57,
+      "peak": 1320
+    },
+    {
+      "input_hz": 15000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 185.04096843672215,
+      "amp": 21.888781912176224,
+      "db": 26.804,
+      "peak": 960
+    },
+    {
+      "input_hz": 17000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 659.199756067916,
+      "amp": 883.0440145510822,
+      "db": 58.92,
+      "peak": 1384
+    },
+    {
+      "input_hz": 17000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 133.00855761942537,
+      "amp": 52.35484575366199,
+      "db": 34.379,
+      "peak": 944
+    },
+    {
+      "input_hz": 17000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 119.11194062729396,
+      "amp": 14.19785755790625,
+      "db": 23.044,
+      "peak": 776
+    },
+    {
+      "input_hz": 25000,
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 577.1183240896099,
+      "amp": 558.2404338873366,
+      "db": 54.936,
+      "peak": 1608
+    },
+    {
+      "input_hz": 25000,
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 331.2739023829073,
+      "amp": 19.28142343516532,
+      "db": 25.703,
+      "peak": 808
+    },
+    {
+      "input_hz": 25000,
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 307.66943039567644,
+      "amp": 3.7124340027655087,
+      "db": 11.393,
+      "peak": 760
+    },
+    {
+      "input_hz": "1k_and_9k_binomial",
+      "alias_hz": 1000,
+      "poles": 0,
+      "output_samples": 6400,
+      "rms": 5942.289968127467,
+      "amp": 4804.421142653727,
+      "db": 73.633,
+      "peak": 24632
+    },
+    {
+      "input_hz": "1k_and_9k_binomial",
+      "alias_hz": 1000,
+      "poles": 2,
+      "output_samples": 6400,
+      "rms": 4500.898648454983,
+      "amp": 3624.1272871220763,
+      "db": 71.184,
+      "peak": 17592
+    },
+    {
+      "input_hz": "1k_and_9k_binomial",
+      "alias_hz": 1000,
+      "poles": 3,
+      "output_samples": 6400,
+      "rms": 4204.475100603786,
+      "amp": 3465.107295852019,
+      "db": 70.794,
+      "peak": 15928
+    }
+  ]
+}

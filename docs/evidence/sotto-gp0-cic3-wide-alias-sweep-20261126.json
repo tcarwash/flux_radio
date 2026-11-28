@@ -1,0 +1,370 @@
+{
+  "density_amplitude": 4.0,
+  "duration_seconds": 0.7,
+  "fixture_count": 31,
+  "input_group_rate_hz": 87260,
+  "offline_only": true,
+  "output_rate_hz": 8000,
+  "output_voice_band_hz": [
+    80,
+    3900
+  ],
+  "rows": [
+    {
+      "aa3_db": -12.16,
+      "aa3_peak_hz": 3000.75,
+      "cic3_db": -12.8,
+      "cic3_minus_aa3_db": -0.64,
+      "cic3_peak_hz": 3000.75,
+      "input_hz": 5000.0,
+      "legacy_peak_hz": 3000.75
+    },
+    {
+      "aa3_db": -15.97,
+      "aa3_peak_hz": 1750.44,
+      "cic3_db": -12.21,
+      "cic3_minus_aa3_db": 3.77,
+      "cic3_peak_hz": 3342.84,
+      "input_hz": 6250.0,
+      "legacy_peak_hz": 1750.44
+    },
+    {
+      "aa3_db": -11.93,
+      "aa3_peak_hz": 2020.51,
+      "cic3_db": -5.67,
+      "cic3_minus_aa3_db": 6.25,
+      "cic3_peak_hz": 3406.85,
+      "input_hz": 7500.0,
+      "legacy_peak_hz": 500.13
+    },
+    {
+      "aa3_db": -22.67,
+      "aa3_peak_hz": 750.19,
+      "cic3_db": -19.21,
+      "cic3_minus_aa3_db": 3.46,
+      "cic3_peak_hz": 2156.54,
+      "input_hz": 8750.0,
+      "legacy_peak_hz": 750.19
+    },
+    {
+      "aa3_db": -24.28,
+      "aa3_peak_hz": 960.24,
+      "cic3_db": -23.98,
+      "cic3_minus_aa3_db": 0.29,
+      "cic3_peak_hz": 960.24,
+      "input_hz": 10000.0,
+      "legacy_peak_hz": 2000.5
+    },
+    {
+      "aa3_db": -25.67,
+      "aa3_peak_hz": 3030.76,
+      "cic3_db": -24.51,
+      "cic3_minus_aa3_db": 1.16,
+      "cic3_peak_hz": 3030.76,
+      "input_hz": 11250.0,
+      "legacy_peak_hz": 3250.81
+    },
+    {
+      "aa3_db": -15.62,
+      "aa3_peak_hz": 720.18,
+      "cic3_db": -15.36,
+      "cic3_minus_aa3_db": 0.26,
+      "cic3_peak_hz": 720.18,
+      "input_hz": 12500.0,
+      "legacy_peak_hz": 3500.88
+    },
+    {
+      "aa3_db": -19.03,
+      "aa3_peak_hz": 530.13,
+      "cic3_db": -18.81,
+      "cic3_minus_aa3_db": 0.21,
+      "cic3_peak_hz": 530.13,
+      "input_hz": 13750.0,
+      "legacy_peak_hz": 2250.56
+    },
+    {
+      "aa3_db": -16.57,
+      "aa3_peak_hz": 1440.36,
+      "cic3_db": -16.08,
+      "cic3_minus_aa3_db": 0.49,
+      "cic3_peak_hz": 1440.36,
+      "input_hz": 15000.0,
+      "legacy_peak_hz": 1000.25
+    },
+    {
+      "aa3_db": -4.97,
+      "aa3_peak_hz": 2450.61,
+      "cic3_db": -3.62,
+      "cic3_minus_aa3_db": 1.35,
+      "cic3_peak_hz": 2450.61,
+      "input_hz": 16250.0,
+      "legacy_peak_hz": 2450.61
+    },
+    {
+      "aa3_db": -9.67,
+      "aa3_peak_hz": 1200.3,
+      "cic3_db": -9.29,
+      "cic3_minus_aa3_db": 0.39,
+      "cic3_peak_hz": 1200.3,
+      "input_hz": 17500.0,
+      "legacy_peak_hz": 1500.38
+    },
+    {
+      "aa3_db": -26.41,
+      "aa3_peak_hz": 2890.72,
+      "cic3_db": -24.95,
+      "cic3_minus_aa3_db": 1.45,
+      "cic3_peak_hz": 2890.72,
+      "input_hz": 18750.0,
+      "legacy_peak_hz": 2750.69
+    },
+    {
+      "aa3_db": -3.04,
+      "aa3_peak_hz": 1920.48,
+      "cic3_db": -2.4,
+      "cic3_minus_aa3_db": 0.65,
+      "cic3_peak_hz": 1920.48,
+      "input_hz": 20000.0,
+      "legacy_peak_hz": 3260.82
+    },
+    {
+      "aa3_db": -24.65,
+      "aa3_peak_hz": 910.23,
+      "cic3_db": -24.29,
+      "cic3_minus_aa3_db": 0.36,
+      "cic3_peak_hz": 910.23,
+      "input_hz": 21250.0,
+      "legacy_peak_hz": 2750.69
+    },
+    {
+      "aa3_db": -18.2,
+      "aa3_peak_hz": 2160.54,
+      "cic3_db": -17.2,
+      "cic3_minus_aa3_db": 1.0,
+      "cic3_peak_hz": 2160.54,
+      "input_hz": 22500.0,
+      "legacy_peak_hz": 1500.38
+    },
+    {
+      "aa3_db": -0.24,
+      "aa3_peak_hz": 530.13,
+      "cic3_db": -0.15,
+      "cic3_minus_aa3_db": 0.09,
+      "cic3_peak_hz": 530.13,
+      "input_hz": 23750.0,
+      "legacy_peak_hz": 530.13
+    },
+    {
+      "aa3_db": -3.05,
+      "aa3_peak_hz": 1440.36,
+      "cic3_db": -2.47,
+      "cic3_minus_aa3_db": 0.59,
+      "cic3_peak_hz": 1440.36,
+      "input_hz": 25000.0,
+      "legacy_peak_hz": 1000.25
+    },
+    {
+      "aa3_db": -21.64,
+      "aa3_peak_hz": 590.15,
+      "cic3_db": -21.49,
+      "cic3_minus_aa3_db": 0.15,
+      "cic3_peak_hz": 590.15,
+      "input_hz": 26250.0,
+      "legacy_peak_hz": 2250.56
+    },
+    {
+      "aa3_db": -14.01,
+      "aa3_peak_hz": 1060.27,
+      "cic3_db": -13.71,
+      "cic3_minus_aa3_db": 0.3,
+      "cic3_peak_hz": 1060.27,
+      "input_hz": 27500.0,
+      "legacy_peak_hz": 3500.88
+    },
+    {
+      "aa3_db": -16.78,
+      "aa3_peak_hz": 1010.25,
+      "cic3_db": -16.46,
+      "cic3_minus_aa3_db": 0.32,
+      "cic3_peak_hz": 1010.25,
+      "input_hz": 28750.0,
+      "legacy_peak_hz": 3250.81
+    },
+    {
+      "aa3_db": -20.19,
+      "aa3_peak_hz": 2880.72,
+      "cic3_db": -18.85,
+      "cic3_minus_aa3_db": 1.34,
+      "cic3_peak_hz": 2880.72,
+      "input_hz": 30000.0,
+      "legacy_peak_hz": 2000.5
+    },
+    {
+      "aa3_db": -8.56,
+      "aa3_peak_hz": 1690.42,
+      "cic3_db": -8.06,
+      "cic3_minus_aa3_db": 0.5,
+      "cic3_peak_hz": 1690.42,
+      "input_hz": 31250.0,
+      "legacy_peak_hz": 750.19
+    },
+    {
+      "aa3_db": -5.96,
+      "aa3_peak_hz": 1340.34,
+      "cic3_db": -5.82,
+      "cic3_minus_aa3_db": 0.14,
+      "cic3_peak_hz": 1340.34,
+      "input_hz": 32500.0,
+      "legacy_peak_hz": 500.13
+    },
+    {
+      "aa3_db": -18.21,
+      "aa3_peak_hz": 710.18,
+      "cic3_db": -18.15,
+      "cic3_minus_aa3_db": 0.06,
+      "cic3_peak_hz": 710.18,
+      "input_hz": 33750.0,
+      "legacy_peak_hz": 1750.44
+    },
+    {
+      "aa3_db": -7.66,
+      "aa3_peak_hz": 1440.36,
+      "cic3_db": -7.21,
+      "cic3_minus_aa3_db": 0.45,
+      "cic3_peak_hz": 1440.36,
+      "input_hz": 35000.0,
+      "legacy_peak_hz": 3000.75
+    },
+    {
+      "aa3_db": -10.97,
+      "aa3_peak_hz": 230.06,
+      "cic3_db": -11.03,
+      "cic3_minus_aa3_db": -0.06,
+      "cic3_peak_hz": 230.06,
+      "input_hz": 36250.0,
+      "legacy_peak_hz": 3750.94
+    },
+    {
+      "aa3_db": -6.64,
+      "aa3_peak_hz": 2160.54,
+      "cic3_db": -5.69,
+      "cic3_minus_aa3_db": 0.95,
+      "cic3_peak_hz": 2160.54,
+      "input_hz": 37500.0,
+      "legacy_peak_hz": 2500.63
+    },
+    {
+      "aa3_db": -1.39,
+      "aa3_peak_hz": 290.07,
+      "cic3_db": -1.32,
+      "cic3_minus_aa3_db": 0.08,
+      "cic3_peak_hz": 290.07,
+      "input_hz": 38750.0,
+      "legacy_peak_hz": 1250.31
+    },
+    {
+      "aa3_db": -7.96,
+      "aa3_peak_hz": 3700.93,
+      "cic3_db": -6.92,
+      "cic3_minus_aa3_db": 1.04,
+      "cic3_peak_hz": 3700.93,
+      "input_hz": 40000.0,
+      "legacy_peak_hz": 3700.93
+    },
+    {
+      "aa3_db": -5.8,
+      "aa3_peak_hz": 1590.4,
+      "cic3_db": -5.3,
+      "cic3_minus_aa3_db": 0.5,
+      "cic3_peak_hz": 1590.4,
+      "input_hz": 41250.0,
+      "legacy_peak_hz": 1990.5
+    },
+    {
+      "aa3_db": -12.36,
+      "aa3_peak_hz": 440.11,
+      "cic3_db": -12.35,
+      "cic3_minus_aa3_db": 0.0,
+      "cic3_peak_hz": 440.11,
+      "input_hz": 42500.0,
+      "legacy_peak_hz": 2500.63
+    }
+  ],
+  "schema": 1,
+  "scope": "deterministic centered 64-popcount sinusoid, NOT measured microphone/PDM",
+  "status": "alias-suppression sensitivity, NOT hardware qualification",
+  "worst_cic3_vs_aa3": [
+    {
+      "aa3_db": -11.93,
+      "aa3_peak_hz": 2020.51,
+      "cic3_db": -5.67,
+      "cic3_minus_aa3_db": 6.25,
+      "cic3_peak_hz": 3406.85,
+      "input_hz": 7500.0,
+      "legacy_peak_hz": 500.13
+    },
+    {
+      "aa3_db": -15.97,
+      "aa3_peak_hz": 1750.44,
+      "cic3_db": -12.21,
+      "cic3_minus_aa3_db": 3.77,
+      "cic3_peak_hz": 3342.84,
+      "input_hz": 6250.0,
+      "legacy_peak_hz": 1750.44
+    },
+    {
+      "aa3_db": -22.67,
+      "aa3_peak_hz": 750.19,
+      "cic3_db": -19.21,
+      "cic3_minus_aa3_db": 3.46,
+      "cic3_peak_hz": 2156.54,
+      "input_hz": 8750.0,
+      "legacy_peak_hz": 750.19
+    },
+    {
+      "aa3_db": -26.41,
+      "aa3_peak_hz": 2890.72,
+      "cic3_db": -24.95,
+      "cic3_minus_aa3_db": 1.45,
+      "cic3_peak_hz": 2890.72,
+      "input_hz": 18750.0,
+      "legacy_peak_hz": 2750.69
+    },
+    {
+      "aa3_db": -4.97,
+      "aa3_peak_hz": 2450.61,
+      "cic3_db": -3.62,
+      "cic3_minus_aa3_db": 1.35,
+      "cic3_peak_hz": 2450.61,
+      "input_hz": 16250.0,
+      "legacy_peak_hz": 2450.61
+    },
+    {
+      "aa3_db": -20.19,
+      "aa3_peak_hz": 2880.72,
+      "cic3_db": -18.85,
+      "cic3_minus_aa3_db": 1.34,
+      "cic3_peak_hz": 2880.72,
+      "input_hz": 30000.0,
+      "legacy_peak_hz": 2000.5
+    },
+    {
+      "aa3_db": -25.67,
+      "aa3_peak_hz": 3030.76,
+      "cic3_db": -24.51,
+      "cic3_minus_aa3_db": 1.16,
+      "cic3_peak_hz": 3030.76,
+      "input_hz": 11250.0,
+      "legacy_peak_hz": 3250.81
+    },
+    {
+      "aa3_db": -7.96,
+      "aa3_peak_hz": 3700.93,
+      "cic3_db": -6.92,
+      "cic3_minus_aa3_db": 1.04,
+      "cic3_peak_hz": 3700.93,
+      "input_hz": 40000.0,
+      "legacy_peak_hz": 3700.93
+    }
+  ]
+}

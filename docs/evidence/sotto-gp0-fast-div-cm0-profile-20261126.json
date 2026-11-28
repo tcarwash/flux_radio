@@ -1,0 +1,28 @@
+{
+ "ws": 0,
+ "blocks_40ms": 10,
+ "MHz_mean": 23.78,
+ "MHz_p99": 25.03,
+ "MHz_worst": 25.04,
+ "state_bytes": 3148,
+ "stack_bytes": 704,
+ "image_bytes": 41212,
+ "profile_MHz": {
+  "slim_analyse10": 10.03,
+  "decide": 6.24,
+  "udiv32": 2.21,
+  "cb_hn": 1.82,
+  "memmove": 1.56,
+  "cos256": 0.68,
+  "cb_search": 0.51,
+  "msb32": 0.21,
+  "__aeabi_uidiv": 0.13,
+  "log2_q10": 0.07,
+  "cb_sub": 0.06,
+  "__aeabi_idiv": 0.05,
+  "memcpy": 0.05,
+  "put_bits": 0.02,
+  "slim_coder_push": 0.02,
+  "__aeabi_memclr": 0.02
+ }
+}

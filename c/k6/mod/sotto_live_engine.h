@@ -50,8 +50,9 @@ typedef struct {
 static inline int sl_engine_begin(sl_engine_t *s,uint32_t hi,uint32_t lo){
     unsigned i;
     if(!s)return -1;
+    if(!(hi|lo))return -1;
     for(i=0;i<sizeof(*s);i++)((uint8_t*)s)[i]=0;
-    if(sl_begin(&s->tx,hi,lo))return -1;
+    s->tx.tag_hi=hi;s->tx.tag_lo=lo;
     s->phase=SL_CAPTURE;return 0;
 }
 static inline int sl_engine_fail(sl_engine_t *s,const sl_ops_t *o,void *ctx){

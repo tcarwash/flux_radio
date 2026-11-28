@@ -1,0 +1,68 @@
+[
+  {
+    "cpi_assumption": 2.5,
+    "isr_cycles_per_pcm_sample_assumption": 4000,
+    "rf_register_write_us_assumption": 2,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1920,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 120.48032523148088
+  },
+  {
+    "cpi_assumption": 2.5,
+    "isr_cycles_per_pcm_sample_assumption": 4000,
+    "rf_register_write_us_assumption": 60,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1600,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 124.68099189814754
+  },
+  {
+    "cpi_assumption": 2.5,
+    "isr_cycles_per_pcm_sample_assumption": 4000,
+    "rf_register_write_us_assumption": 300,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1120,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 141.3676585648142
+  },
+  {
+    "cpi_assumption": 3.0,
+    "isr_cycles_per_pcm_sample_assumption": 3000,
+    "rf_register_write_us_assumption": 2,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1600,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 121.92390856481421
+  },
+  {
+    "cpi_assumption": 3.0,
+    "isr_cycles_per_pcm_sample_assumption": 3000,
+    "rf_register_write_us_assumption": 60,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1280,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 125.61415856481422
+  },
+  {
+    "cpi_assumption": 3.0,
+    "isr_cycles_per_pcm_sample_assumption": 3000,
+    "rf_register_write_us_assumption": 300,
+    "pcm_lost": true,
+    "samples_before_end_or_abort": 1120,
+    "queue_highwater": 4,
+    "module_return": -12,
+    "session_complete": false,
+    "first_rf_ms": 140.79040856481421
+  }
+]

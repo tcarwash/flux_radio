@@ -34,10 +34,18 @@ from tools.k6_fsk_virtual_link import HZ, values
 PREPARE=r"""
 import ctypes as C,struct,subprocess,sys,zlib
 from pathlib import Path
+import types
+root=Path.cwd();sys.path.insert(0,str(root))
+pkg=sys.modules.get('tools')
+if pkg is None or str(root/'tools') not in getattr(pkg,'__path__',[]):
+ pkg=types.ModuleType('tools');pkg.__path__=[str(root/'tools')];sys.modules['tools']=pkg
 from tools.k6_sotto_module import build,FIXED
 from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 d=Path(sys.argv[1])
-code,entry=build(host_resources=True,live_tx=True)
+is_tone='tone' in sys.argv[2:]
+is_gp0='gp0' in sys.argv[2:]
+assert not(is_tone and is_gp0)
+code,entry=build(host_resources=True,live_tx=not (is_tone or is_gp0),tone_tx=is_tone,gp0_irq_tx=is_gp0)
 (d/'module.bin').write_bytes(code)
 (d/'entry').write_text(str(entry))
 so=d/'ref.so'
@@ -50,8 +58,11 @@ state=C.create_string_buffer(c.slim_enc_bytes());c.slim_enc_init(state)
 pcm=(C.c_int16*80)();out=C.create_string_buffer(6);bits=bytearray()
 if len(sys.argv)>2:
  payload=Path(sys.argv[2]).read_bytes()
- assert len(payload)%160==0 and len(payload)>0
+ assert len(payload)%2==0 and len(payload)>=1600
  samples=struct.unpack('<%dh'%(len(payload)//2),payload)
+ # The on-radio PCM queue pads its final partial 80-sample block at PTT
+ # release. Compare the real GP0 module against this padded native oracle.
+ samples=list(samples)+[0]*((-len(samples))%80)
 else:
  samples=[(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)]
 for block in range(len(samples)//80):
@@ -68,16 +79,24 @@ struct.pack_into('<I',h,28,zlib.crc32(h[:28]))
 (d/'deck.bin').write_bytes(build_deck(SLIM_CELLS.read_text()))
 """
 
-def prepare(tree,d,pcm=None):
+def prepare(tree,d,pcm=None,*,tone=False,gp0=False):
     tree=Path(tree).resolve()
+    if tone and pcm is None:
+        raise ValueError("Tone module requires deterministic reference PCM")
+    if gp0 and pcm is None:
+        raise ValueError("GP0 TX emulator requires explicit PCM fixture and physical-release length")
+    if tone and gp0:
+        raise ValueError("Cannot select tone and GP0 TX simultaneously")
     args=[sys.executable,"-c",PREPARE,str(d)]
     if pcm is not None:
         pcm=np.asarray(pcm,dtype="<i2")
-        if len(pcm)%80 or not 800<=len(pcm)<=24000:
-            raise ValueError("PCM must be 0.1–3.0 seconds of 8kHz signed 16-bit mono, in 80-sample blocks")
+        if (not gp0 and len(pcm)%80) or not 800<=len(pcm)<=24000:
+            raise ValueError("PCM must be 0.1–3.0 seconds of 8kHz signed 16-bit mono; GP0 permits a partial final block")
         audio_path=d/"input.pcm"
         audio_path.write_bytes(pcm.tobytes())
         args.append(str(audio_path))
+    if tone:args.append('tone')
+    if gp0:args.append('gp0')
     subprocess.run(args,cwd=tree,check=True)
     h=(tree/"c/k6/k6_mod.h").read_text().split("typedef struct k6_api {")[1].split("} k6_api_t;")[0]
     names=re.findall(r"\(\*(\w+)\)\(",re.sub(r"/\*.*?\*/","",h,flags=re.S))
@@ -93,7 +112,7 @@ def prepare(tree,d,pcm=None):
                      cflags=[*k6mod.CFLAGS,"-I"+str(tree/"c/k6")])
     return dict(wire=wire,code=(d/"module.bin").read_bytes(),entry=int((d/"entry").read_text()),
                 cb=(d/"codebook.bin").read_bytes(),deck=(d/"deck.bin").read_bytes(),
-                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty,pcm=pcm)
+                reference=(d/"reference.bit").read_bytes(),names=names,revision=rev,dirty=dirty,pcm=pcm,gp0=gp0)
 
 REGS=(0x3f,0x59,0x58,0x70,0x72,0x5a,0x5b,0x5c,0x5d)
 VALS=(0x8000,0xf8,0xe1,0x95,0xc194,0x076b,0x3e36,0x5625,0x4100)
@@ -102,6 +121,10 @@ PCM=np.array([(min(i%40,40-i%40)-10)*(400+(i//80%8)*20) for i in range(8320)],dt
 
 class LiveTx(Emu):
     def __init__(self,artifact,backend,*,cpi=1.5,spi_us=34,fd_us=20,arena=14400,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0):
+        self.gp0=artifact.get('gp0',False)
+        self.gp0_route=False
+        self.gp0_starts=0
+        self.gp0_stops=0
         self.pcm=artifact.get("pcm")
         if self.pcm is None:self.pcm=PCM
         self.capture=None;self.capture_start=None;self.sample=0;self.highwater=0
@@ -112,12 +135,13 @@ class LiveTx(Emu):
         self.spi_hit_us=spi_hit_us;self.cache_hits=0;self.keyed_reads=0;self.read_sizes=Counter();self.codebook_reads=[]
         self.first_rf_ms=None;self.cb=artifact["cb"];self.deck=artifact["deck"];self.deck_opened=False
         self.tx_backend=backend;self.deadline=0
+        if self.gp0:arena=14976-1040 # expanded arena less callback stack
         room=arena-len(artifact["code"])-24
         if room<=0:raise ValueError("module exceeds arena")
-        self.api_level=30 if "mb_version" in artifact["names"] else 29
+        self.api_level=31 if "mb_version" in artifact["names"] else 29
         super().__init__(artifact["code"],artifact["entry"],np.zeros(1,np.uint8),0,1,
                          cpi=cpi,max_s=35,rf_backend=backend,rf_hz=HZ,level=self.api_level,
-                         scratch=room,fd_us=fd_us,stack_win=704)
+                         scratch=room,fd_us=fd_us,stack_win=artifact.get("module_stack_window",704))
         old=len(self.names)
         if len(artifact["names"])> (self.stop-self.stubs)//16:
             raise ValueError("API table exceeds emulator stub region")
@@ -248,26 +272,126 @@ class LiveTx(Emu):
             if r0==3:
                 ret=int(self.cyc>=FCPU*.02 and (self.capture_start is None or
                          self.cyc<self.capture_start+len(self.pcm)*FCPU/8000))
-            elif r0==0 and self.keyed and r2==644 and self.scr<=r1<=self.scr+self.scratch-r2:
+            elif r0==0 and not self.gp0 and self.keyed and r2==644 and self.scr<=r1<=self.scr+self.scratch-r2:
                 self.capture=r1;self.capture_start=self.cyc
-            elif r0==1:self.capture=None
+            elif r0==7 and self.gp0 and self.keyed and not self.gp0_route:
+                self.gp0_route=True
+            elif r0==8 and self.gp0 and self.keyed and self.gp0_route and r2==87260 and r1%4==0 and self.scr<=r1<=self.scr+self.scratch-644:
+                self.capture=r1;self.capture_start=self.cyc;self.gp0_starts+=1
+            elif r0==1:
+                self.capture=None
+                if self.gp0_route:self.gp0_stops+=1
+                self.gp0_route=False
             else:ret=-1
         elif name=="fsk_async":ret=self.async_fsk(r0,r1,r2)
         elif name=="tx_on":
             if self.keyed or not 0<r0<=25000:ret=-1
             else:self.keyed=True;self.lease_end=self.cyc+r0*96000
         elif name=="tx_off":
-            self.cleanup();self.keyed=False;self.capture=None
+            self.cleanup();self.keyed=False;self.capture=None;self.gp0_route=False
+        elif name=="tx_pa":
+            if not self.keyed:ret=-1
+            # The model already handles PA as part of FSK enable/cleanup;
+            # mute between payloads is allowed with live UART connected.
+        elif name=="cancel_poll":
+            ret=-1 # No cooperative cancellation token in offline model.
         elif name=="lcd_flush":us=30000
         elif name=="delay_us":
             self.wall_delay=True
             try:return super().on_stub(uc,addr,size,data)
             finally:self.wall_delay=False
-        elif name in ("say","ticks","fd_read","ms","key_down","scratch","lcd_text"):
+        elif name in ("say","ticks","fd_read","ms","key_down","scratch","lcd_text","rx_hz"):
             return super().on_stub(uc,addr,size,data)
         else:raise RuntimeError("unexpected API "+name)
         self.tick(us*96)
         uc.reg_write(a.UC_ARM_REG_R0,ret&0xffffffff)
+
+
+class CooperativeFskLiveTx(LiveTx):
+    """Experimental API29 split-preload timing model, NOT compiled Rust.
+
+    Matches the seven guarded register-write phases of the opt-in host
+    callback. Packet bits, decoder and ARM codec still use real compiled C.
+    The per-RFIC-register latency is the explicit fd_us model parameter.
+    """
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.preload_ptr=None
+        self.preload_step=0
+        self.preload_start_at=None
+
+    def cleanup(self):
+        self.preload_ptr=None
+        self.preload_step=0
+        self.preload_start_at=None
+        super().cleanup()
+
+    def async_fsk(self,op,ptr,n):
+        if not self.keyed:return -1
+        if op==0:
+            if self.saved is not None or n!=33 or ptr%2 or not self.scr<=ptr<=self.scr+self.scratch-66:
+                self.cleanup();return -1
+            data=bytes(self.mu.mem_read(ptr,66))
+            if data[-2:]!=b"\x5a\xa5":self.cleanup();return -1
+            # Real callback snapshots 9 RFIC registers before PA enable.
+            self.saved=[self.fd_regs.get(r,0) for r in REGS]
+            self.tick(9*self.fd_us*96)
+            if not self.keyed:self.cleanup();return -1
+            self.preload_ptr=ptr
+            self.preload_step=1
+            self.deadline=self.cyc+FCPU*.2
+            return 0
+        if op!=1 or self.saved is None:return -1
+        if self.cyc>self.deadline:self.cleanup();return -1
+        if self.preload_step:
+            p=self.preload_ptr
+            if p is None or p%2 or not self.scr<=p<=self.scr+self.scratch-66:
+                self.cleanup();return -1
+            data=bytes(self.mu.mem_read(p,66))
+            if data[-2:]!=b"\x5a\xa5":self.cleanup();return -1
+            stage=self.preload_step
+            if stage==1:
+                writes=[(0x59,0xf8),(2,0),*list(zip(REGS[:4],VALS[:4]))]
+            elif stage==2:
+                writes=[*list(zip(REGS[4:],VALS[4:])),(0x59,0x80f8),(0x59,0xf8)]
+            elif 3<=stage<=6:
+                words=struct.unpack('<33H',data)
+                i=(stage-3)*8
+                writes=[(0x5f,w) for w in words[i:i+8]]
+            elif stage==7:
+                words=struct.unpack('<33H',data)
+                writes=[(0x5f,words[32])]
+            else:
+                self.cleanup();return -1
+            for r,v in writes:
+                if not self.wr(r,v):self.cleanup();return -1
+            if stage==7:
+                pending=self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1
+                self.tick(self.fd_us*96)
+                if pending or not self.keyed:self.cleanup();return -1
+                self.preload_ptr=None
+                self.preload_step=0
+                self.preload_start_at=self.cyc+FCPU*.02
+                self.deadline=self.cyc+FCPU*.2
+                return 0
+            self.preload_step+=1
+            return 0
+        if self.preload_start_at is not None:
+            if self.cyc<self.preload_start_at:return 0
+            if not self.wr(0x59,0x8f8):self.cleanup();return -1
+            if self.tx_backend.active is None:self.cleanup();return -1
+            # No expected packet injection: the real RF backend receives
+            # only the 33 FIFO words actually written in the seven stages.
+            if self.capture is not None:self.pre_release+=1
+            if self.first_rf_ms is None and self.capture_start is not None:
+                self.first_rf_ms=(self.cyc-self.capture_start)/96000
+            self.deadline=self.cyc+FCPU*.7
+            self.preload_start_at=None
+            return 0
+        done=self.tx_backend.read(0xc,self.fd_regs,self.cyc/FCPU)&1
+        self.tick(self.fd_us*96)
+        if done:self.cleanup();return 1
+        return 0
 
 
 def decode_session(frames):
@@ -325,20 +449,21 @@ def wire_records_session(records):
     return (b"".join(r[16:16+6*r[3]] for r in voice) if complete else b""),complete
 
 
-def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False):
+def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,poll_us=1000,adc_cycles=0,cache_bytes=0,spi_hit_us=2,spi_byte_us=0,capture_codec=False,capture_rf_frames=False,capture_air=False,fsk_cooperative_model=False):
     if not 0<cpi<=10 or not 0<=spi_us<=1000 or not 1<=fd_us<=1000 or not 0<=adc_cycles<12000 or not 0<=cache_bytes<=4096 or not 0<=spi_hit_us or not math.isfinite(spi_byte_us) or not 0<=spi_byte_us<=100 or (cache_bytes and spi_hit_us>spi_us):
         raise ValueError("invalid timing parameters")
     air=VirtualAir(channel);b=VirtualTxBackend(air,240000,HZ)
     t=time.perf_counter()
     try:
-        e=LiveTx(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us)
+        tx_cls=CooperativeFskLiveTx if fsk_cooperative_model else LiveTx
+        e=tx_cls(artifact,b,cpi=cpi,spi_us=spi_us,fd_us=fd_us,adc_cycles=adc_cycles,cache_bytes=cache_bytes,spi_hit_us=spi_hit_us,spi_byte_us=spi_byte_us)
         result=e.run()
         if result is None:raise RuntimeError("live module exceeded virtual deadline")
         ret,stack=result
         if ret>>31:ret-=1<<32
         b.advance_tx(e.cyc/FCPU)
         tx=b.tx_status()
-        if e.keyed or e.capture is not None or e.saved is not None:
+        if e.keyed or e.capture is not None or e.saved is not None or e.gp0_route:
             raise RuntimeError("live module returned without cleanup")
         if any(e.fd_regs.get(r,0)!=v for r,v in e.initial_regs.items()):
             raise RuntimeError("RF register restore mismatch")
@@ -359,6 +484,7 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 module_bytes=len(artifact["code"]),module_return=ret,
                 stack_bytes=stack,cpi=cpi,spi_us=spi_us,spi_byte_us=spi_byte_us,fd_us=fd_us,adc_cycles=adc_cycles,threshold=threshold,poll_us=poll_us,
                 channel=channel.__dict__,samples=e.sample,samples_expected=len(e.pcm),pcm_highwater=e.highwater,pcm_lost=e.lost,lease_expired=e.lease_expired,
+                gp0=e.gp0,gp0_starts=e.gp0_starts,gp0_stops=e.gp0_stops,
                 spi_reads=e.spi_reads,keyed_reads=e.keyed_reads,spi_read_bytes=e.spi_read_bytes,keyed_read_bytes=e.keyed_read_bytes,read_sizes=dict(e.read_sizes),
                 codebook_profile=codebook_profile(e.codebook_reads),
                 cache_bytes=cache_bytes,cache_hits=e.cache_hits,spi_hit_us=spi_hit_us,tx_before_release=e.pre_release,first_rf_ms=e.first_rf_ms,
@@ -366,9 +492,19 @@ def trial(artifact,channel=Channel(),*,cpi=1.5,spi_us=34,fd_us=20,threshold=4,po
                 codec_frames=len(codec)//6,codec_exact=codec==artifact["reference"],
                 wire_decoder_agrees=True,
                 logs=e.said,wall_seconds=round(time.perf_counter()-t,3))
+    if fsk_cooperative_model:
+        summary['fsk_cooperative_model']=True
     if capture_codec:
         # Only requested captures expose binary voice frames; default is JSON-safe.
         summary["received_codec_bytes"]=codec
+    if capture_rf_frames:
+        # Offline-only opt-in raw IQ receiver result. No expected TX bytes
+        # substituted for recovered frames.
+        summary["received_physical_frames"]=frames
+    if capture_air:
+        # Simulation-only access to the exact RF bursts from real ARM TX,
+        # rather than regenerating a signal from expected packet bytes.
+        summary["virtual_air"]=air
     return summary
 
 
