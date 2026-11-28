@@ -100,7 +100,11 @@ def parse_framed_bytes(data:bytes):
 
 def parse_iq_complex64(path:Path):
     import numpy as np
-    from tools.k6_fsk_sotto_sync_rx import find_frames
+    # Resolve the sibling directly: an unrelated site-packages `tools`
+    # package can shadow this repository's namespace package.
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from k6_fsk_sotto_sync_rx import find_frames
     iq=np.fromfile(path,dtype=np.complex64)
     if not np.isfinite(iq).all():raise ValueError("nonfinite IQ data")
     # The blind PHY sync is payload-independent; packet validation is ours.

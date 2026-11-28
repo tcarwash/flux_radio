@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind GP0 audio comparison</title>
+<style>
+:root { color-scheme: light dark; font: 16px/1.45 system-ui, sans-serif; }
+body { max-width: 980px; margin: 2rem auto; padding: 0 1rem; }
+h1 { line-height: 1.15; }
+.note { padding: .8rem 1rem; border-left: 4px solid #4385f5; background: color-mix(in srgb, CanvasText 5%, Canvas); }
+.tools { position: sticky; top: 0; padding: .75rem; background: Canvas; border-bottom: 1px solid #8886; z-index: 2; display:flex; gap:.75rem; flex-wrap:wrap; }
+button { font: inherit; padding: .45rem .8rem; cursor: pointer; }
+section { margin: 1.5rem 0; }
+.clip { display:grid; grid-template-columns: 2.5rem minmax(240px,1fr) repeat(3,minmax(105px,.55fr)); gap:.65rem; align-items:center; padding:.65rem 0; border-bottom:1px solid #8885; }
+audio { width:100%; min-width:220px; }
+label { display:grid; gap:.2rem; font-size:.85rem; }
+select { font:inherit; padding:.3rem; }
+.saved { margin-left:auto; align-self:center; font-size:.9rem; opacity:.8; }
+@media (max-width:700px) { .clip { grid-template-columns:2rem 1fr; } .clip label { grid-column:2; } }
+</style>
+</head>
+<body>
+<h1>Blind GP0 audio comparison</h1>
+<p class="note">These are modeled GP0-noise examples passed through Sotto v3.8, not radio captures. For each speaker, compare the six clips and rate intelligibility, effort, and naturalness. Labels are randomized separately for every speaker.</p>
+<p>Higher intelligibility and naturalness scores are better. Lower effort scores are better. The page saves ratings in this browser; use <b>Export scores</b> to save a JSON copy for sharing.</p>
+<div class="tools"><button id="export">Export scores</button><button id="clear">Clear saved scores</button><span class="saved" id="status">Autosave is on</span></div>
+<main id="clips"></main>
+<script>
+const speakers = Array.from({length:8}, (_,i)=>`speaker${String(i+1).padStart(2,'0')}`);
+const labels = ['A','B','C','D','E','F'];
+const key = 'gp0-blind-listening-causal-v1';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) {}
+const root = document.getElementById('clips');
+function ratingField(speaker,label,field,title,options) {
+  const id = `${speaker}_${label}_${field}`;
+  const el = document.createElement('label'); el.textContent = title;
+  const sel = document.createElement('select'); sel.id = id;
+  const blank = document.createElement('option'); blank.value=''; blank.textContent='Not rated'; sel.append(blank);
+  for (const [value,text] of options) { const o=document.createElement('option');o.value=value;o.textContent=text;sel.append(o); }
+  sel.value = saved[id] || '';
+  sel.addEventListener('change',()=>{ saved[id]=sel.value; try { localStorage.setItem(key,JSON.stringify(saved)); document.getElementById('status').textContent='Saved locally'; } catch (_) { document.getElementById('status').textContent='Export scores to save a copy'; } });
+  el.append(sel); return el;
+}
+for (const speaker of speakers) {
+  const section=document.createElement('section');
+  const h=document.createElement('h2');h.textContent=speaker.replace('speaker','Speaker ');section.append(h);
+  for (const label of labels) {
+    const row=document.createElement('div');row.className='clip';
+    const name=document.createElement('strong');name.textContent=label;row.append(name);
+    const player=document.createElement('audio');player.controls=true;player.preload='none';player.src=`${speaker}_${label}.wav`;row.append(player);
+    row.append(ratingField(speaker,label,'intelligibility','Words understood',[[1,'1 · very few'],[2,'2'],[3,'3'],[4,'4'],[5,'5 · nearly all']]));
+    row.append(ratingField(speaker,label,'effort','Listening effort',[[1,'1 · very easy'],[2,'2'],[3,'3'],[4,'4'],[5,'5 · very hard']]));
+    row.append(ratingField(speaker,label,'naturalness','Naturalness',[[1,'1 · poor'],[2,'2'],[3,'3'],[4,'4'],[5,'5 · natural']]));
+    section.append(row);
+  }
+  root.append(section);
+}
+document.getElementById('export').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify({schema:1,created:new Date().toISOString(),scores:saved},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='gp0-listening-scores.json';a.click();URL.revokeObjectURL(a.href);
+});
+document.getElementById('clear').addEventListener('click',()=>{
+  if(!confirm('Clear ratings saved in this browser?')) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+  location.reload();
+});
+</script>
+</body>
+</html>

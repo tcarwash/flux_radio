@@ -10,7 +10,14 @@
 #include "sotto_slim_context.inc"
 #include "../../fixed/fx_tables.c"
 #include "sotto_live_engine.h"
+#ifdef SOTTO_GP0_WIENER_FIR
+#include "sotto_gp0_wiener_fir_q15.h"
+#endif
+#ifdef SOTTO_GP0_WIENER_FIR
+K6_MODULE_NAME("SOTTO FIR");
+#else
 K6_MODULE_NAME("SOTTO GP0");
+#endif
 /* The expanded 14,976-byte arena leaves 4,120 bytes after the module
  * image and host callback-stack reserve. Keep the engine+codec requirement
  * bounded at 4,080 bytes; this is a compile-time guard, not a runtime guess. */
@@ -21,9 +28,18 @@ typedef struct{
     slim_enc_t *enc;
     sotto_io_t *io;
     uint32_t last_poll;
+#ifdef SOTTO_GP0_WIENER_FIR
+    gp0_wiener_fir_state_t fir;
+#endif
 } live_ctx_t;
 static int encode(void*v,const int16_t*p,uint8_t*f){
-    live_ctx_t*c=v;int r=slim_encode10(c->enc,p,f);
+    live_ctx_t*c=v;
+#ifdef SOTTO_GP0_WIENER_FIR
+    /* sl_engine_tick owns this consumed ring block until encode returns;
+     * filter it in place to avoid a second 80-sample stack buffer. */
+    gp0_wiener_fir_q15_block(&c->fir,(int16_t*)p,SL_PCM_SAMPLES);
+#endif
+    int r=slim_encode10(c->enc,p,f);
     return c->io->fault?-1:r;
 }
 static int flush(void*v,uint8_t*f){
@@ -64,6 +80,11 @@ int k6_main(const k6_api_t*a){
     }
     slim_enc_init(e);e->io=&io;
     c.a=a;c.enc=e;c.io=&io;c.last_poll=0;
+#ifdef SOTTO_GP0_WIENER_FIR
+    for(pressed=0;pressed<sizeof(c.fir.history)/sizeof(c.fir.history[0]);pressed++)
+        c.fir.history[pressed]=0;
+    c.fir.pos=0;
+#endif
     o.encode=encode;o.flush=flush;o.start=start;o.poll=poll;
     o.stop_capture=stop;o.abort=end;o.end=end;
     // First bench build: a stable released PTT followed by a fresh

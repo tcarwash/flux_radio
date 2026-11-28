@@ -27,11 +27,14 @@ import time
 # Direct `python tools/k6_gp0_pcm_air_rx.py` puts tools/, not the repository
 # root, on sys.path. Keep package imports working with both CLI and pytest.
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Import the sibling by its bare module name. Some Python environments
+    # have an unrelated installed top-level `tools` package, which shadows
+    # this repository's namespace directory even when the repo root is first.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 from scipy.signal import resample_poly
-from tools.k6_gp0_popcount_air import parse_iq_complex64,assemble,write_raw_new
+from k6_gp0_popcount_air import parse_iq_complex64,assemble,write_raw_new
 
 RATE=1_024_000
 IF_OFFSET=125_000

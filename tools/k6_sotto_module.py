@@ -15,6 +15,12 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
+import types
+_tools_pkg=sys.modules.get("tools")
+if _tools_pkg is None or str(ROOT/"tools") not in getattr(_tools_pkg,"__path__",[]):
+    _tools_pkg=types.ModuleType("tools")
+    _tools_pkg.__path__=[str(ROOT/"tools")]
+    sys.modules["tools"]=_tools_pkg
 from modem import k6mod
 from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 
@@ -147,12 +153,12 @@ static int32_t cb_hn(const signed char *y, const int16_t *t, int n) {
              '    }')
     return text
 
-def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,synthetic_tx=False,synth_profile=1,synth_hz=443500000,ram_micro=False,fast_div=False,fast_history_copy=False,fast_cb_pair=False,fast_lag_pair=False):
+def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,gp0_wiener_fir_tx=False,synthetic_tx=False,synth_profile=1,synth_hz=443500000,ram_micro=False,fast_div=False,fast_history_copy=False,fast_cb_pair=False,fast_lag_pair=False):
     if isinstance(synth_profile,bool) or synth_profile not in range(4):
         raise ValueError("Synthetic PCM profile must be 0..3")
     if synth_hz not in (433500000,443500000):
         raise ValueError("Synthetic test carrier must be the qualified 70cm bench frequency")
-    selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx,synthetic_tx))
+    selected=sum(bool(x) for x in (live_tx,tone_tx,gp0_irq_tx,gp0_wiener_fir_tx,synthetic_tx))
     if selected>1:
         raise ValueError("Select exactly one Sotto TX input implementation")
     if selected and not host_resources:
@@ -163,13 +169,13 @@ def build(host_resources=False,live_tx=False,tone_tx=False,gp0_irq_tx=False,*,sy
     with tempfile.TemporaryDirectory() as d:
         inc=Path(d)/"sotto_slim_context.inc"
         inc.write_text(adapt((FIXED/"sotto_fx_slim.c").read_text(),ram_micro=ram_micro,fast_history_copy=fast_history_copy,fast_cb_pair=fast_cb_pair,fast_lag_pair=fast_lag_pair))
-        source=(SRC.with_name("sotto_gp0_irq_tx.c") if gp0_irq_tx else
+        source=(SRC.with_name("sotto_gp0_irq_tx.c") if (gp0_irq_tx or gp0_wiener_fir_tx) else
                 SRC.with_name("sotto_synth_tx.c") if synthetic_tx else
                 SRC.with_name("sotto_tone_tx.c" if tone_tx else "sotto_live_tx.c")) if selected else SRC
         code,entry=k6mod.build(str(source),cflags=[*k6mod.CFLAGS,"-I"+d,
             "-I"+str(FIXED),"-isystem",str(FIXED/"cm4/inc"),
             "-DSOTTO_V36","-DSOTTO_PITCH_THIRD","-DFX_NARROW_MUL",
-            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []) + (["-DSOTTO_SYNTH_TX_ARMED=1",f"-DSOTTO_SYNTH_PROFILE={synth_profile}",f"-DSYNTH_HZ={synth_hz}u"] if synthetic_tx else []) + (["-DSOTTO_FAST_DIV=1"] if fast_div else []))
+            "-Wno-unused-function","-Wno-unused-const-variable","-Wno-unused-variable"] + (["-DSOTTO_HOST_RESOURCES"] if host_resources else []) + (["-DSOTTO_TONE_TX_ARMED=1"] if tone_tx else []) + (["-DSOTTO_GP0_WIENER_FIR=1"] if gp0_wiener_fir_tx else []) + (["-DSOTTO_SYNTH_TX_ARMED=1",f"-DSOTTO_SYNTH_PROFILE={synth_profile}",f"-DSYNTH_HZ={synth_hz}u"] if synthetic_tx else []) + (["-DSOTTO_FAST_DIV=1"] if fast_div else []))
     scratch_required=SOTTO_LIVE_SCRATCH_REQUIRED - (SOTTO_MICRO_SCRATCH_SAVED if ram_micro else 0)
     if selected and (fast_cb_pair or fast_lag_pair or ram_micro):
         scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
@@ -186,6 +192,7 @@ def main():
     p.add_argument("--live-tx",action="store_true",help="EXPERIMENTAL live Sotto TX level30, no RF on install")
     p.add_argument("--tone-tx",action="store_true",help="OPT-IN 1 kHz Sotto PCM TX; only a deliberate RUN transmits")
     p.add_argument("--gp0-irq-tx",action="store_true",help="EXPERIMENTAL Sotto TX using physical GP0 DMA IRQ9 microphone capture")
+    p.add_argument("--gp0-wiener-fir-tx",action="store_true",help="EXPERIMENTAL GP0 TX with offline-designed 15-tap Q15 Wiener FIR comparison filter")
     p.add_argument("--synthetic-tx",action="store_true",help="EXPERIMENTAL timed mock 8-kHz PCM into real Sotto codec and FSK TX; no microphone")
     p.add_argument("--synth-profile",type=int,choices=range(4),default=1,help="mock PCM: 0 silence, 1 multitone, 2 chirp, 3 bursts")
     p.add_argument("--synth-hz",type=int,choices=(433500000,443500000),default=443500000,help="strict 70cm dummy-load bench frequency")
@@ -195,17 +202,17 @@ def main():
     p.add_argument("--fast-cb-pair",action="store_true",help="EXPERIMENTAL paired codebook-score loop; default off")
     p.add_argument("--fast-lag-pair",action="store_true",help="EXPERIMENTAL paired exact lag-correlation loop; default off")
     a=p.parse_args()
-    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,synthetic_tx=a.synthetic_tx,synth_profile=a.synth_profile,synth_hz=a.synth_hz,ram_micro=a.ram_micro,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair,fast_lag_pair=a.fast_lag_pair)
+    code,entry=build(a.host_resources,a.live_tx,a.tone_tx,a.gp0_irq_tx,gp0_wiener_fir_tx=a.gp0_wiener_fir_tx,synthetic_tx=a.synthetic_tx,synth_profile=a.synth_profile,synth_hz=a.synth_hz,ram_micro=a.ram_micro,fast_div=a.fast_div,fast_history_copy=a.fast_history_copy,fast_cb_pair=a.fast_cb_pair,fast_lag_pair=a.fast_lag_pair)
     deck=build_deck(SLIM_CELLS.read_text())
     a.out.mkdir(parents=True,exist_ok=False)
     files={"module.bin":code,"sotto-ivf.k6sc":deck}
     for f,b in files.items():(a.out/f).write_bytes(b)
-    selected=a.live_tx or a.tone_tx or a.gp0_irq_tx or a.synthetic_tx
+    selected=a.live_tx or a.tone_tx or a.gp0_irq_tx or a.gp0_wiener_fir_tx or a.synthetic_tx
     scratch_available=SOTTO_ARENA_BYTES-SOTTO_SCRATCH_RESERVE-len(code)-SOTTO_MODULE_OVERHEAD
     scratch_required=SOTTO_LIVE_SCRATCH_REQUIRED-(SOTTO_MICRO_SCRATCH_SAVED if a.ram_micro else 0)
     if selected and scratch_available<scratch_required:
         raise ValueError(f"Sotto live TX needs {scratch_required} scratch bytes; arena provides {scratch_available}")
-    manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto autonomous mock PCM TX" if a.synthetic_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
+    manifest={"format":1,"build":"Sotto GP0 IRQ microphone TX with 15-tap Wiener FIR" if a.gp0_wiener_fir_tx else "Sotto GP0 IRQ microphone TX" if a.gp0_irq_tx else "Sotto autonomous mock PCM TX" if a.synthetic_tx else "Sotto experimental live TX" if a.live_tx else "Sotto 1 kHz generated PCM TX" if a.tone_tx else "Sotto qualification module (no RF)",
               "ram_micro_experimental":a.ram_micro,
               "fast_div_experimental":a.fast_div,
               "fast_history_copy_experimental":a.fast_history_copy,
@@ -217,8 +224,8 @@ def main():
               "scratch_required":scratch_required if selected else 0,
               "arena_14976_scratch_upper":scratch_available,
               "scratch_margin":scratch_available-scratch_required if selected else None,
-              "library":[{"id":"sotto-gp0-irq" if a.gp0_irq_tx else "sotto-synthetic" if a.synthetic_tx else "sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO GP0" if a.gp0_irq_tx else "SOTTO SYNTH" if a.synthetic_tx else "SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
-                          "file":"module.bin","level":29 if a.synthetic_tx else 30 if (a.live_tx or a.gp0_irq_tx) else 31 if a.tone_tx else 5}],
+              "library":[{"id":"sotto-gp0-wiener-fir15" if a.gp0_wiener_fir_tx else "sotto-gp0-irq" if a.gp0_irq_tx else "sotto-synthetic" if a.synthetic_tx else "sotto-tx-live" if a.live_tx else "sotto-tone" if a.tone_tx else "sotto-test","kind":"module","name":"SOTTO FIR" if a.gp0_wiener_fir_tx else "SOTTO GP0" if a.gp0_irq_tx else "SOTTO SYNTH" if a.synthetic_tx else "SOTTO MIC" if a.live_tx else "SOTTO TONE" if a.tone_tx else "SOTTO TEST",
+                          "file":"module.bin","level":29 if a.synthetic_tx else 30 if (a.live_tx or a.gp0_irq_tx or a.gp0_wiener_fir_tx) else 31 if a.tone_tx else 5}],
               "sha256":{f:hashlib.sha256(b).hexdigest() for f,b in files.items()}}
     (a.out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps({"entry":entry,"module_bytes":len(code),"deck_bytes":len(deck),

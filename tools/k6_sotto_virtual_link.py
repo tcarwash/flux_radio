@@ -34,6 +34,11 @@ from tools.k6_fsk_virtual_link import HZ, values
 PREPARE=r"""
 import ctypes as C,struct,subprocess,sys,zlib
 from pathlib import Path
+import types
+root=Path.cwd();sys.path.insert(0,str(root))
+pkg=sys.modules.get('tools')
+if pkg is None or str(root/'tools') not in getattr(pkg,'__path__',[]):
+ pkg=types.ModuleType('tools');pkg.__path__=[str(root/'tools')];sys.modules['tools']=pkg
 from tools.k6_sotto_module import build,FIXED
 from tools.k6_sotto_ivf_deck import build_deck,SLIM_CELLS
 d=Path(sys.argv[1])
@@ -136,7 +141,7 @@ class LiveTx(Emu):
         self.api_level=31 if "mb_version" in artifact["names"] else 29
         super().__init__(artifact["code"],artifact["entry"],np.zeros(1,np.uint8),0,1,
                          cpi=cpi,max_s=35,rf_backend=backend,rf_hz=HZ,level=self.api_level,
-                         scratch=room,fd_us=fd_us,stack_win=704)
+                         scratch=room,fd_us=fd_us,stack_win=artifact.get("module_stack_window",704))
         old=len(self.names)
         if len(artifact["names"])> (self.stop-self.stubs)//16:
             raise ValueError("API table exceeds emulator stub region")
